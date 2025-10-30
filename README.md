@@ -5,10 +5,10 @@ This custom Home Assistant integration provides monitoring capabilities for Reno
 Tested:
 - Renogy Rover
 - Renogy Wanderer
+- Renogy DC-DC Charger
 
 Should work, but untested:
 - Renogy Adventurer
-- Renogy DC-DC Charger
 
 ## Features
 - Automatic discovery of Renogy BLE devices
