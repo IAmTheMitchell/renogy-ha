@@ -199,6 +199,46 @@ class RenogyBLEDevice:
                 )
                 self.available = False
                 self.last_unavailable_time = datetime.now()
+                
+    def _correct_temperature_offset(self, parsed_data: Dict[str, Any]) -> None:
+        """Correct temperature values that have an offset encoding.
+        
+        Some Renogy devices send temperature with a 130-degree offset:
+        - 130 = 0°C
+        - 129 = -1°C  
+        - 131 = 1°C
+        
+        This method detects and corrects these offset values.
+        """
+        temp_keys = ["battery_temperature", "controller_temperature"]
+        
+        for key in temp_keys:
+            if key in parsed_data:
+                temp = parsed_data[key]
+                
+                # Check if this looks like an offset-encoded temperature
+                # Valid range is -40 to 85°C, so anything above 85 is likely offset-encoded
+                if isinstance(temp, (int, float)) and temp > 85:
+                    corrected_temp = temp - 130
+                    
+                    # Verify the corrected value is within valid range
+                    if -40 <= corrected_temp <= 85:
+                        LOGGER.debug(
+                            "%s %s: Corrected temperature from %.1f to %.1f°C (offset encoding detected)",
+                            self.name,
+                            key.replace('_', ' ').title(),
+                            temp,
+                            corrected_temp
+                        )
+                        parsed_data[key] = corrected_temp
+                    else:
+                        LOGGER.warning(
+                            "%s %s: Temperature %.1f°C appears invalid even after offset correction (%.1f°C)",
+                            self.name,
+                            key.replace('_', ' ').title(),
+                            temp,
+                            corrected_temp
+                        )
 
     def update_parsed_data(
         self, raw_data: bytes, register: int, cmd_name: str = "unknown"
@@ -278,6 +318,8 @@ class RenogyBLEDevice:
                 return False
 
             # Update the stored parsed data with whatever we could get
+            # Apply temperature correction for devices that use offset encoding
+            self._correct_temperature_offset(parsed)
             self.parsed_data.update(parsed)
 
             # Log the successful parsing
