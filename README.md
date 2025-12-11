@@ -5,7 +5,7 @@
 ![HACS](https://github.com/IAmTheMitchell/renogy-ha/actions/workflows/validate.yml/badge.svg)
 ![Release](https://github.com/IAmTheMitchell/renogy-ha/actions/workflows/release.yml/badge.svg)
 
-This custom Home Assistant integration provides monitoring capabilities for Renogy devices via Bluetooth Low Energy (BLE) connection, specifically for devices with BT-1 and BT-2 modules.
+This custom Home Assistant integration provides monitoring capabilities for Renogy devices via Bluetooth Low Energy (BLE) connection with BT-1 and BT-2 modules.
 
 ## Currently Supported Devices
 
@@ -34,9 +34,18 @@ Should work, but untested:
 ## Prerequisites
 
 - Home Assistant instance (version 2025.3 or newer)
-- Renogy device with BT-1 or BT-2 Bluetooth module
 - A compatible Bluetooth adapter on your Home Assistant host device
 - Bluetooth discovery enabled in Home Assistant
+
+## Hardware
+
+_Includes Amazon affiliate links which provide a small commission to support this project._
+
+- Compatible Renogy device (see above) with [BT-1](https://amzn.to/4pq4csm) or [BT-2](https://amzn.to/4iTNSO8) Bluetooth module
+  - Make sure to purchase the correct module for your device! Different devices use different ports.
+- Bluetooth radio for Home Assistant
+  - [ESP32 for Bluetooth proxy](https://amzn.to/4lSBHkV) (Recommended)
+  - [USB Bluetooth adapter](https://amzn.to/4lsxDrU)
 
 ## Installation
 
