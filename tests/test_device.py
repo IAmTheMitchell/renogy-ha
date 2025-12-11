@@ -167,7 +167,8 @@ class TestRenogyBLEDevice:
         device.failure_count = 0
         assert device.should_retry_connection is True
 
-        # Unavailable devices without a last_unavailable_time should set it and return False
+        # Unavailable devices without a last_unavailable_time should set it and
+        # return False.
         device.available = False
         device.failure_count = 3
         device.last_unavailable_time = None
