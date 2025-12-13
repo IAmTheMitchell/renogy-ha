@@ -1,10 +1,11 @@
-name: CI
+name: Test
 
 on:
   push:
     branches:
       - main
   pull_request:
+  workflow_call: # Makes this workflow reusable
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
@@ -13,6 +14,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    environment: test
     strategy:
       fail-fast: false
       matrix:
@@ -36,23 +38,5 @@ jobs:
       - name: Run tests
         run: uv run pytest tests
 
-  release:
-    runs-on: ubuntu-latest
-    environment: release
-    if: github.ref == 'refs/heads/main'
-    needs:
-      - test
-    permissions:
-      id-token: write
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Python Semantic Release
-        id: release
-        uses: python-semantic-release/python-semantic-release@v9.21.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Lint with Ruff
+        run: uv run ruff check . --output-format=github

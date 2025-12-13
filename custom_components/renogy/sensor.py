@@ -311,7 +311,8 @@ async def async_setup_entry(
 
         if not real_name_found:
             LOGGER.debug(
-                "No real device name found after waiting. Using generic name for entities."
+                "No real device name found after waiting. "
+                "Using generic name for entities."
             )
 
     # Now create entities with the best name we have
@@ -419,7 +420,8 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {device.address}",
-                sw_version=device_type.capitalize(),  # Add device type as software version for clarity
+                sw_version=device_type.capitalize(),
+                # Add device type as software version for clarity.
             )
         else:
             # If we don't have a device yet, use coordinator address for unique ID
@@ -433,7 +435,8 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {coordinator.address}",
-                sw_version=device_type.capitalize(),  # Add device type as software version for clarity
+                sw_version=device_type.capitalize(),
+                # Add device type as software version for clarity.
             )
 
         self._last_updated = None
@@ -467,7 +470,8 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {self._device.address}",
-                sw_version=self._device_type.capitalize(),  # Add device type as software version
+                sw_version=self._device_type.capitalize(),
+                # Add device type as software version.
             )
             LOGGER.debug("Updated device info with real name: %s", self._device.name)
 
@@ -484,7 +488,8 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
         if self._device and not self._device.is_available:
             return False
 
-        # For the actual data, check either the device's parsed_data or coordinator's data
+        # For the actual data, check either the device's parsed_data or
+        # coordinator's data.
         data_available = False
         if self._device and self._device.parsed_data:
             data_available = True

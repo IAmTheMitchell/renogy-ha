@@ -66,7 +66,8 @@ def create_modbus_read_request(
     """Build a Modbus read request frame.
 
     The frame consists of:
-      [device_id, function_code, register_high, register_low, word_count_high, word_count_low, crc_high, crc_low]
+      [device_id, function_code, register_high, register_low, word_count_high,
+      word_count_low, crc_high, crc_low]
 
     Note: Many Modbus implementations send the CRC as low byte first; adjust if needed.
     """
@@ -153,7 +154,8 @@ class RenogyBLEDevice:
         )
         if datetime.now() >= retry_time:
             LOGGER.debug(
-                "Retry interval reached for unavailable device %s. Attempting reconnection...",
+                "Retry interval reached for unavailable device %s. "
+                "Attempting reconnection...",
                 self.name,
             )
             # Reset the unavailable time for the next retry interval
@@ -182,7 +184,9 @@ class RenogyBLEDevice:
             self.failure_count += 1
             error_msg = f" Error message: {str(error)}" if error else ""
             LOGGER.info(
-                "Communication failure with Renogy device: %s. (Consecutive polling failure #%s. Device will be marked unavailable after %s failures.)%s",
+                "Communication failure with Renogy device: %s. "
+                "(Consecutive polling failure #%s. "
+                "Device will be marked unavailable after %s failures.)%s",
                 self.name,
                 self.failure_count,
                 self.max_failures,
@@ -192,7 +196,8 @@ class RenogyBLEDevice:
             if self.failure_count >= self.max_failures and self.available:
                 error_msg = f". Error message: {str(error)}" if error else ""
                 LOGGER.error(
-                    "Renogy device %s marked unavailable after %s consecutive polling failures%s",
+                    "Renogy device %s marked unavailable after %s "
+                    "consecutive polling failures%s",
                     self.name,
                     self.max_failures,
                     error_msg,
@@ -227,7 +232,8 @@ class RenogyBLEDevice:
 
         try:
             # Check for minimum valid response length
-            # Modbus response format: device_id(1) + function_code(1) + byte_count(1) + data(n) + crc(2)
+            # Modbus response format: device_id(1) + function_code(1) +
+            # byte_count(1) + data(n) + crc(2).
             if (
                 len(raw_data) < 5
             ):  # At minimum, we need these 5 bytes for a valid response
@@ -240,7 +246,8 @@ class RenogyBLEDevice:
                 return False
 
             # Basic validation of Modbus response
-            # Ensure the complete Modbus frame is present: 3‑byte header + data + 2‑byte CRC
+            # Ensure the complete Modbus frame is present:
+            # 3‑byte header + data + 2‑byte CRC.
             byte_count = raw_data[2]
             expected_len = 3 + byte_count + 2
             if len(raw_data) < expected_len:
@@ -375,7 +382,8 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
         service_info = bluetooth.async_last_service_info(self.hass, self.address)
         if not service_info:
             self.logger.error(
-                "No service info available for device %s. Ensure device is within range and powered on.",
+                "No service info available for device %s. Ensure device is within "
+                "range and powered on.",
                 self.address,
             )
             self.last_update_success = False
@@ -599,7 +607,7 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                     try:
                         self.logger.debug("Connected to device %s", device.name)
 
-                        # Create an event that will be set when notification data is received
+                        # Create an event for when notification data is received.
                         notification_event = asyncio.Event()
                         notification_data = bytearray()
 
@@ -627,7 +635,8 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                                 RENOGY_WRITE_CHAR_UUID, modbus_request
                             )
 
-                            # Expected length: 3 header bytes + 2*word_count data + 2‑byte CRC
+                            # Expected length: 3 header bytes +
+                            # 2*word_count data + 2‑byte CRC.
                             word_count = cmd[2]
                             expected_len = 3 + word_count * 2 + 2
                             start_time = self.hass.loop.time()
@@ -645,7 +654,8 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                                     notification_event.clear()
                             except asyncio.TimeoutError:
                                 self.logger.info(
-                                    "Timeout – only %s / %s bytes received for %s from device %s",
+                                    "Timeout – only %s / %s bytes received for %s "
+                                    "from device %s",
                                     len(notification_data),
                                     expected_len,
                                     cmd_name,
@@ -667,7 +677,8 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
 
                             if cmd_success:
                                 self.logger.debug(
-                                    "Successfully read and parsed %s data from device %s",
+                                    "Successfully read and parsed %s data from "
+                                    "device %s",
                                     cmd_name,
                                     device.name,
                                 )
@@ -697,8 +708,9 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                         error = e
                         success = False
                     finally:
-                        # BleakClientWithServiceCache handles disconnect in context manager
-                        # but we need to ensure the client is disconnected
+                        # BleakClientWithServiceCache handles disconnect in context
+                        # manager.
+                        # But we need to ensure the client is disconnected.
                         if client.is_connected:
                             try:
                                 await client.disconnect()
