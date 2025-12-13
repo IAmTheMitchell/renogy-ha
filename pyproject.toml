@@ -8,7 +8,7 @@ dependencies = [
     "bleak>=0.22.3",
     "bleak-retry-connector>=3.9.0",
     "homeassistant>=2025.4.4",
-    "renogy-ble>=0.2.1",
+    "renogy-ble==0.2.2",
 ]
 
 [dependency-groups]
