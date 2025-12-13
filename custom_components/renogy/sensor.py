@@ -36,6 +36,7 @@ from .const import (
     DOMAIN,
     LOGGER,
     RENOGY_BT_PREFIX,
+    SENSOR_VALIDATION_LIMITS,
 )
 
 # Registry of sensor keys
@@ -232,6 +233,14 @@ LOAD_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda data: data.get(KEY_POWER_CONSUMPTION_TODAY),
     ),
+    RenogyBLESensorDescription(
+        key=KEY_MAX_DISCHARGING_POWER_TODAY,
+        name="Max Discharging Power Today",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_MAX_DISCHARGING_POWER_TODAY),
+    ),
 )
 
 CONTROLLER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
@@ -243,142 +252,119 @@ CONTROLLER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: data.get(KEY_CONTROLLER_TEMPERATURE),
     ),
+)
+
+DIAGNOSTIC_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
         key=KEY_DEVICE_ID,
         name="Device ID",
-        device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: data.get(KEY_DEVICE_ID),
     ),
     RenogyBLESensorDescription(
         key=KEY_MODEL,
         name="Model",
-        device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: data.get(KEY_MODEL),
     ),
-    RenogyBLESensorDescription(
-        key=KEY_MAX_DISCHARGING_POWER_TODAY,
-        name="Max Discharging Power Today",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: data.get(KEY_MAX_DISCHARGING_POWER_TODAY),
-    ),
 )
-
-# All sensors combined
-ALL_SENSORS = BATTERY_SENSORS + PV_SENSORS + LOAD_SENSORS + CONTROLLER_SENSORS
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Renogy BLE sensors."""
-    LOGGER.debug("Setting up Renogy BLE sensors for entry: %s", config_entry.entry_id)
+    """Set up Renogy BLE sensors."""
+    LOGGER.info("Setting up Renogy BLE sensor platform for %s", entry.entry_id)
 
-    renogy_data = hass.data[DOMAIN][config_entry.entry_id]
-    coordinator = renogy_data["coordinator"]
+    # Get data from hass.data
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    coordinator: RenogyActiveBluetoothCoordinator = entry_data["coordinator"]
+    device_type = entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
 
-    # Get device type from config
-    device_type = config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
-    LOGGER.debug("Setting up sensors for device type: %s", device_type)
+    # Get device if already discovered
+    device: Optional[RenogyBLEDevice] = None
+    if hasattr(coordinator, "device"):
+        device = coordinator.device
 
-    # Try to wait for a real device name before creating entities
-    # This helps ensure entity IDs will match the real device name
-    if (
-        not coordinator.device
-        or coordinator.device.name.startswith("Unknown")
-        or not coordinator.device.name.startswith(RENOGY_BT_PREFIX)
-    ):
-        LOGGER.debug("Waiting for real device name before creating entities...")
-        # Force an immediate refresh to try getting device info
-        await coordinator.async_request_refresh()
-
-        # Wait for a short time to see if we can get the real device name
-        # We'll wait up to 10 seconds, checking every second
-        real_name_found = False
-        for _ in range(10):
-            await asyncio.sleep(1)
-            if coordinator.device and coordinator.device.name.startswith(
-                RENOGY_BT_PREFIX
-            ):
-                LOGGER.debug("Real device name found: %s", coordinator.device.name)
-                real_name_found = True
-                break
-
-        if not real_name_found:
-            LOGGER.debug(
-                "No real device name found after waiting. "
-                "Using generic name for entities."
-            )
-
-    # Now create entities with the best name we have
-    if coordinator.device and (
-        coordinator.device.name.startswith(RENOGY_BT_PREFIX)
-        or not coordinator.device.name.startswith("Unknown")
-    ):
-        LOGGER.info("Creating entities with device name: %s", coordinator.device.name)
-        device_entities = create_device_entities(
-            coordinator, coordinator.device, device_type
+    # If no device discovered yet, use coordinator's address
+    if not device:
+        LOGGER.info(
+            "Device not yet discovered, creating sensors with coordinator address"
         )
-    else:
-        LOGGER.info("Creating entities with coordinator only (generic name)")
-        device_entities = create_coordinator_entities(coordinator, device_type)
 
-    # Add all entities to Home Assistant
-    if device_entities:
-        LOGGER.debug("Adding %s entities", len(device_entities))
-        async_add_entities(device_entities)
-    else:
-        LOGGER.warning("No entities were created")
+    # Build list of sensors to add
+    sensors_to_add = []
 
-
-def create_entities_helper(
-    coordinator: RenogyActiveBluetoothCoordinator,
-    device: Optional[RenogyBLEDevice],
-    device_type: str = DEFAULT_DEVICE_TYPE,
-) -> List[RenogyBLESensor]:
-    """Create sensor entities with provided coordinator and optional device."""
-    entities = []
-
-    # Group sensors by category
-    for category_name, sensor_list in {
-        "Battery": BATTERY_SENSORS,
-        "PV": PV_SENSORS,
-        "Load": LOAD_SENSORS,
-        "Controller": CONTROLLER_SENSORS,
-    }.items():
-        for description in sensor_list:
-            sensor = RenogyBLESensor(
-                coordinator, device, description, category_name, device_type
+    # Add battery sensors
+    for description in BATTERY_SENSORS:
+        LOGGER.debug("Adding battery sensor: %s", description.name)
+        sensors_to_add.append(
+            RenogyBLESensor(
+                coordinator=coordinator,
+                device=device,
+                description=description,
+                category="battery",
+                device_type=device_type,
             )
-            entities.append(sensor)
+        )
 
-    return entities
+    # Add PV sensors
+    for description in PV_SENSORS:
+        LOGGER.debug("Adding PV sensor: %s", description.name)
+        sensors_to_add.append(
+            RenogyBLESensor(
+                coordinator=coordinator,
+                device=device,
+                description=description,
+                category="pv",
+                device_type=device_type,
+            )
+        )
 
+    # Add load sensors
+    for description in LOAD_SENSORS:
+        LOGGER.debug("Adding load sensor: %s", description.name)
+        sensors_to_add.append(
+            RenogyBLESensor(
+                coordinator=coordinator,
+                device=device,
+                description=description,
+                category="load",
+                device_type=device_type,
+            )
+        )
 
-def create_coordinator_entities(
-    coordinator: RenogyActiveBluetoothCoordinator,
-    device_type: str = DEFAULT_DEVICE_TYPE,
-) -> List[RenogyBLESensor]:
-    """Create sensor entities with just the coordinator (no device yet)."""
-    entities = create_entities_helper(coordinator, None, device_type)
-    LOGGER.info("Created %s entities with coordinator only", len(entities))
-    return entities
+    # Add controller sensors
+    for description in CONTROLLER_SENSORS:
+        LOGGER.debug("Adding controller sensor: %s", description.name)
+        sensors_to_add.append(
+            RenogyBLESensor(
+                coordinator=coordinator,
+                device=device,
+                description=description,
+                category="controller",
+                device_type=device_type,
+            )
+        )
 
+    # Add diagnostic sensors
+    for description in DIAGNOSTIC_SENSORS:
+        LOGGER.debug("Adding diagnostic sensor: %s", description.name)
+        sensors_to_add.append(
+            RenogyBLESensor(
+                coordinator=coordinator,
+                device=device,
+                description=description,
+                category="diagnostic",
+                device_type=device_type,
+            )
+        )
 
-def create_device_entities(
-    coordinator: RenogyActiveBluetoothCoordinator,
-    device: RenogyBLEDevice,
-    device_type: str = DEFAULT_DEVICE_TYPE,
-) -> List[RenogyBLESensor]:
-    """Create sensor entities for a device."""
-    entities = create_entities_helper(coordinator, device, device_type)
-    LOGGER.info("Created %s entities for device %s", len(entities), device.name)
-    return entities
+    # Add all sensors
+    LOGGER.info("Adding %s sensors to Home Assistant", len(sensors_to_add))
+    async_add_entities(sensors_to_add)
 
 
 class RenogyBLESensor(CoordinatorEntity, SensorEntity):
@@ -402,6 +388,9 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
         self._category = category
         self._device_type = device_type
         self._attr_native_value = None
+        
+        # For validation: store last valid value to detect spikes
+        self._last_valid_value: Optional[float] = None
 
         # Generate a device model name that includes the device type
         device_model = f"Renogy {device_type.capitalize()}"
@@ -420,8 +409,7 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {device.address}",
-                sw_version=device_type.capitalize(),
-                # Add device type as software version for clarity.
+                sw_version=device_type.capitalize(),  # Add device type as software version for clarity
             )
         else:
             # If we don't have a device yet, use coordinator address for unique ID
@@ -435,11 +423,84 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {coordinator.address}",
-                sw_version=device_type.capitalize(),
-                # Add device type as software version for clarity.
+                sw_version=device_type.capitalize(),  # Add device type as software version for clarity
             )
 
         self._last_updated = None
+
+    def _validate_numeric_value(self, value: Any) -> Optional[float]:
+        """Validate numeric sensor values against configured limits.
+        
+        Returns the validated value if valid, None if invalid.
+        Checks:
+        1. Value is numeric
+        2. Value is within configured min/max range
+        3. Change from last value is within max_change threshold (if configured)
+        """
+        if value is None:
+            return None
+            
+        # Get validation limits for this sensor
+        sensor_key = self.entity_description.key
+        
+        # Convert to float first
+        try:
+            numeric_value = float(value)
+        except (ValueError, TypeError) as e:
+            LOGGER.debug(
+                "%s: Could not convert value '%s' to float: %s",
+                self.name,
+                value,
+                e,
+            )
+            return self._last_valid_value
+        
+        # Check for NaN or Inf
+        if not (numeric_value == numeric_value) or abs(numeric_value) == float('inf'):
+            LOGGER.warning(
+                "%s: Invalid numeric value (NaN or Inf): %s",
+                self.name,
+                value,
+            )
+            return self._last_valid_value
+        
+        # If no validation limits configured for this sensor, accept the value
+        if sensor_key not in SENSOR_VALIDATION_LIMITS:
+            self._last_valid_value = numeric_value
+            return numeric_value
+        
+        min_val, max_val, max_change = SENSOR_VALIDATION_LIMITS[sensor_key]
+        
+        # Check absolute limits
+        if numeric_value < min_val or numeric_value > max_val:
+            LOGGER.warning(
+                "%s: Value %.2f outside valid range [%.2f, %.2f] - using last valid value",
+                self.name,
+                numeric_value,
+                min_val,
+                max_val,
+            )
+            # Return last valid value if we have one, otherwise None
+            return self._last_valid_value
+        
+        # Check rate of change if we have a previous value and max_change is configured
+        if max_change is not None and self._last_valid_value is not None:
+            change = abs(numeric_value - self._last_valid_value)
+            if change > max_change:
+                LOGGER.warning(
+                    "%s: Value change %.2f exceeds maximum %.2f (%.2f→%.2f) - using last valid value",
+                    self.name,
+                    change,
+                    max_change,
+                    self._last_valid_value,
+                    numeric_value,
+                )
+                # Return last valid value to filter the spike
+                return self._last_valid_value
+        
+        # Value passed validation - store and return it
+        self._last_valid_value = numeric_value
+        return numeric_value
 
     @property
     def device(self) -> Optional[RenogyBLEDevice]:
@@ -470,8 +531,7 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {self._device.address}",
-                sw_version=self._device_type.capitalize(),
-                # Add device type as software version.
+                sw_version=self._device_type.capitalize(),  # Add device type as software version
             )
             LOGGER.debug("Updated device info with real name: %s", self._device.name)
 
@@ -488,8 +548,7 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
         if self._device and not self._device.is_available:
             return False
 
-        # For the actual data, check either the device's parsed_data or
-        # coordinator's data.
+        # For the actual data, check either the device's parsed_data or coordinator's data
         data_available = False
         if self._device and self._device.parsed_data:
             data_available = True
@@ -500,7 +559,7 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> Any:
-        """Return the sensor's value."""
+        """Return the sensor's value with validation."""
         # Use cached value if available
         if self._attr_native_value is not None:
             return self._attr_native_value
@@ -520,37 +579,38 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
         try:
             if self.entity_description.value_fn:
                 value = self.entity_description.value_fn(data)
-                # Basic type validation based on device_class
-                if value is not None:
-                    if self.device_class in [
-                        SensorDeviceClass.VOLTAGE,
-                        SensorDeviceClass.CURRENT,
-                        SensorDeviceClass.TEMPERATURE,
-                        SensorDeviceClass.POWER,
-                    ]:
-                        try:
-                            value = float(value)
-                            # Basic range validation
-                            if value < -1000 or value > 10000:
-                                LOGGER.warning(
-                                    "Value %s out of reasonable range for %s",
-                                    value,
-                                    self.name,
-                                )
-                                return None
-                        except (ValueError, TypeError):
-                            LOGGER.warning(
-                                "Invalid numeric value for %s: %s",
-                                self.name,
-                                value,
-                            )
-                            return None
-
-                # Cache the value
+                
+                # If value is None, return it as-is
+                if value is None:
+                    return None
+                
+                # Apply validation for numeric sensors
+                # Check if this is a numeric sensor that needs validation
+                if self.device_class in [
+                    SensorDeviceClass.VOLTAGE,
+                    SensorDeviceClass.CURRENT,
+                    SensorDeviceClass.TEMPERATURE,
+                    SensorDeviceClass.POWER,
+                    SensorDeviceClass.ENERGY,
+                    SensorDeviceClass.BATTERY,
+                ] or self.entity_description.key in SENSOR_VALIDATION_LIMITS:
+                    # Validate the value
+                    validated_value = self._validate_numeric_value(value)
+                    value = validated_value
+                
+                # Cache the validated value (even if None)
                 self._attr_native_value = value
                 return value
         except Exception as e:
-            LOGGER.warning("Error getting native value for %s: %s", self.name, e)
+            LOGGER.error(
+                "Error getting native value for %s: %s - %s",
+                self.name,
+                e,
+                type(e).__name__,
+            )
+            import traceback
+            LOGGER.debug("Traceback: %s", traceback.format_exc())
+        
         return None
 
     @callback
@@ -599,5 +659,9 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
             attrs["data_source"] = "device"
         elif self.coordinator.data:
             attrs["data_source"] = "coordinator"
+        
+        # Add validation info for debugging
+        if self._last_valid_value is not None:
+            attrs["last_valid_value"] = self._last_valid_value
 
         return attrs
