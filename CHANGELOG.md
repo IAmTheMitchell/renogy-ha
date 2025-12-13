@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## [0.2.10](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.9...v0.2.10) (2025-12-13)
+
+
+### Bug Fixes
+
+* manually bump version ([97130bb](https://github.com/IAmTheMitchell/renogy-ha/commit/97130bb2371a8294744355442c8d289d70a445fc))
+* support signed integers for temperature values ([#25](https://github.com/IAmTheMitchell/renogy-ha/issues/25)) ([bbf7ad0](https://github.com/IAmTheMitchell/renogy-ha/commit/bbf7ad010deff632c06cf1133ea073958f9f5dd5))
+
+
+### Documentation
+
+* add AGENTS.md ([4bf216a](https://github.com/IAmTheMitchell/renogy-ha/commit/4bf216a5625d7fbe5709f5975bc22cab7e444bb0))
+* add documentation on how to update to a test version ([e9da900](https://github.com/IAmTheMitchell/renogy-ha/commit/e9da90068530ec6e1e707041cf9a49aa4ba27746))
+* add hardware section to README ([c3d4556](https://github.com/IAmTheMitchell/renogy-ha/commit/c3d4556e90dc007910bdec44e0396e220620bc2e))
+* add workflow badges ([34b22c7](https://github.com/IAmTheMitchell/renogy-ha/commit/34b22c742d2989ec4a6f5879e2f92c250b1b7844))
+* fix test_branch image reference ([81280de](https://github.com/IAmTheMitchell/renogy-ha/commit/81280def0553641bfe503fb54f6ac3934eb22232))
+* move older planning files into folder ([e045436](https://github.com/IAmTheMitchell/renogy-ha/commit/e04543635f56a78f8056c8c838105619e96e5b25))
+
 ## v0.2.9 (2025-05-30)
 
 ### Bug Fixes
