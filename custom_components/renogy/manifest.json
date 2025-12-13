@@ -6,12 +6,18 @@
       "local_name": "BT-TH-*"
     }
   ],
-  "codeowners": ["@IAmTheMitchell"],
+  "codeowners": [
+    "@IAmTheMitchell"
+  ],
   "config_flow": true,
-  "dependencies": ["bluetooth_adapters"],
+  "dependencies": [
+    "bluetooth_adapters"
+  ],
   "documentation": "https://github.com/IAmTheMitchell/renogy-ha",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/IAmTheMitchell/renogy-ha/issues",
-  "requirements": ["renogy-ble==0.2.2"],
-  "version": "0.2.9"
+  "requirements": [
+    "renogy-ble==0.2.2"
+  ],
+  "version": "0.2.10"
 }
