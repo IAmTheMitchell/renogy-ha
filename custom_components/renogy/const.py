@@ -36,30 +36,3 @@ DEFAULT_DEVICE_TYPE = DeviceType.CONTROLLER.value
 
 # List of fully supported device types (currently only controller)
 SUPPORTED_DEVICE_TYPES = [DeviceType.CONTROLLER.value]
-
-# BLE Characteristics and Service UUIDs
-RENOGY_READ_CHAR_UUID = (
-    "0000fff1-0000-1000-8000-00805f9b34fb"  # Characteristic for reading data
-)
-RENOGY_WRITE_CHAR_UUID = (
-    "0000ffd1-0000-1000-8000-00805f9b34fb"  # Characteristic for writing commands
-)
-
-# Time in minutes to wait before attempting to reconnect to unavailable devices
-UNAVAILABLE_RETRY_INTERVAL = 10
-
-# Maximum time to wait for a notification response (seconds)
-MAX_NOTIFICATION_WAIT_TIME = 2.0
-
-# Default device ID for Renogy devices
-DEFAULT_DEVICE_ID = 0xFF
-
-# Modbus commands for requesting data
-COMMANDS = {
-    DeviceType.CONTROLLER.value: {
-        "device_info": (3, 12, 8),
-        "device_id": (3, 26, 1),
-        "battery": (3, 57348, 1),
-        "pv": (3, 256, 34),
-    },
-}
