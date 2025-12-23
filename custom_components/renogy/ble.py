@@ -33,6 +33,7 @@ from .const import (
     RENOGY_WRITE_CHAR_UUID,
     UNAVAILABLE_RETRY_INTERVAL,
 )
+from .modbus import normalize_modbus_response
 
 try:
     from renogy_ble import RenogyParser
@@ -663,7 +664,19 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                                 )
                                 continue
 
-                            result_data = bytes(notification_data[:expected_len])
+                            result_data, frame_offset = normalize_modbus_response(
+                                bytes(notification_data),
+                                function_code=cmd[0],
+                                word_count=word_count,
+                            )
+                            if frame_offset:
+                                self.logger.debug(
+                                    "Normalized %s response by skipping %s leading "
+                                    "bytes for device %s",
+                                    cmd_name,
+                                    frame_offset,
+                                    device.name,
+                                )
                             self.logger.debug(
                                 "Received %s data length: %s (expected %s)",
                                 cmd_name,
