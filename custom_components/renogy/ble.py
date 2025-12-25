@@ -664,10 +664,13 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                                 )
                                 continue
 
-                            result_data, frame_offset = normalize_modbus_response(
-                                bytes(notification_data),
-                                function_code=cmd[0],
-                                word_count=word_count,
+                            result_data, frame_offset, padded_frame = (
+                                normalize_modbus_response(
+                                    bytes(notification_data),
+                                    function_code=cmd[0],
+                                    word_count=word_count,
+                                    device_id=DEFAULT_DEVICE_ID,
+                                )
                             )
                             if frame_offset:
                                 self.logger.debug(
@@ -675,6 +678,13 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                                     "bytes for device %s",
                                     cmd_name,
                                     frame_offset,
+                                    device.name,
+                                )
+                            if padded_frame:
+                                self.logger.debug(
+                                    "Synthesized Modbus header for %s response from "
+                                    "device %s",
+                                    cmd_name,
                                     device.name,
                                 )
                             self.logger.debug(

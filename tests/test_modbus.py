@@ -26,12 +26,13 @@ def test_normalize_modbus_response_no_prefix():
     """Keep a correctly framed response unchanged."""
     raw_data = bytes([0xFF, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0xAA, 0xBB])
 
-    frame, offset = normalize_modbus_response(
-        raw_data, function_code=0x03, word_count=2
+    frame, offset, padded = normalize_modbus_response(
+        raw_data, function_code=0x03, word_count=2, device_id=0xFF
     )
 
     assert frame == raw_data
     assert offset == 0
+    assert padded is False
 
 
 def test_normalize_modbus_response_with_prefix():
@@ -52,12 +53,13 @@ def test_normalize_modbus_response_with_prefix():
         ]
     )
 
-    frame, offset = normalize_modbus_response(
-        raw_data, function_code=0x03, word_count=2
+    frame, offset, padded = normalize_modbus_response(
+        raw_data, function_code=0x03, word_count=2, device_id=0xFF
     )
 
     assert frame == bytes([0xFF, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0xAA, 0xBB])
     assert offset == 2
+    assert padded is False
 
 
 def test_normalize_modbus_response_with_suffix():
@@ -77,9 +79,36 @@ def test_normalize_modbus_response_with_suffix():
         ]
     )
 
-    frame, offset = normalize_modbus_response(
-        raw_data, function_code=0x03, word_count=2
+    frame, offset, padded = normalize_modbus_response(
+        raw_data, function_code=0x03, word_count=2, device_id=0xFF
     )
 
     assert frame == bytes([0xFF, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0xAA, 0xBB])
     assert offset == 0
+    assert padded is False
+
+
+def test_normalize_modbus_response_payload_only():
+    """Add a header when only the payload is provided."""
+    raw_data = bytes([0x10, 0x11, 0x12, 0x13])
+
+    frame, offset, padded = normalize_modbus_response(
+        raw_data, function_code=0x03, word_count=2, device_id=0xFF
+    )
+
+    assert frame == bytes([0xFF, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x00, 0x00])
+    assert offset == 0
+    assert padded is True
+
+
+def test_normalize_modbus_response_payload_with_crc():
+    """Add a header when payload includes CRC bytes."""
+    raw_data = bytes([0x10, 0x11, 0x12, 0x13, 0xAA, 0xBB])
+
+    frame, offset, padded = normalize_modbus_response(
+        raw_data, function_code=0x03, word_count=2, device_id=0xFF
+    )
+
+    assert frame == bytes([0xFF, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0xAA, 0xBB])
+    assert offset == 0
+    assert padded is True
