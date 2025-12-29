@@ -17,10 +17,9 @@ from homeassistant.components.bluetooth.active_update_coordinator import (
 )
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
+from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
-from renogy_ble.ble import RenogyBLEDevice, RenogyBleClient, clean_device_name
-
-from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, LOGGER
+from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
 
 
 class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
