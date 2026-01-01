@@ -6,6 +6,7 @@ import traceback
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
+from bleak import BleakError
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothChange,
@@ -305,9 +306,19 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                     device.address,
                 )
 
-                read_result = await self._ble_client.read_device(device)
-                success = read_result.success
-                error = read_result.error
+                try:
+                    read_result = await self._ble_client.read_device(device)
+                except (BleakError, asyncio.TimeoutError) as err:
+                    success = False
+                    error = str(err)
+                    self.logger.debug(
+                        "BLE read failed for %s: %s",
+                        device.address,
+                        err,
+                    )
+                else:
+                    success = read_result.success
+                    error = read_result.error
 
                 # Always update the device availability and last_update_success
                 device.update_availability(success, error)
