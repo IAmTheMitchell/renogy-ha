@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
+from homeassistant.components.bluetooth.passive_update_coordinator import (
+    PassiveBluetoothCoordinatorEntity,
+)
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -26,7 +29,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
@@ -381,7 +383,7 @@ def create_device_entities(
     return entities
 
 
-class RenogyBLESensor(CoordinatorEntity, SensorEntity):
+class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
     """Representation of a Renogy BLE sensor."""
 
     entity_description: RenogyBLESensorDescription
@@ -392,7 +394,7 @@ class RenogyBLESensor(CoordinatorEntity, SensorEntity):
         coordinator: RenogyActiveBluetoothCoordinator,
         device: Optional[RenogyBLEDevice],
         description: RenogyBLESensorDescription,
-        category: str = None,
+        category: str | None = None,
         device_type: str = DEFAULT_DEVICE_TYPE,
     ) -> None:
         """Initialize the sensor."""

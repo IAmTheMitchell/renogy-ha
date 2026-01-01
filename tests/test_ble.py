@@ -4,6 +4,7 @@ import asyncio
 import sys
 import types
 from enum import Enum
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 
@@ -11,7 +12,7 @@ def _install_module_stubs() -> None:
     """Install minimal module stubs to import the BLE coordinator."""
     from tests.mocks import ha_bluetooth, ha_coordinator
 
-    bleak_module = types.ModuleType("bleak")
+    bleak_module = cast(Any, types.ModuleType("bleak"))
 
     class BleakError(Exception):
         """Stub BleakError for testing."""
@@ -19,7 +20,7 @@ def _install_module_stubs() -> None:
     bleak_module.BleakError = BleakError
     sys.modules["bleak"] = bleak_module
 
-    core_module = types.ModuleType("homeassistant.core")
+    core_module = cast(Any, types.ModuleType("homeassistant.core"))
 
     class CoreState(str, Enum):
         """Stub CoreState enum for testing."""
@@ -34,10 +35,10 @@ def _install_module_stubs() -> None:
     core_module.HomeAssistant = object
     core_module.callback = callback
 
-    helpers_event_module = types.ModuleType("homeassistant.helpers.event")
+    helpers_event_module = cast(Any, types.ModuleType("homeassistant.helpers.event"))
     helpers_event_module.async_track_time_interval = MagicMock()
 
-    bluetooth_module = types.ModuleType("homeassistant.components.bluetooth")
+    bluetooth_module = cast(Any, types.ModuleType("homeassistant.components.bluetooth"))
     bluetooth_module.BluetoothChange = ha_bluetooth.BluetoothChange
     bluetooth_module.BluetoothScanningMode = ha_bluetooth.BluetoothScanningMode
     bluetooth_module.BluetoothServiceInfoBleak = ha_bluetooth.BluetoothServiceInfoBleak
@@ -46,10 +47,10 @@ def _install_module_stubs() -> None:
     bluetooth_module.async_ble_device_from_address = MagicMock()
     bluetooth_module.async_register_callback = MagicMock()
 
-    components_module = types.ModuleType("homeassistant.components")
+    components_module = cast(Any, types.ModuleType("homeassistant.components"))
     components_module.bluetooth = bluetooth_module
 
-    homeassistant_module = types.ModuleType("homeassistant")
+    homeassistant_module = cast(Any, types.ModuleType("homeassistant"))
     sys.modules["homeassistant"] = homeassistant_module
     sys.modules["homeassistant.components"] = components_module
     sys.modules["homeassistant.components.bluetooth"] = bluetooth_module
@@ -58,15 +59,17 @@ def _install_module_stubs() -> None:
     )
     sys.modules["homeassistant.core"] = core_module
     sys.modules["homeassistant.helpers.event"] = helpers_event_module
-    config_entries_module = types.ModuleType("homeassistant.config_entries")
+    config_entries_module = cast(Any, types.ModuleType("homeassistant.config_entries"))
     config_entries_module.ConfigEntry = object
     sys.modules["homeassistant.config_entries"] = config_entries_module
-    helpers_module = types.ModuleType("homeassistant.helpers")
-    device_registry_module = types.ModuleType("homeassistant.helpers.device_registry")
+    helpers_module = cast(Any, types.ModuleType("homeassistant.helpers"))
+    device_registry_module = cast(
+        Any, types.ModuleType("homeassistant.helpers.device_registry")
+    )
     device_registry_module.async_get = MagicMock()
     sys.modules["homeassistant.helpers"] = helpers_module
     sys.modules["homeassistant.helpers.device_registry"] = device_registry_module
-    const_module = types.ModuleType("homeassistant.const")
+    const_module = cast(Any, types.ModuleType("homeassistant.const"))
     const_module.CONF_ADDRESS = "address"
 
     class Platform(str, Enum):
@@ -77,8 +80,8 @@ def _install_module_stubs() -> None:
     const_module.Platform = Platform
     sys.modules["homeassistant.const"] = const_module
 
-    renogy_ble_module = types.ModuleType("renogy_ble")
-    renogy_ble_ble_module = types.ModuleType("renogy_ble.ble")
+    renogy_ble_module = cast(Any, types.ModuleType("renogy_ble"))
+    renogy_ble_ble_module = cast(Any, types.ModuleType("renogy_ble.ble"))
 
     class RenogyBleClient:
         """Stub RenogyBleClient for testing."""
@@ -154,4 +157,4 @@ def test_read_device_data_handles_ble_errors():
     coordinator.device.update_availability.assert_called_once()
     call_args = coordinator.device.update_availability.call_args[0]
     assert call_args[0] is False
-    assert "read failed" in call_args[1]
+    assert "read failed" in str(call_args[1])

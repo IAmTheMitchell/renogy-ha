@@ -36,7 +36,7 @@ class SensorEntityDescription:
     """Description class for sensor entities."""
 
     key: str
-    name: str = None
+    name: Optional[str] = None
     device_class: Optional[str] = None
     state_class: Optional[str] = None
     native_unit_of_measurement: Optional[str] = None
