@@ -1,6 +1,6 @@
 [project]
 name = "renogy-ha"
-version = "0.2.9"
+version = "0.2.10"
 description = "Home Assisstant integration for Renogy devices"
 readme = "README.md"
 requires-python = ">=3.13"
