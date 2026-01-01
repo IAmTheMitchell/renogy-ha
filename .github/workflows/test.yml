@@ -40,3 +40,6 @@ jobs:
 
       - name: Lint with Ruff
         run: uv run ruff check . --output-format=github
+
+      - name: Type check with ty
+        run: uv run ty check . --output-format=github
