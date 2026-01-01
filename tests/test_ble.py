@@ -1,0 +1,157 @@
+"""Tests for Renogy BLE coordinator error handling."""
+
+import asyncio
+import sys
+import types
+from enum import Enum
+from unittest.mock import AsyncMock, MagicMock
+
+
+def _install_module_stubs() -> None:
+    """Install minimal module stubs to import the BLE coordinator."""
+    from tests.mocks import ha_bluetooth, ha_coordinator
+
+    bleak_module = types.ModuleType("bleak")
+
+    class BleakError(Exception):
+        """Stub BleakError for testing."""
+
+    bleak_module.BleakError = BleakError
+    sys.modules["bleak"] = bleak_module
+
+    core_module = types.ModuleType("homeassistant.core")
+
+    class CoreState(str, Enum):
+        """Stub CoreState enum for testing."""
+
+        running = "running"
+
+    def callback(func):
+        """Return the function unchanged for testing."""
+        return func
+
+    core_module.CoreState = CoreState
+    core_module.HomeAssistant = object
+    core_module.callback = callback
+
+    helpers_event_module = types.ModuleType("homeassistant.helpers.event")
+    helpers_event_module.async_track_time_interval = MagicMock()
+
+    bluetooth_module = types.ModuleType("homeassistant.components.bluetooth")
+    bluetooth_module.BluetoothChange = ha_bluetooth.BluetoothChange
+    bluetooth_module.BluetoothScanningMode = ha_bluetooth.BluetoothScanningMode
+    bluetooth_module.BluetoothServiceInfoBleak = ha_bluetooth.BluetoothServiceInfoBleak
+    bluetooth_module.async_get_scanner = MagicMock(return_value=MagicMock())
+    bluetooth_module.async_last_service_info = MagicMock()
+    bluetooth_module.async_ble_device_from_address = MagicMock()
+    bluetooth_module.async_register_callback = MagicMock()
+
+    components_module = types.ModuleType("homeassistant.components")
+    components_module.bluetooth = bluetooth_module
+
+    homeassistant_module = types.ModuleType("homeassistant")
+    sys.modules["homeassistant"] = homeassistant_module
+    sys.modules["homeassistant.components"] = components_module
+    sys.modules["homeassistant.components.bluetooth"] = bluetooth_module
+    sys.modules["homeassistant.components.bluetooth.active_update_coordinator"] = (
+        ha_coordinator
+    )
+    sys.modules["homeassistant.core"] = core_module
+    sys.modules["homeassistant.helpers.event"] = helpers_event_module
+    config_entries_module = types.ModuleType("homeassistant.config_entries")
+    config_entries_module.ConfigEntry = object
+    sys.modules["homeassistant.config_entries"] = config_entries_module
+    helpers_module = types.ModuleType("homeassistant.helpers")
+    device_registry_module = types.ModuleType("homeassistant.helpers.device_registry")
+    device_registry_module.async_get = MagicMock()
+    sys.modules["homeassistant.helpers"] = helpers_module
+    sys.modules["homeassistant.helpers.device_registry"] = device_registry_module
+    const_module = types.ModuleType("homeassistant.const")
+    const_module.CONF_ADDRESS = "address"
+
+    class Platform(str, Enum):
+        """Stub Platform enum for testing."""
+
+        SENSOR = "sensor"
+
+    const_module.Platform = Platform
+    sys.modules["homeassistant.const"] = const_module
+
+    renogy_ble_module = types.ModuleType("renogy_ble")
+    renogy_ble_ble_module = types.ModuleType("renogy_ble.ble")
+
+    class RenogyBleClient:
+        """Stub RenogyBleClient for testing."""
+
+        def __init__(self, scanner):
+            self.scanner = scanner
+
+        async def read_device(self, device):
+            return MagicMock(success=True, error=None)
+
+    class RenogyBLEDevice:
+        """Stub RenogyBLEDevice for testing."""
+
+        def __init__(self, ble_device, advertisement_rssi, device_type=None):
+            self.ble_device = ble_device
+            self.address = ble_device.address
+            self.name = ble_device.name or "Unknown Renogy Device"
+            self.rssi = advertisement_rssi
+            self.device_type = device_type
+            self.parsed_data = {}
+            self.update_availability = MagicMock()
+
+    def clean_device_name(name: str) -> str:
+        """Return a cleaned device name for testing."""
+        return name.strip()
+
+    renogy_ble_ble_module.RenogyBleClient = RenogyBleClient
+    renogy_ble_ble_module.RenogyBLEDevice = RenogyBLEDevice
+    renogy_ble_ble_module.clean_device_name = clean_device_name
+
+    sys.modules["renogy_ble"] = renogy_ble_module
+    sys.modules["renogy_ble.ble"] = renogy_ble_ble_module
+
+
+def _load_ble_module():
+    """Load the BLE module with stubs in place."""
+    _install_module_stubs()
+    sys.modules.pop("custom_components.renogy.ble", None)
+    sys.modules.pop("custom_components.renogy", None)
+
+    import importlib
+
+    return importlib.import_module("custom_components.renogy.ble")
+
+
+def test_read_device_data_handles_ble_errors():
+    """Ensure BLE read exceptions update availability and return False."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=logger,
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+
+    coordinator._ble_client.read_device = AsyncMock(
+        side_effect=ble_module.BleakError("read failed")
+    )
+
+    success = asyncio.run(coordinator._read_device_data(service_info))
+
+    assert success is False
+    assert coordinator.last_update_success is False
+    coordinator.device.update_availability.assert_called_once()
+    call_args = coordinator.device.update_availability.call_args[0]
+    assert call_args[0] is False
+    assert "read failed" in call_args[1]

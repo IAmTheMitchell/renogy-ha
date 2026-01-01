@@ -5,10 +5,8 @@ description = "Home Assisstant integration for Renogy devices"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "bleak>=0.22.3",
-    "bleak-retry-connector>=3.9.0",
     "homeassistant>=2025.4.4",
-    "renogy-ble==0.2.2",
+    "renogy-ble==1.0.0",
 ]
 
 [dependency-groups]
