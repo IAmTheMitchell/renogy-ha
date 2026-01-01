@@ -23,7 +23,9 @@ from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
 
 
-class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
+class RenogyActiveBluetoothCoordinator(
+    ActiveBluetoothDataUpdateCoordinator[dict[str, Any]]
+):
     """Class to manage fetching Renogy BLE data via active connections."""
 
     def __init__(
@@ -42,7 +44,7 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
             logger=logger,
             address=address,
             needs_poll_method=self._needs_poll,
-            poll_method=self._async_poll,
+            poll_method=self._async_poll_device,
             mode=BluetoothScanningMode.ACTIVE,
             connectable=True,
         )
@@ -62,7 +64,7 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
 
         # Add required properties for Home Assistant CoordinatorEntity compatibility
         self.last_update_success = True
-        self._listeners = []
+        self._update_listeners: list[Callable[[], None]] = []
         self.update_interval = timedelta(seconds=scan_interval)
         self._unsub_refresh = None
         self._request_refresh_task = None
@@ -104,11 +106,8 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
             return
 
         try:
-            await self._async_poll(service_info)
-            self.last_update_success = True
-            # Notify listeners of the update
-            for update_callback in self._listeners:
-                update_callback()
+            await self._async_poll_device(service_info)
+            self.async_update_listeners()
         except Exception as err:
             self.last_update_success = False
             error_traceback = traceback.format_exc()
@@ -125,19 +124,19 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
         self, update_callback: Callable[[], None], context: Any = None
     ) -> Callable[[], None]:
         """Listen for data updates."""
-        if update_callback not in self._listeners:
-            self._listeners.append(update_callback)
+        if update_callback not in self._update_listeners:
+            self._update_listeners.append(update_callback)
 
         def remove_listener() -> None:
             """Remove update callback."""
-            if update_callback in self._listeners:
-                self._listeners.remove(update_callback)
+            if update_callback in self._update_listeners:
+                self._update_listeners.remove(update_callback)
 
         return remove_listener
 
     def async_update_listeners(self) -> None:
         """Update all registered listeners."""
-        for update_callback in self._listeners:
+        for update_callback in self._update_listeners:
             update_callback()
 
     def _schedule_refresh(self) -> None:
@@ -196,7 +195,7 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
         self._async_cancel_bluetooth_subscription()
 
         # Clean up any other resources that might need to be released
-        self._listeners = []
+        self._update_listeners = []
 
     @callback
     def _needs_poll(
@@ -248,7 +247,7 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
             try:
                 self._connection_in_progress = True
                 success = False
-                error = None
+                error: Exception | None = None
 
                 # Use service_info to get a BLE device and update our device object
                 if not self.device:
@@ -310,7 +309,7 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                     read_result = await self._ble_client.read_device(device)
                 except (BleakError, asyncio.TimeoutError) as err:
                     success = False
-                    error = str(err)
+                    error = err
                     self.logger.debug(
                         "BLE read failed for %s: %s",
                         device.address,
@@ -319,6 +318,8 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                 else:
                     success = read_result.success
                     error = read_result.error
+                    if error is not None and not isinstance(error, Exception):
+                        error = Exception(str(error))
 
                 # Always update the device availability and last_update_success
                 device.update_availability(success, error)
@@ -333,12 +334,14 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
             finally:
                 self._connection_in_progress = False
 
-    async def _async_poll(self, service_info: BluetoothServiceInfoBleak) -> None:
-        """Poll the device."""
+    async def _async_poll_device(
+        self, service_info: BluetoothServiceInfoBleak
+    ) -> dict[str, Any]:
+        """Poll the device and return parsed data."""
         # If a connection is already in progress, don't start another one
         if self._connection_in_progress:
             self.logger.debug("Connection already in progress, skipping poll")
-            return
+            return self.data if isinstance(self.data, dict) else {}
 
         self.last_poll_time = datetime.now()
         self.logger.debug(
@@ -360,11 +363,12 @@ class RenogyActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
                     self.logger.error("Error in device data callback: %s", str(e))
 
             # Update all listeners after successful data acquisition
-            self.async_update_listeners()
+            return dict(self.device.parsed_data)
 
         else:
             self.logger.info("Failed to retrieve data from %s", service_info.address)
             self.last_update_success = False
+            return self.data if isinstance(self.data, dict) else {}
 
     @callback
     def _async_handle_unavailable(

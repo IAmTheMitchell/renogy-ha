@@ -32,6 +32,10 @@ class CoordinatorEntity:
 class ActiveBluetoothDataUpdateCoordinator:
     """Mock implementation of ActiveBluetoothDataUpdateCoordinator."""
 
+    def __class_getitem__(cls, _item):
+        """Support subscription for typing in tests."""
+        return cls
+
     def __init__(self, hass, logger, address, **kwargs):
         """Initialize the coordinator."""
         self.hass = hass

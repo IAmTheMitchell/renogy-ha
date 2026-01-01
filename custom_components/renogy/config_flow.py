@@ -138,7 +138,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                 data_schema=CONFIG_SCHEMA,
                 description_placeholders={
                     "device_name": self._discovered_device.name,
-                    "default_interval": DEFAULT_SCAN_INTERVAL,
+                    "default_interval": str(DEFAULT_SCAN_INTERVAL),
                 },
                 errors=errors,
             )
@@ -168,7 +168,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=address_schema,
             description_placeholders={
                 "device_name": "Select below",
-                "default_interval": DEFAULT_SCAN_INTERVAL,
+                "default_interval": str(DEFAULT_SCAN_INTERVAL),
             },
             errors=errors,
         )

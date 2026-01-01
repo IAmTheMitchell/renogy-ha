@@ -46,7 +46,8 @@ Fix all Python formatting and linting issues.
 
 1. **Format with ruff**: `uv run ruff format .`
 2. **Lint with ruff**: `uv run ruff check . --output-format=github`
-3. **Run unit tests**: `uv run pytest tests`
+3. **Type check with ty**: `uv run ty check . --output-format=github`
+4. **Run unit tests**: `uv run pytest tests`
 
 ## General Process:
 
