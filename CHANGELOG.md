@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.2.11](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.10...v0.2.11) (2026-01-08)
+
+
+### Bug Fixes
+
+* support bleak 2.0.0+ and Home Assistant Core 2026.1.0 ([#46](https://github.com/IAmTheMitchell/renogy-ha/issues/46)) ([8996d5c](https://github.com/IAmTheMitchell/renogy-ha/commit/8996d5c2bb1ac306fbe5310900ee18ffc0254f64))
+
 ## [0.2.10](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.9...v0.2.10) (2026-01-01)
 
 
