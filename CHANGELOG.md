@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.2.12](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.11...v0.2.12) (2026-01-11)
+
+
+### Bug Fixes
+
+* fix incorrect sensor values when temperatures below 0 degrees ([#48](https://github.com/IAmTheMitchell/renogy-ha/issues/48)) ([e2e308f](https://github.com/IAmTheMitchell/renogy-ha/commit/e2e308f2fa5e5cd8544337b2c976b8dc97c75954))
+
 ## [0.2.11](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.10...v0.2.11) (2026-01-08)
 
 
