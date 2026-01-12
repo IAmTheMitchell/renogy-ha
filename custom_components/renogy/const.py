@@ -43,6 +43,7 @@ SUPPORTED_DEVICE_TYPES = [DeviceType.CONTROLLER.value, DeviceType.DCC.value]
 class DCCRegister:
     """Modbus register addresses for DCC charger parameters."""
 
+    MAX_CHARGING_CURRENT = 0xE001
     BATTERY_TYPE = 0xE004
     OVERVOLTAGE_THRESHOLD = 0xE005
     CHARGING_LIMIT_VOLTAGE = 0xE006
