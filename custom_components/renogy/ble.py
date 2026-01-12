@@ -20,6 +20,7 @@ from homeassistant.components.bluetooth.active_update_coordinator import (
 )
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
+from renogy_ble import ble as renogy_ble_module
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
 # Check if write_register is available in the library.
@@ -38,6 +39,8 @@ else:
     HAS_WRITE_SUPPORT = False
 
 from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
+
+LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 
 
 class RenogyActiveBluetoothCoordinator(
@@ -214,6 +217,51 @@ class RenogyActiveBluetoothCoordinator(
         # Clean up any other resources that might need to be released
         self._update_listeners = []
 
+    def _update_device_from_service_info(
+        self, service_info: BluetoothServiceInfoBleak
+    ) -> RenogyBLEDevice:
+        """Ensure the device instance is updated from Bluetooth service info."""
+        if not self.device:
+            self.logger.debug(
+                "Creating new RenogyBLEDevice for %s as %s",
+                service_info.address,
+                self.device_type,
+            )
+            self.device = RenogyBLEDevice(
+                service_info.device,
+                service_info.advertisement.rssi,
+                device_type=self.device_type,
+            )
+        else:
+            old_name = self.device.name
+            self.device.ble_device = service_info.device
+            if service_info.name and service_info.name != "Unknown Renogy Device":
+                cleaned_name = clean_device_name(service_info.name)
+                if old_name != cleaned_name:
+                    self.device.name = cleaned_name
+                    self.logger.debug(
+                        "Updated device name from '%s' to '%s'",
+                        old_name,
+                        cleaned_name,
+                    )
+
+            self.device.rssi = (
+                service_info.advertisement.rssi
+                if service_info.advertisement
+                and service_info.advertisement.rssi is not None
+                else service_info.device.rssi
+            )
+
+            if self.device.device_type != self.device_type:
+                self.logger.debug(
+                    "Updating device type from '%s' to '%s'",
+                    self.device.device_type,
+                    self.device_type,
+                )
+                self.device.device_type = self.device_type
+
+        return self.device
+
     @callback
     def _needs_poll(
         self,
@@ -265,56 +313,7 @@ class RenogyActiveBluetoothCoordinator(
                 self._connection_in_progress = True
                 success = False
                 error: Exception | None = None
-
-                # Use service_info to get a BLE device and update our device object
-                if not self.device:
-                    self.logger.debug(
-                        "Creating new RenogyBLEDevice for %s as %s",
-                        service_info.address,
-                        self.device_type,
-                    )
-                    self.device = RenogyBLEDevice(
-                        service_info.device,
-                        service_info.advertisement.rssi,
-                        device_type=self.device_type,
-                    )
-                else:
-                    # Store the old name to detect changes
-                    old_name = self.device.name
-
-                    self.device.ble_device = service_info.device
-                    # Update name if available from service_info
-                    if (
-                        service_info.name
-                        and service_info.name != "Unknown Renogy Device"
-                    ):
-                        cleaned_name = clean_device_name(service_info.name)
-                        if old_name != cleaned_name:
-                            self.device.name = cleaned_name
-                            self.logger.debug(
-                                "Updated device name from '%s' to '%s'",
-                                old_name,
-                                cleaned_name,
-                            )
-
-                    # Prefer the RSSI from advertisement data if available
-                    self.device.rssi = (
-                        service_info.advertisement.rssi
-                        if service_info.advertisement
-                        and service_info.advertisement.rssi is not None
-                        else service_info.device.rssi
-                    )
-
-                    # Ensure device type is set correctly
-                    if self.device.device_type != self.device_type:
-                        self.logger.debug(
-                            "Updating device type from '%s' to '%s'",
-                            self.device.device_type,
-                            self.device_type,
-                        )
-                        self.device.device_type = self.device_type
-
-                device = self.device
+                device = self._update_device_from_service_info(service_info)
                 self.logger.debug(
                     "Polling %s device: %s (%s)",
                     device.device_type,
@@ -348,6 +347,57 @@ class RenogyActiveBluetoothCoordinator(
                     self.logger.debug("Updated coordinator data: %s", self.data)
 
                 return success
+            finally:
+                self._connection_in_progress = False
+
+    async def async_set_load_state(self, state: bool) -> bool:
+        """Set the DC load on/off."""
+        if self._connection_in_progress:
+            self.logger.debug("Connection already in progress, skipping load write")
+            return False
+
+        service_info = bluetooth.async_last_service_info(self.hass, self.address)
+        if not service_info:
+            self.logger.error(
+                "No service info available for device %s. Ensure device is within "
+                "range and powered on.",
+                self.address,
+            )
+            return False
+
+        async with self._connection_lock:
+            self._connection_in_progress = True
+            try:
+                device = self._update_device_from_service_info(service_info)
+                value = 1 if state else 0
+                write_single_register = getattr(
+                    self._ble_client, "write_single_register", None
+                )
+                if write_single_register is None:
+                    self.logger.error(
+                        "Renogy BLE library does not support write_single_register"
+                    )
+                    device.update_availability(False, None)
+                    self.last_update_success = False
+                    return False
+
+                write_result = await write_single_register(
+                    device, LOAD_CONTROL_REGISTER, value
+                )
+                device.update_availability(write_result.success, write_result.error)
+                self.last_update_success = write_result.success
+
+                if write_result.success:
+                    load_state = "on" if state else "off"
+                    if device.parsed_data is not None:
+                        device.parsed_data["load_status"] = load_state
+                    if isinstance(self.data, dict):
+                        self.data["load_status"] = load_state
+                    else:
+                        self.data = {"load_status": load_state}
+                    self.async_update_listeners()
+
+                return write_result.success
             finally:
                 self._connection_in_progress = False
 
