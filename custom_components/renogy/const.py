@@ -28,11 +28,49 @@ class DeviceType(Enum):
     CONTROLLER = "controller"
     BATTERY = "battery"
     INVERTER = "inverter"
+    DCC = "dcc"  # DC-DC Charger (with or without MPPT)
 
 
 # List of supported device types
 DEVICE_TYPES = [e.value for e in DeviceType]
 DEFAULT_DEVICE_TYPE = DeviceType.CONTROLLER.value
 
-# List of fully supported device types (currently only controller)
-SUPPORTED_DEVICE_TYPES = [DeviceType.CONTROLLER.value]
+# List of fully supported device types
+SUPPORTED_DEVICE_TYPES = [DeviceType.CONTROLLER.value, DeviceType.DCC.value]
+
+
+# DCC Charger Register Addresses (for write operations)
+class DCCRegister:
+    """Modbus register addresses for DCC charger parameters."""
+
+    BATTERY_TYPE = 0xE004
+    OVERVOLTAGE_THRESHOLD = 0xE005
+    CHARGING_LIMIT_VOLTAGE = 0xE006
+    EQUALIZATION_VOLTAGE = 0xE007
+    BOOST_VOLTAGE = 0xE008
+    FLOAT_VOLTAGE = 0xE009
+    BOOST_RETURN_VOLTAGE = 0xE00A
+    OVERDISCHARGE_RETURN_VOLTAGE = 0xE00B
+    UNDERVOLTAGE_WARNING = 0xE00C
+    OVERDISCHARGE_VOLTAGE = 0xE00D
+    DISCHARGE_LIMIT_VOLTAGE = 0xE00E
+    OVERDISCHARGE_DELAY = 0xE010
+    EQUALIZATION_TIME = 0xE011
+    BOOST_TIME = 0xE012
+    EQUALIZATION_INTERVAL = 0xE013
+    TEMPERATURE_COMPENSATION = 0xE014
+    REVERSE_CHARGING_VOLTAGE = 0xE020
+    SOLAR_CUTOFF_CURRENT = 0xE038
+
+
+# DCC Battery Type Values
+DCC_BATTERY_TYPES = {
+    0: "custom",
+    1: "open",
+    2: "sealed",
+    3: "gel",
+    4: "lithium",
+}
+
+# Reverse mapping for setting battery type
+DCC_BATTERY_TYPE_VALUES = {v: k for k, v in DCC_BATTERY_TYPES.items()}

@@ -20,6 +20,15 @@ from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
+# Check if write_register is available in the library
+try:
+    from renogy_ble.ble import create_modbus_write_request
+
+    HAS_WRITE_SUPPORT = True
+except ImportError:
+    HAS_WRITE_SUPPORT = False
+    create_modbus_write_request = None
+
 from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
 
 
@@ -390,3 +399,45 @@ class RenogyActiveBluetoothCoordinator(
         if self.device:
             self.device.rssi = service_info.advertisement.rssi
             self.device.last_seen = datetime.now()
+
+    async def async_write_register(self, register: int, value: int) -> bool:
+        """Write a single register value to the device.
+
+        Args:
+            register: Register address to write (e.g., 0xE004 for battery type)
+            value: 16-bit value to write
+
+        Returns:
+            True if write was successful, False otherwise
+        """
+        if not self.device:
+            self.logger.error("Cannot write register: no device connected")
+            return False
+
+        # Check if write support is available in renogy-ble library
+        if not HAS_WRITE_SUPPORT:
+            self.logger.error(
+                "Write support not available in renogy-ble library. "
+                "Please update to a version with write_register support."
+            )
+            return False
+
+        # Try to use the library's write method if available
+        if hasattr(self._ble_client, "write_register"):
+            try:
+                success = await self._ble_client.write_register(
+                    self.device, register, value
+                )
+                if success:
+                    # Trigger a refresh to update the new value
+                    await self.async_request_refresh()
+                return success
+            except Exception as e:
+                self.logger.error("Error writing register %s: %s", hex(register), e)
+                return False
+        else:
+            self.logger.error(
+                "write_register method not available in RenogyBleClient. "
+                "Please update renogy-ble library."
+            )
+            return False
