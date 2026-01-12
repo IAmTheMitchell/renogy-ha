@@ -350,6 +350,22 @@ DCC_BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=None,
         value_fn=lambda data: data.get(KEY_BATTERY_TYPE),
     ),
+    RenogyBLESensorDescription(
+        key=KEY_CONTROLLER_TEMPERATURE,
+        name="Controller Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_CONTROLLER_TEMPERATURE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_TEMPERATURE,
+        name="Battery Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_TEMPERATURE),
+    ),
 )
 
 DCC_ALTERNATOR_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
