@@ -19,5 +19,5 @@
   "requirements": [
     "renogy-ble @ git+https://github.com/acedrew/renogy-ble.git@dc-dc-charger-improvements"
   ],
-  "version": "0.2.12"
+  "version": "0.3.0"
 }
