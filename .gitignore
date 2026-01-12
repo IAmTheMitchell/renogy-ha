@@ -178,3 +178,8 @@ repomix-output.txt
 repomix-output.xml
 # Codex/uv cache
 .codex-cache/
+.claude-flow/
+.hive-mind/
+
+# Documentation PDFs
+*.pdf
