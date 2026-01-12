@@ -75,3 +75,10 @@ DCC_BATTERY_TYPES = {
 
 # Reverse mapping for setting battery type
 DCC_BATTERY_TYPE_VALUES = {v: k for k, v in DCC_BATTERY_TYPES.items()}
+
+# DCC Max Charging Current options (in amps)
+# Device stores as centiamps, so 40A = 4000
+DCC_MAX_CURRENT_OPTIONS = [10, 20, 30, 40, 50, 60]
+
+# Mapping from amps to centiamps for writing
+DCC_MAX_CURRENT_TO_DEVICE = {amp: amp * 100 for amp in DCC_MAX_CURRENT_OPTIONS}

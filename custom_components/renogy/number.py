@@ -261,20 +261,6 @@ DCC_TIME_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
 # DCC other parameters
 DCC_OTHER_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
     RenogyNumberEntityDescription(
-        key="max_charging_current",
-        name="Max Charging Current",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=NumberDeviceClass.CURRENT,
-        native_min_value=10,
-        native_max_value=60,  # Supports various DCC models (20A, 40A, 50A, 60A)
-        native_step=10,
-        mode=NumberMode.BOX,
-        entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.MAX_CHARGING_CURRENT,
-        scale=1.0,  # Value is written directly (10, 20, 30, 40, etc.)
-        value_fn=lambda data: data.get("max_charging_current"),
-    ),
-    RenogyNumberEntityDescription(
         key="temperature_compensation",
         name="Temperature Compensation",
         native_unit_of_measurement="mV/C/2V",
