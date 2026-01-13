@@ -1839,15 +1839,19 @@ wheels = [
 [[package]]
 name = "renogy-ble"
 version = "1.0.2"
-source = { git = "https://github.com/acedrew/renogy-ble.git?rev=dc-dc-charger-improvements#de4aae09f699655e2b1f497aa124a422ab7293bd" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bleak" },
     { name = "bleak-retry-connector" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/4c/8b/38e32b2000d1097e225cfc75c1c06098d8f219ed51c3eedfe08620f64c40/renogy_ble-1.0.2.tar.gz", hash = "sha256:27fac88256de9633d1ea8e29aa9a76e419c9046f3396b9c49738a8f994436e29", size = 49834, upload-time = "2026-01-11T03:44:04.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/fb/455faf5f7657b3af48b9cd3e9fca6e1ae69d91bb838f7b8891a5cc2c5234/renogy_ble-1.0.2-py3-none-any.whl", hash = "sha256:528c482f35e74ac4e910638c06cc3008d0b1e908a12c03bfc2c06521d9bd4276", size = 16113, upload-time = "2026-01-11T03:44:05.518Z" },
+]
 
 [[package]]
 name = "renogy-ha"
-version = "0.3.0"
+version = "0.2.12"
 source = { virtual = "." }
 dependencies = [
     { name = "homeassistant", version = "2025.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13.2'" },
@@ -1866,7 +1870,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "homeassistant", specifier = ">=2025.4.4" },
-    { name = "renogy-ble", git = "https://github.com/acedrew/renogy-ble.git?rev=dc-dc-charger-improvements" },
+    { name = "renogy-ble", specifier = ">=1.0.2" },
 ]
 
 [package.metadata.requires-dev]
