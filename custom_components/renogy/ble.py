@@ -1,10 +1,12 @@
 """BLE communication module for Renogy devices."""
 
 import asyncio
+import importlib
 import logging
 import traceback
 from datetime import datetime, timedelta
-from typing import Any, Callable, Optional
+from types import ModuleType
+from typing import Any, Awaitable, Callable, Optional, cast
 
 from bleak import BleakError
 from homeassistant.components import bluetooth
@@ -20,14 +22,20 @@ from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
-# Check if write_register is available in the library
+# Check if write_register is available in the library.
 try:
-    from renogy_ble.ble import create_modbus_write_request
-
-    HAS_WRITE_SUPPORT = True
+    renogy_ble_ble: ModuleType | None = importlib.import_module("renogy_ble.ble")
 except ImportError:
-    HAS_WRITE_SUPPORT = False
+    renogy_ble_ble = None
+
+if renogy_ble_ble is not None:
+    create_modbus_write_request = getattr(
+        renogy_ble_ble, "create_modbus_write_request", None
+    )
+    HAS_WRITE_SUPPORT = create_modbus_write_request is not None
+else:
     create_modbus_write_request = None
+    HAS_WRITE_SUPPORT = False
 
 from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
 
@@ -422,12 +430,15 @@ class RenogyActiveBluetoothCoordinator(
             )
             return False
 
-        # Try to use the library's write method if available
-        if hasattr(self._ble_client, "write_register"):
+        # Try to use the library's write method if available.
+        write_register_fn = getattr(self._ble_client, "write_register", None)
+        if callable(write_register_fn):
+            write_register = cast(
+                Callable[[RenogyBLEDevice, int, int], Awaitable[bool]],
+                write_register_fn,
+            )
             try:
-                success = await self._ble_client.write_register(
-                    self.device, register, value
-                )
+                success = await write_register(self.device, register, value)
                 if success:
                     # Trigger a refresh to update the new value
                     await self.async_request_refresh()
