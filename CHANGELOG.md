@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## [0.3.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.12...v0.3.0) (2026-01-11)
+
+
+### Features
+
+* add DC-DC charger (DCC) support with writable parameters ([#12](https://github.com/IAmTheMitchell/renogy-ha/issues/12), [#20](https://github.com/IAmTheMitchell/renogy-ha/issues/20))
+  - New DCC device type for DC-DC chargers (DCC30S, DCC50S, RBC20D1U, etc.)
+  - DCC-specific sensors: alternator voltage/current/power, solar voltage/current/power, charging status, charging mode, ignition status, daily and lifetime statistics
+  - Number entities for writable parameters: voltage thresholds (overvoltage, charging limit, equalization, boost, float, etc.), time settings (boost time, equalization time/interval), current limits
+  - Select entity for battery type selection (Custom, Open, Sealed, Gel, Lithium)
+  - Clear sensor naming to distinguish alternator vs solar inputs
+
+### Dependencies
+
+* use forked renogy-ble with DCC register map and write support
+
+
 ## [0.2.12](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.11...v0.2.12) (2026-01-11)
 
 

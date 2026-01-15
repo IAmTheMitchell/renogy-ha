@@ -76,6 +76,8 @@ def _install_module_stubs() -> None:
         """Stub Platform enum for testing."""
 
         SENSOR = "sensor"
+        NUMBER = "number"
+        SELECT = "select"
 
     const_module.Platform = Platform
     sys.modules["homeassistant.const"] = const_module

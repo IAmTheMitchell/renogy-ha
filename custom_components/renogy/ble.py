@@ -1,10 +1,12 @@
 """BLE communication module for Renogy devices."""
 
 import asyncio
+import importlib
 import logging
 import traceback
 from datetime import datetime, timedelta
-from typing import Any, Callable, Optional
+from types import ModuleType
+from typing import Any, Awaitable, Callable, Optional, cast
 
 from bleak import BleakError
 from homeassistant.components import bluetooth
@@ -19,6 +21,21 @@ from homeassistant.components.bluetooth.active_update_coordinator import (
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
+
+# Check if write_register is available in the library.
+try:
+    renogy_ble_ble: ModuleType | None = importlib.import_module("renogy_ble.ble")
+except ImportError:
+    renogy_ble_ble = None
+
+if renogy_ble_ble is not None:
+    create_modbus_write_request = getattr(
+        renogy_ble_ble, "create_modbus_write_request", None
+    )
+    HAS_WRITE_SUPPORT = create_modbus_write_request is not None
+else:
+    create_modbus_write_request = None
+    HAS_WRITE_SUPPORT = False
 
 from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
 
@@ -390,3 +407,48 @@ class RenogyActiveBluetoothCoordinator(
         if self.device:
             self.device.rssi = service_info.advertisement.rssi
             self.device.last_seen = datetime.now()
+
+    async def async_write_register(self, register: int, value: int) -> bool:
+        """Write a single register value to the device.
+
+        Args:
+            register: Register address to write (e.g., 0xE004 for battery type)
+            value: 16-bit value to write
+
+        Returns:
+            True if write was successful, False otherwise
+        """
+        if not self.device:
+            self.logger.error("Cannot write register: no device connected")
+            return False
+
+        # Check if write support is available in renogy-ble library
+        if not HAS_WRITE_SUPPORT:
+            self.logger.error(
+                "Write support not available in renogy-ble library. "
+                "Please update to a version with write_register support."
+            )
+            return False
+
+        # Try to use the library's write method if available.
+        write_register_fn = getattr(self._ble_client, "write_register", None)
+        if callable(write_register_fn):
+            write_register = cast(
+                Callable[[RenogyBLEDevice, int, int], Awaitable[bool]],
+                write_register_fn,
+            )
+            try:
+                success = await write_register(self.device, register, value)
+                if success:
+                    # Trigger a refresh to update the new value
+                    await self.async_request_refresh()
+                return success
+            except Exception as e:
+                self.logger.error("Error writing register %s: %s", hex(register), e)
+                return False
+        else:
+            self.logger.error(
+                "write_register method not available in RenogyBleClient. "
+                "Please update renogy-ble library."
+            )
+            return False

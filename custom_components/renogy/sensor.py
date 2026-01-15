@@ -38,6 +38,7 @@ from .const import (
     DOMAIN,
     LOGGER,
     RENOGY_BT_PREFIX,
+    DeviceType,
 )
 
 # Registry of sensor keys
@@ -67,6 +68,53 @@ KEY_CONTROLLER_TEMPERATURE = "controller_temperature"
 KEY_DEVICE_ID = "device_id"
 KEY_MODEL = "model"
 KEY_MAX_DISCHARGING_POWER_TODAY = "max_discharging_power_today"
+
+# DCC-specific sensor keys (DC-DC Charger)
+KEY_BATTERY_SOC = "battery_soc"
+KEY_TOTAL_CHARGING_CURRENT = "total_charging_current"
+KEY_ALTERNATOR_VOLTAGE = "alternator_voltage"
+KEY_ALTERNATOR_CURRENT = "alternator_current"
+KEY_ALTERNATOR_POWER = "alternator_power"
+KEY_SOLAR_VOLTAGE = "solar_voltage"
+KEY_SOLAR_CURRENT = "solar_current"
+KEY_SOLAR_POWER = "solar_power"
+KEY_DAILY_MIN_BATTERY_VOLTAGE = "daily_min_battery_voltage"
+KEY_DAILY_MAX_BATTERY_VOLTAGE = "daily_max_battery_voltage"
+KEY_DAILY_MAX_CHARGING_CURRENT = "daily_max_charging_current"
+KEY_DAILY_MAX_CHARGING_POWER = "daily_max_charging_power"
+KEY_DAILY_CHARGING_AH = "daily_charging_ah"
+KEY_DAILY_POWER_GENERATION = "daily_power_generation"
+KEY_TOTAL_OPERATING_DAYS = "total_operating_days"
+KEY_TOTAL_OVERDISCHARGE_COUNT = "total_overdischarge_count"
+KEY_TOTAL_FULL_CHARGE_COUNT = "total_full_charge_count"
+KEY_TOTAL_CHARGING_AH = "total_charging_ah"
+KEY_TOTAL_POWER_GENERATION = "total_power_generation"
+KEY_DCC_CHARGING_STATUS = "charging_status"
+KEY_CHARGING_MODE = "charging_mode"
+KEY_OUTPUT_POWER = "output_power"
+KEY_IGNITION_STATUS = "ignition_status"
+KEY_FAULT_HIGH = "fault_high"
+KEY_FAULT_LOW = "fault_low"
+
+# DCC Parameter keys (readable settings)
+KEY_SYSTEM_VOLTAGE = "system_voltage"
+KEY_OVERVOLTAGE_THRESHOLD = "overvoltage_threshold"
+KEY_CHARGING_LIMIT_VOLTAGE = "charging_limit_voltage"
+KEY_EQUALIZATION_VOLTAGE = "equalization_voltage"
+KEY_BOOST_VOLTAGE = "boost_voltage"
+KEY_FLOAT_VOLTAGE = "float_voltage"
+KEY_BOOST_RETURN_VOLTAGE = "boost_return_voltage"
+KEY_OVERDISCHARGE_RETURN_VOLTAGE = "overdischarge_return_voltage"
+KEY_UNDERVOLTAGE_WARNING = "undervoltage_warning"
+KEY_OVERDISCHARGE_VOLTAGE = "overdischarge_voltage"
+KEY_DISCHARGE_LIMIT_VOLTAGE = "discharge_limit_voltage"
+KEY_OVERDISCHARGE_DELAY = "overdischarge_delay"
+KEY_EQUALIZATION_TIME = "equalization_time"
+KEY_BOOST_TIME = "boost_time"
+KEY_EQUALIZATION_INTERVAL = "equalization_interval"
+KEY_TEMPERATURE_COMPENSATION = "temperature_compensation"
+KEY_REVERSE_CHARGING_VOLTAGE = "reverse_charging_voltage"
+KEY_SOLAR_CUTOFF_CURRENT = "solar_cutoff_current"
 
 
 @dataclass
@@ -269,8 +317,302 @@ CONTROLLER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     ),
 )
 
-# All sensors combined
+# DCC (DC-DC Charger) specific sensors
+# These use different naming to avoid confusion with solar charge controllers
+DCC_BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_SOC,
+        name="House Battery SOC",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_SOC),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_VOLTAGE,
+        name="House Battery Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_TOTAL_CHARGING_CURRENT,
+        name="Total Charging Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_TOTAL_CHARGING_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_TYPE,
+        name="Battery Type",
+        device_class=None,
+        value_fn=lambda data: data.get(KEY_BATTERY_TYPE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CONTROLLER_TEMPERATURE,
+        name="Controller Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_CONTROLLER_TEMPERATURE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_TEMPERATURE,
+        name="Battery Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_TEMPERATURE),
+    ),
+)
+
+DCC_ALTERNATOR_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_ALTERNATOR_VOLTAGE,
+        name="Alternator Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_ALTERNATOR_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_ALTERNATOR_CURRENT,
+        name="Alternator Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_ALTERNATOR_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_ALTERNATOR_POWER,
+        name="Alternator Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_ALTERNATOR_POWER),
+    ),
+)
+
+DCC_SOLAR_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_SOLAR_VOLTAGE,
+        name="Solar Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_SOLAR_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SOLAR_CURRENT,
+        name="Solar Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_SOLAR_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SOLAR_POWER,
+        name="Solar Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_SOLAR_POWER),
+    ),
+)
+
+DCC_STATUS_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_DCC_CHARGING_STATUS,
+        name="Charging Status",
+        device_class=None,
+        value_fn=lambda data: data.get(KEY_DCC_CHARGING_STATUS),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CHARGING_MODE,
+        name="Charging Mode",
+        device_class=None,
+        value_fn=lambda data: data.get(KEY_CHARGING_MODE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_OUTPUT_POWER,
+        name="Output Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_OUTPUT_POWER),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_IGNITION_STATUS,
+        name="Ignition Status",
+        device_class=None,
+        value_fn=lambda data: data.get(KEY_IGNITION_STATUS),
+    ),
+)
+
+DCC_STATISTICS_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_MIN_BATTERY_VOLTAGE,
+        name="Daily Min Battery Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_DAILY_MIN_BATTERY_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_MAX_BATTERY_VOLTAGE,
+        name="Daily Max Battery Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_DAILY_MAX_BATTERY_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_MAX_CHARGING_CURRENT,
+        name="Daily Max Charging Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_DAILY_MAX_CHARGING_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_MAX_CHARGING_POWER,
+        name="Daily Max Charging Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_DAILY_MAX_CHARGING_POWER),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_CHARGING_AH,
+        name="Daily Charging Ah",
+        native_unit_of_measurement="Ah",
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda data: data.get(KEY_DAILY_CHARGING_AH),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_POWER_GENERATION,
+        name="Daily Power Generation",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda data: data.get(KEY_DAILY_POWER_GENERATION),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_TOTAL_OPERATING_DAYS,
+        name="Total Operating Days",
+        native_unit_of_measurement="days",
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda data: data.get(KEY_TOTAL_OPERATING_DAYS),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_TOTAL_CHARGING_AH,
+        name="Total Charging Ah",
+        native_unit_of_measurement="Ah",
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda data: data.get(KEY_TOTAL_CHARGING_AH),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_TOTAL_POWER_GENERATION,
+        name="Total Power Generation",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda data: data.get(KEY_TOTAL_POWER_GENERATION),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_TOTAL_OVERDISCHARGE_COUNT,
+        name="Total Overdischarge Count",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_TOTAL_OVERDISCHARGE_COUNT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_TOTAL_FULL_CHARGE_COUNT,
+        name="Total Full Charge Count",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_TOTAL_FULL_CHARGE_COUNT),
+    ),
+)
+
+DCC_DIAGNOSTIC_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_DEVICE_ID,
+        name="Device ID",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_DEVICE_ID),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_MODEL,
+        name="Model",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_MODEL),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SYSTEM_VOLTAGE,
+        name="System Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SYSTEM_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_FAULT_HIGH,
+        name="Fault Code High",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_FAULT_HIGH),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_FAULT_LOW,
+        name="Fault Code Low",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_FAULT_LOW),
+    ),
+)
+
+# All DCC sensors combined
+DCC_ALL_SENSORS = (
+    DCC_BATTERY_SENSORS
+    + DCC_ALTERNATOR_SENSORS
+    + DCC_SOLAR_SENSORS
+    + DCC_STATUS_SENSORS
+    + DCC_STATISTICS_SENSORS
+    + DCC_DIAGNOSTIC_SENSORS
+)
+
+# All sensors combined (for controller type)
 ALL_SENSORS = BATTERY_SENSORS + PV_SENSORS + LOAD_SENSORS + CONTROLLER_SENSORS
+
+# Sensor mapping by device type
+SENSORS_BY_DEVICE_TYPE = {
+    DeviceType.CONTROLLER.value: {
+        "Battery": BATTERY_SENSORS,
+        "PV": PV_SENSORS,
+        "Load": LOAD_SENSORS,
+        "Controller": CONTROLLER_SENSORS,
+    },
+    DeviceType.DCC.value: {
+        "Battery": DCC_BATTERY_SENSORS,
+        "Alternator": DCC_ALTERNATOR_SENSORS,
+        "Solar": DCC_SOLAR_SENSORS,
+        "Status": DCC_STATUS_SENSORS,
+        "Statistics": DCC_STATISTICS_SENSORS,
+        "Diagnostic": DCC_DIAGNOSTIC_SENSORS,
+    },
+}
 
 
 async def async_setup_entry(
@@ -346,13 +688,14 @@ def create_entities_helper(
     """Create sensor entities with provided coordinator and optional device."""
     entities = []
 
+    # Get sensors for the specific device type, fallback to controller sensors
+    sensor_groups = SENSORS_BY_DEVICE_TYPE.get(
+        device_type,
+        SENSORS_BY_DEVICE_TYPE[DeviceType.CONTROLLER.value],
+    )
+
     # Group sensors by category
-    for category_name, sensor_list in {
-        "Battery": BATTERY_SENSORS,
-        "PV": PV_SENSORS,
-        "Load": LOAD_SENSORS,
-        "Controller": CONTROLLER_SENSORS,
-    }.items():
+    for category_name, sensor_list in sensor_groups.items():
         for description in sensor_list:
             sensor = RenogyBLESensor(
                 coordinator, device, description, category_name, device_type
