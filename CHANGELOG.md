@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.3.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.12...v0.3.0) (2026-01-18)
+
+
+### Features
+
+* add DC-DC charger (DCC) support with writable parameters ([#52](https://github.com/IAmTheMitchell/renogy-ha/issues/52)) ([946cf9c](https://github.com/IAmTheMitchell/renogy-ha/commit/946cf9c2fe7bebfe4a5375cbaf4afcbe2752ff8c))
+
 ## [0.3.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.12...v0.3.0) (2026-01-11)
 
 
