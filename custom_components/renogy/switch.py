@@ -20,10 +20,10 @@ from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
     DEFAULT_DEVICE_TYPE,
-    DeviceType,
     DOMAIN,
     LOGGER,
     RENOGY_BT_PREFIX,
+    DeviceType,
 )
 
 KEY_LOAD_STATUS = "load_status"
