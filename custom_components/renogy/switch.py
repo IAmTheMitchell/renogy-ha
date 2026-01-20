@@ -20,6 +20,7 @@ from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
     DEFAULT_DEVICE_TYPE,
+    DeviceType,
     DOMAIN,
     LOGGER,
     RENOGY_BT_PREFIX,
@@ -52,6 +53,12 @@ async def async_setup_entry(
 
     device_type = config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
     LOGGER.debug("Setting up switches for device type: %s", device_type)
+
+    if device_type != DeviceType.CONTROLLER.value:
+        LOGGER.debug(
+            "Skipping load switch setup for non-controller device type: %s", device_type
+        )
+        return
 
     if (
         not coordinator.device
