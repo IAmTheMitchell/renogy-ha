@@ -29,6 +29,7 @@ class DeviceType(Enum):
     BATTERY = "battery"
     INVERTER = "inverter"
     DCC = "dcc"  # DC-DC Charger (with or without MPPT)
+    SHUNT300 = "shunt300"  # Renogy Shunt300
 
 
 # List of supported device types
@@ -36,7 +37,11 @@ DEVICE_TYPES = [e.value for e in DeviceType]
 DEFAULT_DEVICE_TYPE = DeviceType.CONTROLLER.value
 
 # List of fully supported device types
-SUPPORTED_DEVICE_TYPES = [DeviceType.CONTROLLER.value, DeviceType.DCC.value]
+SUPPORTED_DEVICE_TYPES = [
+    DeviceType.CONTROLLER.value,
+    DeviceType.DCC.value,
+    DeviceType.SHUNT300.value,
+]
 
 
 # DCC Charger Register Addresses (for write operations)

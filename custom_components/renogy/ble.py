@@ -22,6 +22,9 @@ from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
+from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, DeviceType
+from .shunt_ble import ShuntBleClient
+
 # Check if write_register is available in the library.
 try:
     renogy_ble_ble: ModuleType | None = importlib.import_module("renogy_ble.ble")
@@ -36,8 +39,6 @@ if renogy_ble_ble is not None:
 else:
     create_modbus_write_request = None
     HAS_WRITE_SUPPORT = False
-
-from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
 
 
 class RenogyActiveBluetoothCoordinator(
@@ -77,7 +78,12 @@ class RenogyActiveBluetoothCoordinator(
             scan_interval,
         )
 
-        self._ble_client = RenogyBleClient(scanner=bluetooth.async_get_scanner(hass))
+        if device_type == DeviceType.SHUNT300.value:
+            self._ble_client = ShuntBleClient()
+        else:
+            self._ble_client = RenogyBleClient(
+                scanner=bluetooth.async_get_scanner(hass)
+            )
 
         # Add required properties for Home Assistant CoordinatorEntity compatibility
         self.last_update_success = True
@@ -268,15 +274,32 @@ class RenogyActiveBluetoothCoordinator(
 
                 # Use service_info to get a BLE device and update our device object
                 if not self.device:
+                    # Auto-detect SHUNT300 by BLE name if not already set
+                    detected_type = self.device_type
+                    if service_info.name and service_info.name.startswith(
+                        "RTMShunt300"
+                    ):
+                        detected_type = DeviceType.SHUNT300.value
+                        self.device_type = detected_type
+                        if not isinstance(self._ble_client, ShuntBleClient):
+                            self.logger.debug(
+                                "Switching to Smart Shunt BLE client for %s",
+                                service_info.address,
+                            )
+                            self._ble_client = ShuntBleClient()
+                        self.logger.debug(
+                            "Detected SHUNT300 device from BLE name: %s",
+                            service_info.name,
+                        )
                     self.logger.debug(
                         "Creating new RenogyBLEDevice for %s as %s",
                         service_info.address,
-                        self.device_type,
+                        detected_type,
                     )
                     self.device = RenogyBLEDevice(
                         service_info.device,
                         service_info.advertisement.rssi,
-                        device_type=self.device_type,
+                        device_type=detected_type,
                     )
                 else:
                     # Store the old name to detect changes
@@ -313,6 +336,15 @@ class RenogyActiveBluetoothCoordinator(
                             self.device_type,
                         )
                         self.device.device_type = self.device_type
+                        if (
+                            self.device.device_type == DeviceType.SHUNT300.value
+                            and not isinstance(self._ble_client, ShuntBleClient)
+                        ):
+                            self.logger.debug(
+                                "Switching BLE client to Smart Shunt handler for %s",
+                                service_info.address,
+                            )
+                            self._ble_client = ShuntBleClient()
 
                 device = self.device
                 self.logger.debug(
