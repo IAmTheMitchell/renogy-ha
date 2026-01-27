@@ -110,8 +110,17 @@ def _install_module_stubs() -> None:
         """Return a cleaned device name for testing."""
         return name.strip()
 
+    class RenogyBleReadResult:
+        """Stub read result matching the real library interface."""
+
+        def __init__(self, success: bool, parsed_data: dict[str, Any], error=None):
+            self.success = success
+            self.parsed_data = parsed_data
+            self.error = error
+
     renogy_ble_ble_module.RenogyBleClient = RenogyBleClient
     renogy_ble_ble_module.RenogyBLEDevice = RenogyBLEDevice
+    renogy_ble_ble_module.RenogyBleReadResult = RenogyBleReadResult
     renogy_ble_ble_module.clean_device_name = clean_device_name
 
     sys.modules["renogy_ble"] = renogy_ble_module

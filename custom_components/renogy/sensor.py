@@ -96,6 +96,96 @@ KEY_IGNITION_STATUS = "ignition_status"
 KEY_FAULT_HIGH = "fault_high"
 KEY_FAULT_LOW = "fault_low"
 
+# SHUNT300-specific sensor keys (expand as needed)
+KEY_SHUNT_VOLTAGE = "shunt_voltage"
+KEY_SHUNT_CURRENT = "shunt_current"
+KEY_SHUNT_POWER = "shunt_power"
+KEY_SHUNT_SOC = "shunt_soc"
+KEY_SHUNT_ENERGY = "shunt_energy"
+KEY_SHUNT_STATUS = "shunt_status"
+
+
+@dataclass
+class RenogyBLESensorDescription(SensorEntityDescription):
+    """Describes a Renogy BLE sensor."""
+
+    # Function to extract value from the device's parsed data
+    value_fn: Optional[Callable[[Dict[str, Any]], Any]] = None
+
+
+# SHUNT300 sensor entity descriptions (expand as needed)
+SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_VOLTAGE,
+        name="Shunt Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_VOLTAGE]), 2)
+            if data.get(KEY_SHUNT_VOLTAGE) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_CURRENT,
+        name="Shunt Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_CURRENT]), 2)
+            if data.get(KEY_SHUNT_CURRENT) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_POWER,
+        name="Shunt Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_POWER]), 1)
+            if data.get(KEY_SHUNT_POWER) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_SOC,
+        name="Shunt State of Charge",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_SHUNT_SOC),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ENERGY,
+        name="Shunt Energy",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda data: data.get(KEY_SHUNT_ENERGY),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_STATUS,
+        name="Shunt Charge Status",
+        device_class=None,
+        value_fn=lambda data: (
+            "charging"
+            if data.get(KEY_SHUNT_CURRENT, 0) is not None
+            and data.get(KEY_SHUNT_CURRENT, 0) > 0.05
+            else "discharging"
+            if data.get(KEY_SHUNT_CURRENT, 0) is not None
+            and data.get(KEY_SHUNT_CURRENT, 0) < -0.05
+            else "idle"
+        ),
+    ),
+)
+
 # DCC Parameter keys (readable settings)
 KEY_SYSTEM_VOLTAGE = "system_voltage"
 KEY_OVERVOLTAGE_THRESHOLD = "overvoltage_threshold"
@@ -115,14 +205,6 @@ KEY_EQUALIZATION_INTERVAL = "equalization_interval"
 KEY_TEMPERATURE_COMPENSATION = "temperature_compensation"
 KEY_REVERSE_CHARGING_VOLTAGE = "reverse_charging_voltage"
 KEY_SOLAR_CUTOFF_CURRENT = "solar_cutoff_current"
-
-
-@dataclass
-class RenogyBLESensorDescription(SensorEntityDescription):
-    """Describes a Renogy BLE sensor."""
-
-    # Function to extract value from the device's parsed data
-    value_fn: Optional[Callable[[Dict[str, Any]], Any]] = None
 
 
 BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
@@ -612,6 +694,9 @@ SENSORS_BY_DEVICE_TYPE = {
         "Statistics": DCC_STATISTICS_SENSORS,
         "Diagnostic": DCC_DIAGNOSTIC_SENSORS,
     },
+    DeviceType.SHUNT300.value: {
+        "Shunt": SHUNT300_SENSORS,
+    },
 }
 
 
@@ -944,5 +1029,18 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
             attrs["data_source"] = "device"
         elif self.coordinator.data:
             attrs["data_source"] = "coordinator"
+
+        # Expose raw shunt payload details for troubleshooting.
+        if (
+            self._device_type == DeviceType.SHUNT300.value
+            and self.device
+            and self.device.parsed_data
+        ):
+            raw_payload = self.device.parsed_data.get("raw_payload")
+            raw_words = self.device.parsed_data.get("raw_words")
+            if raw_payload:
+                attrs["raw_payload"] = raw_payload
+            if raw_words:
+                attrs["raw_words"] = raw_words
 
         return attrs
