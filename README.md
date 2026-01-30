@@ -7,6 +7,8 @@
 
 This custom Home Assistant integration provides monitoring capabilities for Renogy devices via Bluetooth Low Energy (BLE) connection with BT-1 and BT-2 modules.
 
+> **Disclaimer:** This integration is experimental software. Use caution when controlling electrical loads, and ensure any connected equipment is properly rated and protected.
+
 ## Currently Supported Devices
 
 Tested:
@@ -25,6 +27,7 @@ Should work, but untested:
 - Monitor battery status (voltage, current, temperature, charge state)
 - Monitor solar panel (PV) performance metrics
 - Monitor load status and statistics
+- Turn the DC load output on/off (supported controllers only)
 - Monitor controller information
 - All data exposed as Home Assistant sensors
 - Energy dashboard compatible sensors
@@ -102,6 +105,10 @@ The integration provides the following sensor groups:
 - Current Draw
 - Power Consumption
 - Daily Usage
+
+### DC Load Control
+
+Some Renogy charge controllers expose a controllable DC load output. This integration creates a `switch` entity that can turn the DC load on or off. **Caution:** This feature is experimental. Write commands may be interpreted differently by devices or firmware versions, which could cause unexpected load behavior. Use appropriate fusing and wiring, and verify behavior in a safe test setup before relying on it.
 
 ### Controller Info
 
