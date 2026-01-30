@@ -18,7 +18,7 @@ from .const import (
 )
 
 # List of platforms this integration supports
-PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT]
+PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
