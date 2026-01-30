@@ -108,7 +108,9 @@ The integration provides the following sensor groups:
 
 ### DC Load Control
 
-Some Renogy charge controllers expose a controllable DC load output. This integration creates a `switch` entity that can turn the DC load on or off. **Caution:** This feature is experimental. Write commands may be interpreted differently by devices or firmware versions, which could cause unexpected load behavior. Use appropriate fusing and wiring, and verify behavior in a safe test setup before relying on it.
+Some Renogy charge controllers expose a controllable DC load output. This integration creates a `switch` entity that can turn the DC load on or off.
+
+> **Caution:** This feature is experimental. Write commands may be interpreted differently by devices or firmware versions, which could cause unexpected load behavior. Use appropriate fusing and wiring, and verify behavior in a safe test setup before relying on it.
 
 ### Controller Info
 
