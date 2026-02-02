@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.4.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.3.0...v0.4.0) (2026-02-02)
+
+
+### Features
+
+* turn controller load on/off ([#57](https://github.com/IAmTheMitchell/renogy-ha/issues/57)) ([70e0a6c](https://github.com/IAmTheMitchell/renogy-ha/commit/70e0a6c891f7b63240b7d9b242806d7a3f02a5ef))
+
 ## [0.3.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.12...v0.3.0) (2026-01-18)
 
 
