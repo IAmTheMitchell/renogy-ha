@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.4.1](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.4.0...v0.4.1) (2026-02-03)
+
+
+### Bug Fixes
+
+* update renogy-ble dependency version to 1.2.1a12 ([3f504b7](https://github.com/IAmTheMitchell/renogy-ha/commit/3f504b71722f6b4a55e8b944169ac0d05e4927f1))
+
 ## [0.4.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.3.0...v0.4.0) (2026-02-02)
 
 
