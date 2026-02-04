@@ -53,9 +53,21 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def _is_renogy_device(self, discovery_info: BluetoothServiceInfoBleak) -> bool:
         """Check if a device is a supported Renogy device."""
-        return discovery_info.name is not None and discovery_info.name.startswith(
+        # Check if device name starts with standard Renogy prefix (BT-TH-)
+        if discovery_info.name is not None and discovery_info.name.startswith(
             RENOGY_BT_PREFIX
-        )
+        ):
+            return True
+        
+        # Check if device name contains "Smart BMS" or "SHUNT" (for SHUNT devices)
+        # SHUNT devices may have names like "Smart BMS" or similar
+        if discovery_info.name is not None and any(
+            keyword in discovery_info.name.lower() 
+            for keyword in ["smart bms", "shunt", "renogy"]
+        ):
+            return True
+        
+        return False
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
