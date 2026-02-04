@@ -72,9 +72,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as e:
         LOGGER.error("Error starting coordinator for %s: %s", device_address, e)
 
-    # Force an immediate refresh
-    LOGGER.info("Requesting initial refresh for Renogy BLE device %s", device_address)
-    hass.async_create_task(coordinator.async_request_refresh())
+    # Force an immediate refresh (but not for SHUNT - it uses notifications only)
+    # SHUNT devices will connect during the first refresh from async_start()
+    if device_type != "SHUNT":
+        LOGGER.info("Requesting initial refresh for Renogy BLE device %s", device_address)
+        hass.async_create_task(coordinator.async_request_refresh())
 
     return True
 
