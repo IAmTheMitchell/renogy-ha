@@ -103,6 +103,24 @@ def parse_shunt_packet(data: bytes) -> Optional[dict]:
             "rssi": None,  # Will be populated by caller
         }
         
+        # Debug: Log first few packets to compare against reference
+        import sys
+        if not hasattr(parse_shunt_packet, '_logged'):
+            parse_shunt_packet._logged = 0
+        
+        if parse_shunt_packet._logged < 5:
+            parse_shunt_packet._logged += 1
+            LOGGER.warning(
+                "SHUNT_PARSE #%d: hex=%s... V=%sV(from %s) I=%sA(from %s) P=%sW",
+                parse_shunt_packet._logged,
+                data[:20].hex(),
+                battery_voltage,
+                data[25:28].hex(),
+                battery_current,
+                data[21:24].hex(),
+                power,
+            )
+        
         LOGGER.debug(
             "Parsed SHUNT packet (seq=%d): V=%.3f A=%.3f SOC=%.1f%%",
             int(sequence),

@@ -92,6 +92,12 @@ class ShuntNotificationHandler:
             data: Raw notification data
         """
         try:
+            # Log first few packets as hex for debugging
+            if self._packet_count < 5:
+                self.logger.warning(
+                    f"SHUNT raw packet {self._packet_count}: len={len(data)} hex={data[:40].hex()}"
+                )
+            
             # Parse packet
             parsed = parse_shunt_packet(data)
             
