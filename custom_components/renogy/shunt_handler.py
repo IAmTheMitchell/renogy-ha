@@ -51,38 +51,76 @@ class ShuntNotificationHandler:
         Returns:
             True if successfully connected and listening, False otherwise
         """
-        try:
-            self.logger.debug(f"Connecting to SHUNT at {self.device_address}")
-            
-            # Use BleakClient with auto-reconnect
-            self.client = BleakClient(self.device_address)
-            
-            # Connect with timeout
-            await asyncio.wait_for(self.client.connect(), timeout=10.0)
-            
-            if not self.client.is_connected:
-                self.logger.error(f"Failed to connect to {self.device_address}")
-                return False
-            
-            self.logger.info(f"Connected to SHUNT at {self.device_address}")
-            
-            # Start listening for notifications
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
             try:
-                await self.client.start_notify(SHUNT_RX_UUID, self._notification_handler)
-                self._notification_enabled = True
-                self.logger.info(f"Listening for SHUNT notifications on {SHUNT_RX_UUID}")
-                return True
+                self.logger.debug(
+                    "Connecting to SHUNT at %s (attempt %s/%s)",
+                    self.device_address,
+                    attempt,
+                    max_attempts,
+                )
+                
+                # Create a fresh client per attempt
+                self.client = BleakClient(self.device_address)
+                
+                # Connect with longer timeout to reduce transient failures
+                await asyncio.wait_for(self.client.connect(), timeout=20.0)
+                
+                if not self.client.is_connected:
+                    raise BleakError(f"Failed to connect to {self.device_address}")
+                
+                self.logger.info(f"Connected to SHUNT at {self.device_address}")
+                
+                # Start listening for notifications (HaBleakClientWrapper handles characteristic validation)
+                try:
+                    await self.client.start_notify(SHUNT_RX_UUID, self._notification_handler)
+                    self._notification_enabled = True
+                    self.logger.info(f"Listening for SHUNT notifications on {SHUNT_RX_UUID}")
+                    return True
+                except BleakError as err:
+                    self.logger.error(f"Failed to enable notifications: {err}")
+                    await self.client.disconnect()
+                    return False
+            
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    "Timeout connecting to %s (attempt %s/%s)",
+                    self.device_address,
+                    attempt,
+                    max_attempts,
+                )
             except BleakError as err:
-                self.logger.error(f"Failed to enable notifications: {err}")
-                await self.client.disconnect()
-                return False
+                self.logger.warning(
+                    "Connection error to %s (attempt %s/%s): %s",
+                    self.device_address,
+                    attempt,
+                    max_attempts,
+                    err,
+                )
+            except Exception as err:
+                self.logger.warning(
+                    "Unexpected connection error to %s (attempt %s/%s): %s",
+                    self.device_address,
+                    attempt,
+                    max_attempts,
+                    err,
+                )
+            
+            # Clean up client between attempts
+            try:
+                if self.client and self.client.is_connected:
+                    await self.client.disconnect()
+            except Exception:
+                pass
+            self.client = None
+            
+            # Backoff before next attempt to allow BLE slots to free up
+            if attempt < max_attempts:
+                await asyncio.sleep(10 * attempt)
         
-        except asyncio.TimeoutError:
-            self.logger.error(f"Timeout connecting to {self.device_address}")
-            return False
-        except Exception as err:
-            self.logger.error(f"Connection error: {err}")
-            return False
+        self.logger.error(f"Failed to connect to {self.device_address} after retries")
+        return False
 
     def _notification_handler(self, sender, data: bytes) -> None:
         """Handle incoming BLE notification.
