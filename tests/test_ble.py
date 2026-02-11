@@ -78,6 +78,7 @@ def _install_module_stubs() -> None:
         SENSOR = "sensor"
         NUMBER = "number"
         SELECT = "select"
+        SWITCH = "switch"
 
     const_module.Platform = Platform
     sys.modules["homeassistant.const"] = const_module
@@ -123,6 +124,7 @@ def _install_module_stubs() -> None:
     renogy_ble_ble_module.RenogyBLEDevice = RenogyBLEDevice
     renogy_ble_ble_module.RenogyBleReadResult = RenogyBleReadResult
     renogy_ble_ble_module.clean_device_name = clean_device_name
+    renogy_ble_ble_module.LOAD_CONTROL_REGISTER = 0x010A
 
     class ShuntBleClient:
         """Stub shunt client matching the library interface."""

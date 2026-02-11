@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## [0.4.1](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.4.0...v0.4.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* ensure proper client disconnection ([fe244ea](https://github.com/IAmTheMitchell/renogy-ha/commit/fe244eab80b1767146e960196c22ac76752ae989))
+* update renogy-ble dependency version to 1.2.1a12 ([3f504b7](https://github.com/IAmTheMitchell/renogy-ha/commit/3f504b71722f6b4a55e8b944169ac0d05e4927f1))
+* update renogy-ble dependency version to 1.2.1a13 ([e88c19b](https://github.com/IAmTheMitchell/renogy-ha/commit/e88c19be0908d3398b5e351999b47790f1eb364f))
+
+## [0.4.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.3.0...v0.4.0) (2026-02-02)
+
+
+### Features
+
+* turn controller load on/off ([#57](https://github.com/IAmTheMitchell/renogy-ha/issues/57)) ([70e0a6c](https://github.com/IAmTheMitchell/renogy-ha/commit/70e0a6c891f7b63240b7d9b242806d7a3f02a5ef))
+
 ## [0.3.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.2.12...v0.3.0) (2026-01-18)
 
 
