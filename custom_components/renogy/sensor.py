@@ -167,7 +167,7 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="Shunt Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: data.get(KEY_SHUNT_ENERGY),
     ),
     RenogyBLESensorDescription(
@@ -1033,6 +1033,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         # Expose raw shunt payload details for troubleshooting.
         if (
             self._device_type == DeviceType.SHUNT300.value
+            and self.entity_description.key == KEY_SHUNT_STATUS
             and self.device
             and self.device.parsed_data
         ):

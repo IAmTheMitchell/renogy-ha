@@ -21,9 +21,9 @@ from homeassistant.components.bluetooth.active_update_coordinator import (
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
+from renogy_ble.shunt import ShuntBleClient
 
 from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, DeviceType
-from .shunt_ble import ShuntBleClient
 
 # Check if write_register is available in the library.
 try:
