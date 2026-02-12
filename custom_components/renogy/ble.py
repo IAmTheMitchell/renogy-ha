@@ -38,7 +38,8 @@ else:
     create_modbus_write_request = None
     HAS_WRITE_SUPPORT = False
 
-from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
+from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, DeviceType
+from .shunt_handler import ShuntNotificationHandler
 
 LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 
@@ -85,13 +86,22 @@ class RenogyActiveBluetoothCoordinator(
         # Add required properties for Home Assistant CoordinatorEntity compatibility
         self.last_update_success = True
         self._update_listeners: list[Callable[[], None]] = []
-        self.update_interval = timedelta(seconds=scan_interval)
+        self.update_interval = (
+            None
+            if device_type == DeviceType.SHUNT.value
+            else timedelta(seconds=scan_interval)
+        )
         self._unsub_refresh = None
         self._request_refresh_task = None
 
         # Add connection lock to prevent multiple concurrent connections
         self._connection_lock = asyncio.Lock()
         self._connection_in_progress = False
+
+        # SHUNT-specific handler for continuous notifications
+        self.shunt_handler: Optional[ShuntNotificationHandler] = None
+        self._shunt_connection_attempted = False
+        self._shunt_last_attempt: Optional[datetime] = None
 
     @property
     def device_type(self) -> str:
@@ -102,10 +112,34 @@ class RenogyActiveBluetoothCoordinator(
     def device_type(self, value: str) -> None:
         """Set the device type."""
         self._device_type = value
+        if hasattr(self, "scan_interval"):
+            if value == DeviceType.SHUNT.value:
+                self.update_interval = None
+            else:
+                self.update_interval = timedelta(seconds=self.scan_interval)
 
     async def async_request_refresh(self) -> None:
         """Request a refresh."""
         self.logger.debug("Manual refresh requested for device %s", self.address)
+
+        # For SHUNT - allow connection attempts with backoff to avoid BLE slot contention
+        if self.device_type == DeviceType.SHUNT.value:
+            if self.shunt_handler and self.shunt_handler.is_connected:
+                self.logger.debug(
+                    "SHUNT already connected via notifications, skipping refresh"
+                )
+                return
+
+            now = datetime.now()
+            if self._shunt_last_attempt and now - self._shunt_last_attempt < timedelta(
+                minutes=5
+            ):
+                self.logger.debug(
+                    "SHUNT backoff active, skipping refresh to avoid BLE slot contention"
+                )
+                return
+
+            self.logger.debug("SHUNT connection attempt allowed, proceeding...")
 
         # If a connection is already in progress, don't start another one
         if self._connection_in_progress:
@@ -169,11 +203,25 @@ class RenogyActiveBluetoothCoordinator(
         self._unsub_refresh = async_track_time_interval(
             self.hass, self._handle_refresh_interval, self.update_interval
         )
-        self.logger.debug("Scheduled next refresh in %s seconds", self.scan_interval)
+        interval_seconds = (
+            int(self.update_interval.total_seconds())
+            if self.update_interval
+            else "none"
+        )
+        self.logger.debug("Scheduled next refresh in %s seconds", interval_seconds)
 
     async def _handle_refresh_interval(self, _now=None):
         """Handle a refresh interval occurring."""
         self.logger.debug("Regular interval refresh for %s", self.address)
+
+        # For SHUNT, only retry when not connected; backoff handled in async_request_refresh
+        if self.device_type == DeviceType.SHUNT.value:
+            if self.shunt_handler and self.shunt_handler.is_connected:
+                self.logger.debug("SHUNT already connected, skipping interval refresh")
+                return
+            await self.async_request_refresh()
+            return
+
         await self.async_request_refresh()
 
     def async_start(self) -> Callable[[], None]:
@@ -192,11 +240,21 @@ class RenogyActiveBluetoothCoordinator(
         # which already handles the bluetooth subscriptions
         result = super().async_start()
 
-        # Schedule regular refreshes at our configured interval
-        self._schedule_refresh()
-
-        # Perform an initial refresh to get data as soon as possible
-        self.hass.async_create_task(self.async_request_refresh())
+        # SHUNT devices use notification-based updates, not polling intervals
+        if self.device_type != DeviceType.SHUNT.value:
+            # Schedule regular refreshes at our configured interval for non-SHUNT devices
+            self._schedule_refresh()
+            # Perform an initial refresh to get data as soon as possible
+            self.hass.async_create_task(self.async_request_refresh())
+        else:
+            # For SHUNT, schedule a slow retry interval to avoid BLE slot contention
+            # Connection happens via notifications; retries are spaced out
+            self._shunt_connection_attempted = False
+            self.update_interval = timedelta(minutes=5)
+            self._schedule_refresh()
+            self.logger.debug(
+                "SHUNT device: notifications with 5-minute retry backoff"
+            )
 
         return result
 
@@ -208,6 +266,23 @@ class RenogyActiveBluetoothCoordinator(
 
     def async_stop(self) -> None:
         """Stop polling."""
+        # Cleanup SHUNT handler if present
+        if self.shunt_handler and self.shunt_handler.is_connected:
+            try:
+                # Create async task for disconnection if event loop is running
+                if self.hass.is_running:
+                    self.hass.async_create_task(self.shunt_handler.disconnect())
+                else:
+                    # Fallback for sync context
+                    import asyncio
+                    try:
+                        asyncio.run(self.shunt_handler.disconnect())
+                    except:
+                        pass
+            except Exception as e:
+                self.logger.debug(f"Error disconnecting SHUNT handler: {e}")
+            self.shunt_handler = None
+        
         if self._unsub_refresh:
             self._unsub_refresh()
             self._unsub_refresh = None
@@ -273,6 +348,26 @@ class RenogyActiveBluetoothCoordinator(
         if self.hass.state != CoreState.running:
             return False
 
+        # SHUNT devices use notification-based updates, not regular polling
+        # Allow connection attempts with backoff, then skip to avoid contention
+        if self.device_type == DeviceType.SHUNT.value:
+            if self.shunt_handler and self.shunt_handler.is_connected:
+                self.logger.debug(
+                    "SHUNT already connected via notifications, skipping poll cycle"
+                )
+                return False
+
+            now = datetime.now()
+            if self._shunt_last_attempt is None:
+                self.logger.debug("SHUNT first connection - allowing poll for setup")
+                return True
+            if now - self._shunt_last_attempt >= timedelta(minutes=5):
+                self.logger.debug("SHUNT backoff elapsed - allowing retry poll")
+                return True
+
+            self.logger.debug("SHUNT backoff active, skipping poll cycle")
+            return False
+
         # Check if we have a connectable device
         connectable_device = bluetooth.async_ble_device_from_address(
             self.hass, service_info.device.address, connectable=True
@@ -321,21 +416,34 @@ class RenogyActiveBluetoothCoordinator(
                     device.address,
                 )
 
-                try:
-                    read_result = await self._ble_client.read_device(device)
-                except (BleakError, asyncio.TimeoutError) as err:
-                    success = False
-                    error = err
-                    self.logger.debug(
-                        "BLE read failed for %s: %s",
-                        device.address,
-                        err,
-                    )
+                # Check if this is a SHUNT device (uses notifications instead of polling)
+                if device.device_type == DeviceType.SHUNT.value:
+                    # If SHUNT handler is already connected and streaming, skip reconnection
+                    if self.shunt_handler and self.shunt_handler.is_connected:
+                        self.logger.debug("SHUNT already connected and streaming, skipping poll")
+                        # Update availability to True since notifications are active
+                        device.update_availability(True, None)
+                        self.last_update_success = True
+                        return True
+                    # Otherwise, setup/reconnect the handler
+                    success = await self._setup_shunt_handler(device, service_info)
                 else:
-                    success = read_result.success
-                    error = read_result.error
-                    if error is not None and not isinstance(error, Exception):
-                        error = Exception(str(error))
+                    # Standard Modbus polling for controllers, batteries, etc.
+                    try:
+                        read_result = await self._ble_client.read_device(device)
+                    except (BleakError, asyncio.TimeoutError) as err:
+                        success = False
+                        error = err
+                        self.logger.debug(
+                            "BLE read failed for %s: %s",
+                            device.address,
+                            err,
+                        )
+                    else:
+                        success = read_result.success
+                        error = read_result.error
+                        if error is not None and not isinstance(error, Exception):
+                            error = Exception(str(error))
 
                 # Always update the device availability and last_update_success
                 device.update_availability(success, error)
@@ -349,6 +457,86 @@ class RenogyActiveBluetoothCoordinator(
                 return success
             finally:
                 self._connection_in_progress = False
+
+    async def _setup_shunt_handler(
+        self, device: RenogyBLEDevice, service_info: BluetoothServiceInfoBleak
+    ) -> bool:
+        """Setup and manage SHUNT notification handler.
+        
+        Args:
+            device: Renogy device instance
+            service_info: BLE service info
+        
+        Returns:
+            True if handler is active, False otherwise
+        """
+        # Mark that we've attempted SHUNT connection
+        self._shunt_connection_attempted = True
+        self._shunt_last_attempt = datetime.now()
+        
+        try:
+            # Create handler if needed
+            if self.shunt_handler is None:
+                self.shunt_handler = ShuntNotificationHandler(
+                    self.hass,
+                    device.address,
+                    self._process_shunt_data,
+                    self.logger,
+                )
+                self.logger.info(f"Created SHUNT handler for {device.address}")
+            
+            # Connect if not already connected
+            if not self.shunt_handler.is_connected:
+                success = await self.shunt_handler.connect_and_listen()
+                if not success:
+                    self.logger.error(f"Failed to connect SHUNT handler for {device.address}")
+                    # Mark failure to prevent retries during polling windows
+                    self._shunt_connection_attempted = True
+                    return False
+                self.logger.info(f"SHUNT handler connected for {device.address}")
+            
+            # Update device status
+            device.update_availability(True, None)
+            self.last_update_success = True
+            
+            return True
+        
+        except Exception as err:
+            self.logger.error(f"SHUNT handler error: {err}", exc_info=True)
+            device.update_availability(False, err)
+            return False
+
+    def _process_shunt_data(self, parsed_data: dict[str, Any]) -> None:
+        """Process parsed SHUNT telemetry data from notification handler.
+        
+        Args:
+            parsed_data: Pre-parsed SHUNT packet data (dict with sensor values)
+        """
+        try:
+            if not parsed_data:
+                return
+            
+            # Data is already parsed by the handler, just update coordinator
+            self.data = parsed_data
+            self.last_update_success = True
+            
+            # Update device if it exists
+            if self.device:
+                self.device.parsed_data = parsed_data
+                self.device.update_availability(True, None)
+            
+            # Notify all listeners of data update
+            self.async_update_listeners()
+            
+            self.logger.debug(
+                f"SHUNT data updated: V={parsed_data.get('battery_voltage'):.2f}V "
+                f"I={parsed_data.get('battery_current'):.2f}A "
+                f"SOC={parsed_data.get('state_of_charge'):.1f}%"
+            )
+        
+        except Exception as err:
+            self.logger.error(f"Error processing SHUNT data: {err}", exc_info=True)
+
 
     async def async_set_load_state(self, state: bool) -> bool:
         """Set the DC load on/off."""
