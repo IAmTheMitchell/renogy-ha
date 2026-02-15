@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.4.2](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.4.1...v0.4.2) (2026-02-15)
+
+
+### Documentation
+
+* add contributing guidelines for the project ([#71](https://github.com/IAmTheMitchell/renogy-ha/issues/71)) ([4854c38](https://github.com/IAmTheMitchell/renogy-ha/commit/4854c38f5179004fde23677ba71c913bf2eaa691))
+
 ## [0.4.1](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.4.0...v0.4.1) (2026-02-11)
 
 
