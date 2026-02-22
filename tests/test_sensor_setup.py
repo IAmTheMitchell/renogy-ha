@@ -240,3 +240,22 @@ def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
 
     coordinator.async_request_refresh.assert_not_awaited()
     async_add_entities.assert_not_called()
+
+
+def test_shunt_energy_sensor_uses_total_increasing_state_class() -> None:
+    """Ensure shunt energy sensors use a valid state class for energy."""
+    sensor_module = _load_sensor_module()
+
+    shunt_energy_description = next(
+        description
+        for description in sensor_module.SHUNT300_SENSORS
+        if description.key == sensor_module.KEY_SHUNT_ENERGY
+    )
+
+    assert (
+        shunt_energy_description.device_class == sensor_module.SensorDeviceClass.ENERGY
+    )
+    assert (
+        shunt_energy_description.state_class
+        == sensor_module.SensorStateClass.TOTAL_INCREASING
+    )
