@@ -40,6 +40,7 @@ from .const import (
     RENOGY_BT_PREFIX,
     DeviceType,
 )
+from .device_name import is_device_name_ready
 
 # Registry of sensor keys
 KEY_BATTERY_VOLTAGE = "battery_voltage"
@@ -715,15 +716,13 @@ async def async_setup_entry(
     device_type = config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
     LOGGER.debug("Setting up sensors for device type: %s", device_type)
 
-    # Try to wait for a real device name before creating entities
+    # Try to wait for a real device name before creating entities.
     # This helps ensure entity IDs will match the real device name
-    if (
-        not coordinator.device
-        or coordinator.device.name.startswith("Unknown")
-        or not coordinator.device.name.startswith(RENOGY_BT_PREFIX)
+    if not coordinator.device or not is_device_name_ready(
+        coordinator.device.name, device_type
     ):
         LOGGER.debug("Waiting for real device name before creating entities...")
-        # Force an immediate refresh to try getting device info
+        # Force an immediate refresh to try getting device info.
         await coordinator.async_request_refresh()
 
         # Wait for a short time to see if we can get the real device name
@@ -731,8 +730,8 @@ async def async_setup_entry(
         real_name_found = False
         for _ in range(10):
             await asyncio.sleep(1)
-            if coordinator.device and coordinator.device.name.startswith(
-                RENOGY_BT_PREFIX
+            if coordinator.device and is_device_name_ready(
+                coordinator.device.name, device_type
             ):
                 LOGGER.debug("Real device name found: %s", coordinator.device.name)
                 real_name_found = True

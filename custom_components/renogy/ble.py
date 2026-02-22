@@ -24,6 +24,7 @@ from renogy_ble import ble as renogy_ble_module
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
 from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, DeviceType
+from .device_name import detect_device_type_from_ble_name, has_real_device_name
 
 # Check if write_register is available in the library.
 try:
@@ -245,15 +246,16 @@ class RenogyActiveBluetoothCoordinator(
         self, service_info: BluetoothServiceInfoBleak
     ) -> RenogyBLEDevice:
         """Ensure the device instance is updated from Bluetooth service info."""
-        detected_type = self.device_type
-        if service_info.name and service_info.name.startswith("RTMShunt300"):
-            detected_type = DeviceType.SHUNT300.value
-            if self.device_type != detected_type:
-                self.logger.debug(
-                    "Detected SHUNT300 device from BLE name: %s",
-                    service_info.name,
-                )
-                self.device_type = detected_type
+        detected_type = detect_device_type_from_ble_name(
+            service_info.name, self.device_type
+        )
+        if self.device_type != detected_type:
+            self.logger.debug(
+                "Detected %s device from BLE name: %s",
+                detected_type,
+                service_info.name,
+            )
+            self.device_type = detected_type
 
         if not self.device:
             self.logger.debug(
@@ -269,7 +271,7 @@ class RenogyActiveBluetoothCoordinator(
         else:
             old_name = self.device.name
             self.device.ble_device = service_info.device
-            if service_info.name and service_info.name != "Unknown Renogy Device":
+            if has_real_device_name(service_info.name):
                 cleaned_name = clean_device_name(service_info.name)
                 if old_name != cleaned_name:
                     self.device.name = cleaned_name

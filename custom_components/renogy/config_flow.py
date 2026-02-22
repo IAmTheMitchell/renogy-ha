@@ -21,10 +21,9 @@ from .const import (
     LOGGER,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
-    RENOGY_BT_PREFIX,
     SUPPORTED_DEVICE_TYPES,
-    DeviceType,
 )
+from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name
 
 # Common schema fields for device configuration
 DEVICE_TYPE_SCHEMA = {
@@ -54,12 +53,8 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
         self._default_device_type: str = DEFAULT_DEVICE_TYPE
 
     def _is_renogy_device(self, discovery_info: BluetoothServiceInfoBleak) -> bool:
-        """Check if a device is a supported Renogy device (BT-TH-* or RTMShunt300*)."""
-        if discovery_info.name is None:
-            return False
-        return discovery_info.name.startswith(
-            RENOGY_BT_PREFIX
-        ) or discovery_info.name.startswith("RTMShunt300")
+        """Check if a BLE device advertises a supported Renogy name."""
+        return is_supported_renogy_ble_name(discovery_info.name)
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
@@ -81,10 +76,9 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Store the discovered device for later
         self._discovered_device = discovery_info
-        if discovery_info.name and discovery_info.name.startswith("RTMShunt300"):
-            self._default_device_type = DeviceType.SHUNT300.value
-        else:
-            self._default_device_type = DEFAULT_DEVICE_TYPE
+        self._default_device_type = detect_device_type_from_ble_name(
+            discovery_info.name, DEFAULT_DEVICE_TYPE
+        )
 
         # Set title to user-readable name
         self.context["title_placeholders"] = {
