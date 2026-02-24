@@ -85,6 +85,7 @@ def _install_module_stubs() -> None:
 
     renogy_ble_module = cast(Any, types.ModuleType("renogy_ble"))
     renogy_ble_ble_module = cast(Any, types.ModuleType("renogy_ble.ble"))
+    renogy_ble_shunt_module = cast(Any, types.ModuleType("renogy_ble.shunt"))
 
     class RenogyBleClient:
         """Stub RenogyBleClient for testing."""
@@ -111,13 +112,31 @@ def _install_module_stubs() -> None:
         """Return a cleaned device name for testing."""
         return name.strip()
 
+    class RenogyBleReadResult:
+        """Stub read result matching the real library interface."""
+
+        def __init__(self, success: bool, parsed_data: dict[str, Any], error=None):
+            self.success = success
+            self.parsed_data = parsed_data
+            self.error = error
+
     renogy_ble_ble_module.RenogyBleClient = RenogyBleClient
     renogy_ble_ble_module.RenogyBLEDevice = RenogyBLEDevice
+    renogy_ble_ble_module.RenogyBleReadResult = RenogyBleReadResult
     renogy_ble_ble_module.clean_device_name = clean_device_name
     renogy_ble_ble_module.LOAD_CONTROL_REGISTER = 0x010A
 
+    class ShuntBleClient:
+        """Stub shunt client matching the library interface."""
+
+        async def read_device(self, device):
+            return RenogyBleReadResult(True, getattr(device, "parsed_data", {}), None)
+
+    renogy_ble_shunt_module.ShuntBleClient = ShuntBleClient
+
     sys.modules["renogy_ble"] = renogy_ble_module
     sys.modules["renogy_ble.ble"] = renogy_ble_ble_module
+    sys.modules["renogy_ble.shunt"] = renogy_ble_shunt_module
 
 
 def _load_ble_module():
@@ -162,3 +181,17 @@ def test_read_device_data_handles_ble_errors():
     call_args = coordinator.device.update_availability.call_args[0]
     assert call_args[0] is False
     assert "read failed" in str(call_args[1])
+
+
+def test_shunt_device_uses_library_shunt_client():
+    """Ensure SHUNT300 devices use the renogy-ble shunt client."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+    )
+
+    assert coordinator._ble_client.__class__.__name__ == "ShuntBleClient"

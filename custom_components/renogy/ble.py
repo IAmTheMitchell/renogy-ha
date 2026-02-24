@@ -23,6 +23,9 @@ from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble import ble as renogy_ble_module
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
+from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, DeviceType
+from .device_name import detect_device_type_from_ble_name, has_real_device_name
+
 # Check if write_register is available in the library.
 try:
     renogy_ble_ble: ModuleType | None = importlib.import_module("renogy_ble.ble")
@@ -38,7 +41,15 @@ else:
     create_modbus_write_request = None
     HAS_WRITE_SUPPORT = False
 
-from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL
+try:
+    renogy_ble_shunt: ModuleType | None = importlib.import_module("renogy_ble.shunt")
+except ImportError:
+    renogy_ble_shunt = None
+
+if renogy_ble_shunt is not None:
+    shunt_client_class = getattr(renogy_ble_shunt, "ShuntBleClient", None)
+else:
+    shunt_client_class = None
 
 LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 
@@ -80,7 +91,7 @@ class RenogyActiveBluetoothCoordinator(
             scan_interval,
         )
 
-        self._ble_client = RenogyBleClient(scanner=bluetooth.async_get_scanner(hass))
+        self._ble_client = self._build_ble_client_for_type(device_type)
 
         # Add required properties for Home Assistant CoordinatorEntity compatibility
         self.last_update_success = True
@@ -92,6 +103,20 @@ class RenogyActiveBluetoothCoordinator(
         # Add connection lock to prevent multiple concurrent connections
         self._connection_lock = asyncio.Lock()
         self._connection_in_progress = False
+
+    def _build_ble_client_for_type(self, device_type: str) -> RenogyBleClient:
+        """Build a BLE client suitable for the configured device type."""
+        scanner = bluetooth.async_get_scanner(self.hass)
+        if device_type == DeviceType.SHUNT300.value and shunt_client_class is not None:
+            return cast(RenogyBleClient, shunt_client_class())
+
+        if device_type == DeviceType.SHUNT300.value:
+            self.logger.warning(
+                "ShuntBleClient not available in installed renogy-ble; "
+                "falling back to RenogyBleClient for %s",
+                self.address,
+            )
+        return RenogyBleClient(scanner=scanner)
 
     @property
     def device_type(self) -> str:
@@ -221,21 +246,32 @@ class RenogyActiveBluetoothCoordinator(
         self, service_info: BluetoothServiceInfoBleak
     ) -> RenogyBLEDevice:
         """Ensure the device instance is updated from Bluetooth service info."""
+        detected_type = detect_device_type_from_ble_name(
+            service_info.name, self.device_type
+        )
+        if self.device_type != detected_type:
+            self.logger.debug(
+                "Detected %s device from BLE name: %s",
+                detected_type,
+                service_info.name,
+            )
+            self.device_type = detected_type
+
         if not self.device:
             self.logger.debug(
                 "Creating new RenogyBLEDevice for %s as %s",
                 service_info.address,
-                self.device_type,
+                detected_type,
             )
             self.device = RenogyBLEDevice(
                 service_info.device,
                 service_info.advertisement.rssi,
-                device_type=self.device_type,
+                device_type=detected_type,
             )
         else:
             old_name = self.device.name
             self.device.ble_device = service_info.device
-            if service_info.name and service_info.name != "Unknown Renogy Device":
+            if has_real_device_name(service_info.name):
                 cleaned_name = clean_device_name(service_info.name)
                 if old_name != cleaned_name:
                     self.device.name = cleaned_name
@@ -259,6 +295,17 @@ class RenogyActiveBluetoothCoordinator(
                     self.device_type,
                 )
                 self.device.device_type = self.device_type
+
+        if (
+            self.device.device_type == DeviceType.SHUNT300.value
+            and shunt_client_class is not None
+            and not isinstance(self._ble_client, shunt_client_class)
+        ):
+            self.logger.debug(
+                "Switching BLE client to Smart Shunt handler for %s",
+                service_info.address,
+            )
+            self._ble_client = cast(RenogyBleClient, shunt_client_class())
 
         return self.device
 

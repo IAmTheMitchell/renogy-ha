@@ -4,6 +4,9 @@
   "bluetooth": [
     {
       "local_name": "BT-TH-*"
+    },
+    {
+      "local_name": "RTMShunt300*"
     }
   ],
   "codeowners": [
@@ -17,7 +20,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/IAmTheMitchell/renogy-ha/issues",
   "requirements": [
-    "renogy-ble>=1.2.1"
+    "renogy-ble>=1.3.0a27"
   ],
   "version": "0.4.1"
 }
