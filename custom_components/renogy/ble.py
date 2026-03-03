@@ -10,6 +10,11 @@ from types import ModuleType
 from typing import Any, Awaitable, Callable, Optional, cast
 
 from bleak import BleakClient, BleakError
+try:
+    from bleak_retry_connector import establish_connection
+except ImportError:
+    establish_connection = None
+
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothChange,
@@ -596,22 +601,59 @@ class RenogyActiveBluetoothCoordinator(
                 )
                 await asyncio.sleep(remaining_wait)
             
-            # Create client and establish connection with proper timeout handling
-            # Note: While habluetooth recommends bleak_retry_connector, it has API compatibility
-            # issues with the current renogy-ha stack. Using asyncio.wait_for achieves similar
-            # resilience with proven reliability.
-            client = BleakClient(service_info.address)
-            try:
-                await asyncio.wait_for(client.connect(), timeout=20.0)
-            except asyncio.TimeoutError:
-                self.logger.warning("Connection timeout to inverter %s", service_info.address)
+            # Create client and establish connection with proper timeout handling.
+            # Use bleak-retry-connector when available to align with habluetooth expectations.
+            # Fall back to direct BleakClient connect if the dependency is unavailable.
+            connectable_device = bluetooth.async_ble_device_from_address(
+                self.hass, service_info.address, connectable=True
+            )
+            if connectable_device is None:
+                self.logger.warning(
+                    "No connectable BLE device found for inverter %s",
+                    service_info.address,
+                )
                 return False
-            except BleakError as e:
-                self.logger.warning("Connection error to inverter: %s", e)
-                return False
-            except Exception as e:
-                self.logger.warning("Failed to establish connection to inverter: %s", e)
-                return False
+
+            client: BleakClient
+            connection_name = service_info.name or service_info.address
+            if establish_connection is not None:
+                try:
+                    client = await establish_connection(
+                        BleakClient,
+                        connectable_device,
+                        connection_name,
+                        max_attempts=2,
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        "Connection timeout to inverter %s", service_info.address
+                    )
+                    return False
+                except BleakError as e:
+                    self.logger.warning("Connection error to inverter: %s", e)
+                    return False
+                except Exception as e:
+                    self.logger.warning(
+                        "Failed to establish retry connection to inverter: %s", e
+                    )
+                    return False
+            else:
+                client = BleakClient(service_info.address)
+                try:
+                    await asyncio.wait_for(client.connect(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        "Connection timeout to inverter %s", service_info.address
+                    )
+                    return False
+                except BleakError as e:
+                    self.logger.warning("Connection error to inverter: %s", e)
+                    return False
+                except Exception as e:
+                    self.logger.warning(
+                        "Failed to establish connection to inverter: %s", e
+                    )
+                    return False
             
             if not client.is_connected:
                 self.logger.warning("Failed to connect to inverter")
