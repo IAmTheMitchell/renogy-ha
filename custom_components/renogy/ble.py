@@ -67,6 +67,19 @@ if renogy_ble_shunt is not None:
 else:
     shunt_client_class = None
 
+# Check if inverter support is available in the library.
+try:
+    renogy_ble_inverter: ModuleType | None = importlib.import_module(
+        "renogy_ble.inverter"
+    )
+except ImportError:
+    renogy_ble_inverter = None
+
+if renogy_ble_inverter is not None:
+    inverter_client_class = getattr(renogy_ble_inverter, "InverterBleClient", None)
+else:
+    inverter_client_class = None
+
 LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 
 
@@ -585,6 +598,37 @@ class RenogyActiveBluetoothCoordinator(
             device.parsed_data[KEY_INVERTER_DEVICE_ID] = cached_device_id
         if cached_model is not None:
             device.parsed_data[KEY_INVERTER_MODEL] = cached_model
+
+        # Prefer upstream library support when it is available.
+        if inverter_client_class is not None:
+            try:
+                try:
+                    inverter_client = inverter_client_class(
+                        scanner=bluetooth.async_get_scanner(self.hass)
+                    )
+                except TypeError:
+                    inverter_client = inverter_client_class()
+
+                read_result = await inverter_client.read_device(device)
+                if read_result.success and read_result.parsed_data:
+                    parsed_data = dict(read_result.parsed_data)
+
+                    # Preserve cached static values if upstream read does not include them.
+                    if (
+                        cached_device_id is not None
+                        and KEY_INVERTER_DEVICE_ID not in parsed_data
+                    ):
+                        parsed_data[KEY_INVERTER_DEVICE_ID] = cached_device_id
+                    if cached_model is not None and KEY_INVERTER_MODEL not in parsed_data:
+                        parsed_data[KEY_INVERTER_MODEL] = cached_model
+
+                    device.parsed_data = parsed_data
+                    return True
+            except Exception as e:
+                self.logger.debug(
+                    "Upstream inverter client unavailable or failed, using local fallback: %s",
+                    e,
+                )
 
         try:
             # Log connection attempt
