@@ -829,15 +829,13 @@ SENSORS_BY_DEVICE_TYPE = {
         "Statistics": DCC_STATISTICS_SENSORS,
         "Diagnostic": DCC_DIAGNOSTIC_SENSORS,
     },
-<<<<<<< HEAD
     DeviceType.SHUNT300.value: {
         "Shunt": SHUNT300_SENSORS,
-=======
+    },
     DeviceType.INVERTER.value: {
         "Battery": INVERTER_BATTERY_SENSORS,
         "AC Output": INVERTER_AC_OUTPUT_SENSORS,
         "Status": INVERTER_STATUS_SENSORS,
->>>>>>> b703f4e (Add RIV1220PU-126 Inverter Integration with Production Hardening)
     },
 }
 
