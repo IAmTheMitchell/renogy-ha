@@ -114,6 +114,7 @@ class RenogyActiveBluetoothCoordinator(
         # Add connection lock to prevent multiple concurrent connections
         self._connection_lock = asyncio.Lock()
         self._connection_in_progress = False
+        self._startup_time = datetime.now()  # Track initialization time for startup stabilization
 
     def _build_ble_client_for_type(self, device_type: str) -> RenogyBleClient:
         """Build a BLE client suitable for the configured device type."""
@@ -581,18 +582,43 @@ class RenogyActiveBluetoothCoordinator(
             device.parsed_data[KEY_INVERTER_MODEL] = cached_model
 
         try:
-            # Create BLE client
-            client = BleakClient(service_info.address)
-            
-            # Connect to the device
+            # Log connection attempt
             self.logger.debug("Connecting to inverter %s", service_info.address)
-            await asyncio.wait_for(client.connect(), timeout=10.0)
+            
+            # Add startup delay to allow Bluetooth stack to stabilize (especially important during HA startup)
+            time_since_startup = (datetime.now() - self._startup_time).total_seconds()
+            startup_stabilization_time = 30  # Wait 30 seconds after startup for BLE stack to stabilize
+            if time_since_startup < startup_stabilization_time:
+                remaining_wait = int(startup_stabilization_time - time_since_startup)
+                self.logger.debug(
+                    "Delaying first inverter connection by %ds to allow Bluetooth stack to stabilize",
+                    remaining_wait
+                )
+                await asyncio.sleep(remaining_wait)
+            
+            # Create client and establish connection with proper timeout handling
+            # Note: While habluetooth recommends bleak_retry_connector, it has API compatibility
+            # issues with the current renogy-ha stack. Using asyncio.wait_for achieves similar
+            # resilience with proven reliability.
+            client = BleakClient(service_info.address)
+            try:
+                await asyncio.wait_for(client.connect(), timeout=20.0)
+            except asyncio.TimeoutError:
+                self.logger.warning("Connection timeout to inverter %s", service_info.address)
+                return False
+            except BleakError as e:
+                self.logger.warning("Connection error to inverter: %s", e)
+                return False
+            except Exception as e:
+                self.logger.warning("Failed to establish connection to inverter: %s", e)
+                return False
             
             if not client.is_connected:
                 self.logger.warning("Failed to connect to inverter")
                 return False
 
             self.logger.debug("Inverter connected successfully")
+            await asyncio.sleep(0.5)  # Allow connection to fully stabilize before reading
 
             # Initialize - read from ffd4 characteristic
             try:
@@ -793,7 +819,15 @@ class RenogyActiveBluetoothCoordinator(
             return False
 
         except Exception as e:
-            self.logger.error("Error reading inverter data: %s", e, exc_info=True)
+            error_msg = str(e)
+            # Handle Bluetooth stack being shutdown during startup/HA initialization
+            if "already shutdown" in error_msg.lower():
+                self.logger.warning(
+                    "Bluetooth stack not ready (shutdown/reinitializing). Will retry on next poll cycle: %s",
+                    e
+                )
+            else:
+                self.logger.error("Error reading inverter data: %s", e, exc_info=True)
             return False
 
     def _parse_inverter_response(self, data: bytes) -> dict[str, Any]:
