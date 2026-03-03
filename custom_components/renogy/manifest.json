@@ -7,6 +7,9 @@
     },
     {
       "local_name": "RTMShunt300*"
+    },
+    {
+      "local_name": "RNGRIU*"
     }
   ],
   "codeowners": [

@@ -21,6 +21,8 @@ from .const import (
     LOGGER,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
+    RENOGY_BT_PREFIX,
+    RENOGY_INVERTER_PREFIX,
     SUPPORTED_DEVICE_TYPES,
 )
 from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name
@@ -53,8 +55,15 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
         self._default_device_type: str = DEFAULT_DEVICE_TYPE
 
     def _is_renogy_device(self, discovery_info: BluetoothServiceInfoBleak) -> bool:
+<<<<<<< HEAD
         """Check if a BLE device advertises a supported Renogy name."""
         return is_supported_renogy_ble_name(discovery_info.name)
+=======
+        """Check if a device is a supported Renogy device."""
+        if discovery_info.name is None:
+            return False
+        return discovery_info.name.startswith(RENOGY_BT_PREFIX) or discovery_info.name.startswith(RENOGY_INVERTER_PREFIX)
+>>>>>>> b703f4e (Add RIV1220PU-126 Inverter Integration with Production Hardening)
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak

@@ -3,12 +3,13 @@
 import asyncio
 import importlib
 import logging
+import struct
 import traceback
 from datetime import datetime, timedelta
 from types import ModuleType
 from typing import Any, Awaitable, Callable, Optional, cast
 
-from bleak import BleakError
+from bleak import BleakClient, BleakError
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothChange,
@@ -23,7 +24,16 @@ from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble import ble as renogy_ble_module
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
-from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, DeviceType
+from .const import (
+    DEFAULT_DEVICE_TYPE,
+    DEFAULT_SCAN_INTERVAL,
+    INVERTER_DEVICE_ID,
+    INVERTER_INIT_UUID,
+    INVERTER_MODES,
+    INVERTER_NOTIFY_UUID,
+    INVERTER_WRITE_UUID,
+    DeviceType,
+)
 from .device_name import detect_device_type_from_ble_name, has_real_device_name
 
 # Check if write_register is available in the library.
@@ -41,6 +51,7 @@ else:
     create_modbus_write_request = None
     HAS_WRITE_SUPPORT = False
 
+# Check if Shunt300 support is available in the library.
 try:
     renogy_ble_shunt: ModuleType | None = importlib.import_module("renogy_ble.shunt")
 except ImportError:
@@ -368,21 +379,37 @@ class RenogyActiveBluetoothCoordinator(
                     device.address,
                 )
 
-                try:
-                    read_result = await self._ble_client.read_device(device)
-                except (BleakError, asyncio.TimeoutError) as err:
-                    success = False
-                    error = err
-                    self.logger.debug(
-                        "BLE read failed for %s: %s",
-                        device.address,
-                        err,
-                    )
+                # Check if this is an inverter - use custom reading logic
+                if self.device_type == DeviceType.INVERTER.value:
+                    self.logger.debug("Using inverter-specific BLE reading")
+                    try:
+                        success = await self._read_inverter_data(service_info)
+                        error = None if success else Exception("Inverter read failed")
+                    except Exception as err:
+                        success = False
+                        error = err
+                        self.logger.debug(
+                            "Inverter read failed for %s: %s",
+                            device.address,
+                            err,
+                        )
                 else:
-                    success = read_result.success
-                    error = read_result.error
-                    if error is not None and not isinstance(error, Exception):
-                        error = Exception(str(error))
+                    # Use standard renogy_ble library for controllers/DCC
+                    try:
+                        read_result = await self._ble_client.read_device(device)
+                    except (BleakError, asyncio.TimeoutError) as err:
+                        success = False
+                        error = err
+                        self.logger.debug(
+                            "BLE read failed for %s: %s",
+                            device.address,
+                            err,
+                        )
+                    else:
+                        success = read_result.success
+                        error = read_result.error
+                        if error is not None and not isinstance(error, Exception):
+                            error = Exception(str(error))
 
                 # Always update the device availability and last_update_success
                 device.update_availability(success, error)
@@ -489,6 +516,18 @@ class RenogyActiveBluetoothCoordinator(
         self, service_info: BluetoothServiceInfoBleak
     ) -> None:
         """Handle the device going unavailable."""
+        # Don't mark as unavailable if we've successfully polled recently
+        # (device disconnects after active reads, which is normal)
+        if self.last_update_success and self.last_poll_time:
+            time_since_poll = (datetime.now() - self.last_poll_time).total_seconds()
+            if time_since_poll < self.scan_interval * 2:
+                self.logger.debug(
+                    "Device %s BLE unavailable but last poll was %ds ago (successful), keeping status",
+                    service_info.address,
+                    time_since_poll,
+                )
+                return
+        
         self.logger.info("Device %s is no longer available", service_info.address)
         self.last_update_success = False
         self.async_update_listeners()
@@ -504,6 +543,396 @@ class RenogyActiveBluetoothCoordinator(
         if self.device:
             self.device.rssi = service_info.advertisement.rssi
             self.device.last_seen = datetime.now()
+
+    def _crc16_modbus(self, data: bytes) -> int:
+        """Calculate Modbus CRC-16."""
+        crc = 0xFFFF
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 0x0001:
+                    crc = (crc >> 1) ^ 0xA001
+                else:
+                    crc >>= 1
+        return crc
+
+    async def _read_inverter_data(
+        self, service_info: BluetoothServiceInfoBleak
+    ) -> bool:
+        """Read data from Renogy inverter using Modbus protocol over BLE."""
+        device = self.device
+        if not device:
+            return False
+
+        from .sensor import KEY_INVERTER_DEVICE_ID, KEY_INVERTER_MODEL
+
+        cached_device_id = None
+        cached_model = None
+        if device.parsed_data:
+            cached_device_id = device.parsed_data.get(KEY_INVERTER_DEVICE_ID)
+            cached_model = device.parsed_data.get(KEY_INVERTER_MODEL)
+        
+        # Initialize parsed_data with cached values to preserve them across poll failures
+        if not device.parsed_data:
+            device.parsed_data = {}
+        if cached_device_id is not None:
+            device.parsed_data[KEY_INVERTER_DEVICE_ID] = cached_device_id
+        if cached_model is not None:
+            device.parsed_data[KEY_INVERTER_MODEL] = cached_model
+
+        try:
+            # Create BLE client
+            client = BleakClient(service_info.address)
+            
+            # Connect to the device
+            self.logger.debug("Connecting to inverter %s", service_info.address)
+            await asyncio.wait_for(client.connect(), timeout=10.0)
+            
+            if not client.is_connected:
+                self.logger.warning("Failed to connect to inverter")
+                return False
+
+            self.logger.debug("Inverter connected successfully")
+
+            # Initialize - read from ffd4 characteristic
+            try:
+                init_data = await client.read_gatt_char(INVERTER_INIT_UUID)
+                self.logger.debug("Inverter init data: %s", init_data.hex())
+            except Exception as e:
+                self.logger.debug("Inverter init read failed (may be normal): %s", e)
+
+            # Prepare for notifications
+            response_data = []
+            response_event = asyncio.Event()
+
+            def notification_handler(sender, data: bytes):
+                nonlocal response_data
+                self.logger.debug("Notification received from %s: %d bytes", sender, len(data))
+                response_data.append(data)
+                response_event.set()
+
+            # Start notifications
+            await client.start_notify(INVERTER_NOTIFY_UUID, notification_handler)
+            await asyncio.sleep(1.0)  # Allow notification characteristic to stabilize (prevents first-attempt timeouts)
+
+            # Build Modbus request to read main sensors (register 4000)
+            # Start register: 4000 (validated from test script), Read 32 registers
+            function_code = 3  # Read holding registers
+            start_register = 4000
+            register_count = 32
+
+            payload = bytearray()
+            payload.append(INVERTER_DEVICE_ID)  # Device ID (32)
+            payload.append(function_code)
+            payload += struct.pack('>H', start_register)  # Big-endian register
+            payload += struct.pack('>H', register_count)  # Big-endian count
+            
+            # Calculate and append CRC (little-endian)
+            crc = self._crc16_modbus(payload)
+            payload += struct.pack('<H', crc)
+
+            self.logger.debug("Sending Modbus request for 4000: %s", payload.hex())
+
+            # Send request with retry logic for intermittent timeouts
+            MAX_RETRIES = 2
+            success = False
+            for attempt in range(MAX_RETRIES):
+                if attempt > 0:
+                    # Clear and reset for retry
+                    response_data.clear()
+                    response_event.clear()
+                    await asyncio.sleep(0.5)
+                    self.logger.debug("Retrying Modbus request for 4000 (attempt %d/%d): %s", 
+                                    attempt + 1, MAX_RETRIES, payload.hex())
+                
+                await client.write_gatt_char(INVERTER_WRITE_UUID, payload, response=False)
+                
+                try:
+                    self.logger.debug("Waiting for inverter response (4000)... (attempt %d/%d)", 
+                                    attempt + 1, MAX_RETRIES)
+                    await asyncio.wait_for(response_event.wait(), timeout=10.0)
+                    self.logger.debug("Response received for 4000")
+                    success = True
+                    break
+                except asyncio.TimeoutError:
+                    if attempt < MAX_RETRIES - 1:
+                        self.logger.warning("Timeout waiting for inverter response (4000) - retrying...")
+                    else:
+                        self.logger.warning("Timeout waiting for inverter response (4000) after %d attempts", MAX_RETRIES)
+            
+            if not success:
+                await client.disconnect()
+                return False
+
+            # Parse main sensor response
+            parsed_data = {}
+            if response_data:
+                raw_response = b''.join(response_data)
+                self.logger.debug("Inverter raw response (4000): %s", raw_response.hex())
+                
+                # Parse the Modbus response into sensor data
+                parsed_data = self._parse_inverter_response(raw_response)
+
+            # Now read load info from register 4408
+            response_data.clear()
+            response_event.clear()
+            
+            start_register_load = 4408
+            register_count_load = 6  # Load Info: 6 registers
+            
+            payload_load = bytearray()
+            payload_load.append(INVERTER_DEVICE_ID)
+            payload_load.append(function_code)
+            payload_load += struct.pack('>H', start_register_load)
+            payload_load += struct.pack('>H', register_count_load)
+            crc_load = self._crc16_modbus(payload_load)
+            payload_load += struct.pack('<H', crc_load)
+            
+            self.logger.debug("Sending Modbus request for 4408: %s", payload_load.hex())
+            
+            await asyncio.sleep(0.3)  # Small delay between requests
+            await client.write_gatt_char(INVERTER_WRITE_UUID, payload_load, response=False)
+            
+            try:
+                self.logger.debug("Waiting for inverter response (4408)...")
+                await asyncio.wait_for(response_event.wait(), timeout=10.0)
+                self.logger.debug("Response received for 4408")
+            except asyncio.TimeoutError:
+                self.logger.warning("Timeout waiting for inverter response (4408) after 10s")
+                # Continue even if second read fails
+            
+            # Parse load info response
+            if response_data:
+                raw_response_load = b''.join(response_data)
+                self.logger.debug("Inverter raw response (4408): %s", raw_response_load.hex())
+                load_data = self._parse_inverter_load_response(raw_response_load)
+                if load_data:
+                    parsed_data.update(load_data)
+
+            # Read static values only when missing; keep cached values stable across polls
+            if cached_device_id is None:
+                response_data.clear()
+                response_event.clear()
+
+                payload_id = bytearray()
+                payload_id.append(INVERTER_DEVICE_ID)
+                payload_id.append(function_code)
+                payload_id += struct.pack('>H', 4109)  # Device ID register
+                payload_id += struct.pack('>H', 1)  # 1 register
+                crc_id = self._crc16_modbus(payload_id)
+                payload_id += struct.pack('<H', crc_id)
+
+                self.logger.debug("Sending Modbus request for 4109: %s", payload_id.hex())
+
+                await asyncio.sleep(0.3)
+                await client.write_gatt_char(INVERTER_WRITE_UUID, payload_id, response=False)
+
+                try:
+                    self.logger.debug("Waiting for inverter response (4109)...")
+                    await asyncio.wait_for(response_event.wait(), timeout=10.0)
+                    self.logger.debug("Response received for 4109")
+                except asyncio.TimeoutError:
+                    self.logger.warning("Timeout waiting for inverter response (4109) after 10s")
+
+                if response_data:
+                    raw_response_id = b''.join(response_data)
+                    self.logger.debug("Inverter raw response (4109): %s", raw_response_id.hex())
+                    device_id_data = self._parse_device_id_response(raw_response_id)
+                    if device_id_data:
+                        parsed_data.update(device_id_data)
+            else:
+                parsed_data[KEY_INVERTER_DEVICE_ID] = cached_device_id
+
+            if cached_model is None:
+                response_data.clear()
+                response_event.clear()
+
+                payload_model = bytearray()
+                payload_model.append(INVERTER_DEVICE_ID)
+                payload_model.append(function_code)
+                payload_model += struct.pack('>H', 4311)  # Model register
+                payload_model += struct.pack('>H', 8)  # 8 registers (16 bytes for ASCII)
+                crc_model = self._crc16_modbus(payload_model)
+                payload_model += struct.pack('<H', crc_model)
+
+                self.logger.debug("Sending Modbus request for 4311: %s", payload_model.hex())
+
+                await asyncio.sleep(0.3)
+                await client.write_gatt_char(INVERTER_WRITE_UUID, payload_model, response=False)
+
+                try:
+                    self.logger.debug("Waiting for inverter response (4311)...")
+                    await asyncio.wait_for(response_event.wait(), timeout=10.0)
+                    self.logger.debug("Response received for 4311")
+                except asyncio.TimeoutError:
+                    self.logger.warning("Timeout waiting for inverter response (4311) after 10s")
+
+                if response_data:
+                    raw_response_model = b''.join(response_data)
+                    self.logger.debug("Inverter raw response (4311): %s", raw_response_model.hex())
+                    model_data = self._parse_model_response(raw_response_model)
+                    if model_data:
+                        parsed_data.update(model_data)
+            else:
+                parsed_data[KEY_INVERTER_MODEL] = cached_model
+                
+            # Ensure cached static values are always preserved in parsed_data
+            # so diagnostic sensors never go unavailable between polls
+            if cached_device_id is not None and KEY_INVERTER_DEVICE_ID not in parsed_data:
+                parsed_data[KEY_INVERTER_DEVICE_ID] = cached_device_id
+            if cached_model is not None and KEY_INVERTER_MODEL not in parsed_data:
+                parsed_data[KEY_INVERTER_MODEL] = cached_model
+                
+            if parsed_data:
+                device.parsed_data = parsed_data
+                self.logger.debug("Parsed inverter data: %s", parsed_data)
+                await client.disconnect()
+                return True
+
+            await client.disconnect()
+            return False
+
+        except Exception as e:
+            self.logger.error("Error reading inverter data: %s", e, exc_info=True)
+            return False
+
+    def _parse_inverter_response(self, data: bytes) -> dict[str, Any]:
+        """Parse Modbus response from RIV1220PU inverter into sensor values.
+        
+        Reading 32 registers starting from 4000 (validated from test script):
+        - Index 0 = Register 4000 (AC Input Voltage)
+        - Index 1 = Register 4001 (AC Input Current)
+        - Index 2 = Register 4002 (AC Output Voltage)
+        - Index 3 = Register 4003 (AC Output Current)
+        - Index 4 = Register 4004 (AC Output Frequency)
+        - Index 5 = Register 4005 (Battery Voltage)
+        - Index 6 = Register 4006 (Temperature)
+        """
+        from .sensor import (
+            KEY_INVERTER_AC_CURRENT,
+            KEY_INVERTER_AC_FREQUENCY,
+            KEY_INVERTER_AC_VOLTAGE,
+            KEY_INVERTER_BATTERY_VOLTAGE,
+            KEY_INVERTER_INPUT_FREQUENCY,
+            KEY_INVERTER_TEMPERATURE,
+        )
+
+        try:
+            # Skip Modbus header (device ID, function, byte count)
+            if len(data) < 5:
+                self.logger.warning("Inverter response too short: %d bytes", len(data))
+                return {}
+
+            # Extract register values (big-endian 16-bit words)
+            values = []
+            # Start at byte 3 (after device ID, function code, byte count)
+            for i in range(3, len(data) - 2, 2):  # Skip CRC at end
+                if i + 1 < len(data):
+                    value = struct.unpack('>H', data[i:i+2])[0]
+                    values.append(value)
+
+            self.logger.debug("Extracted %d register values", len(values))
+
+            if len(values) < 7:
+                self.logger.warning("Not enough register values: %d", len(values))
+                return {}
+
+            # Map register values to sensors (indices relative to start register 4000)
+            # Based on validated test script discover_and_read_renogy_sensors.py
+            parsed = {
+                KEY_INVERTER_AC_VOLTAGE: values[2] * 0.1 if len(values) > 2 else 0,  # Reg 4002 (index 2) - AC output voltage
+                KEY_INVERTER_AC_CURRENT: values[3] * 0.01 if len(values) > 3 else 0,  # Reg 4003 (index 3) - AC output current
+                KEY_INVERTER_AC_FREQUENCY: values[4] * 0.01 if len(values) > 4 else 0,  # Reg 4004 (index 4) - AC output frequency
+                KEY_INVERTER_BATTERY_VOLTAGE: values[5] * 0.1 if len(values) > 5 else 0,  # Reg 4005 (index 5) - Battery voltage
+                KEY_INVERTER_TEMPERATURE: values[6] * 0.1 if len(values) > 6 else 0,  # Reg 4006 (index 6) - Temperature
+                KEY_INVERTER_INPUT_FREQUENCY: values[9] * 0.01 if len(values) > 9 else 0,  # Reg 4009 (index 9) - Grid frequency
+            }
+
+            return parsed
+
+        except Exception as e:
+            self.logger.error("Error parsing inverter response: %s", e, exc_info=True)
+            return {}
+
+    def _parse_inverter_load_response(self, data: bytes) -> dict[str, Any]:
+        """Parse Modbus response from register 4408 (Load Info) into sensor values."""
+        from .sensor import (
+            KEY_INVERTER_LOAD_ACTIVE_POWER,
+            KEY_INVERTER_LOAD_APPARENT_POWER,
+        )
+
+        try:
+            if len(data) < 5:
+                self.logger.warning("Load response too short: %d bytes", len(data))
+                return {}
+
+            # Extract register values (big-endian 16-bit words)
+            values = []
+            for i in range(3, len(data) - 2, 2):  # Skip header and CRC
+                if i + 1 < len(data):
+                    value = struct.unpack('>H', data[i:i+2])[0]
+                    values.append(value)
+
+            self.logger.debug("Extracted %d load register values", len(values))
+
+            if len(values) < 3:
+                return {}
+
+            # Map load values from register 4408:
+            # Index 0 = Reg 4408 (load_current)
+            # Index 1 = Reg 4409 (load_active_power)
+            # Index 2 = Reg 4410 (load_apparent_power)
+            parsed = {
+                KEY_INVERTER_LOAD_ACTIVE_POWER: values[1] if len(values) > 1 else 0,  # Reg 4409 (index 1) in W
+                KEY_INVERTER_LOAD_APPARENT_POWER: values[2] if len(values) > 2 else 0,  # Reg 4410 (index 2) in VA
+            }
+
+            return parsed
+
+        except Exception as e:
+            self.logger.error("Error parsing load response: %s", e, exc_info=True)
+            return {}
+
+    def _parse_device_id_response(self, data: bytes) -> dict[str, Any]:
+        """Parse Modbus response from register 4109 (Device ID)."""
+        from .sensor import KEY_INVERTER_DEVICE_ID
+
+        try:
+            if len(data) < 5:
+                return {}
+
+            # Extract single register value (big-endian 16-bit word)
+            if len(data) >= 5:
+                device_id = struct.unpack('>H', data[3:5])[0]
+                return {KEY_INVERTER_DEVICE_ID: device_id}
+
+            return {}
+
+        except Exception as e:
+            self.logger.error("Error parsing device ID response: %s", e, exc_info=True)
+            return {}
+
+    def _parse_model_response(self, data: bytes) -> dict[str, Any]:
+        """Parse Modbus response from register 4311 (Model String)."""
+        from .sensor import KEY_INVERTER_MODEL
+
+        try:
+            if len(data) < 5:
+                return {}
+
+            # Extract 8 registers (16 bytes) as ASCII string
+            # Data starts at byte 3, model is 16 bytes
+            if len(data) >= 19:
+                model_bytes = data[3:19]
+                # Decode as ASCII and strip null bytes
+                model_str = model_bytes.decode('ascii', errors='ignore').rstrip('\x00')
+                return {KEY_INVERTER_MODEL: model_str}
+
+            return {}
+
+        except Exception as e:
+            self.logger.error("Error parsing model response: %s", e, exc_info=True)
+            return {}
 
     async def async_write_register(self, register: int, value: int) -> bool:
         """Write a single register value to the device.
