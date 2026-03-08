@@ -106,6 +106,26 @@ KEY_SHUNT_SOC = "shunt_soc"
 KEY_SHUNT_ENERGY = "shunt_energy"
 KEY_SHUNT_STATUS = "shunt_status"
 
+# SHUNT300 extended sensors (available in notify mode / BW110 packets)
+KEY_SHUNT_TEMPERATURE_1 = "temp_1"
+KEY_SHUNT_TEMPERATURE_2 = "temp_2"
+KEY_SHUNT_TEMPERATURE_3 = "temp_3"
+KEY_SHUNT_STARTER_VOLTAGE = "starter_voltage"
+KEY_SHUNT_HIST_1 = "hist_1"
+KEY_SHUNT_HIST_2 = "hist_2"
+KEY_SHUNT_HIST_3 = "hist_3"
+KEY_SHUNT_HIST_4 = "hist_4"
+KEY_SHUNT_HIST_5 = "hist_5"
+KEY_SHUNT_HIST_6 = "hist_6"
+KEY_SHUNT_ADDITIONAL_VALUE = "additional_value"
+KEY_SHUNT_SEQUENCE = "sequence"
+KEY_SHUNT_ESTIMATED_ENERGY = "estimated_energy_kwh"  # Calculated from SOC
+KEY_SHUNT_VERBOSE = "verbose"
+KEY_SHUNT_STATUS_SOURCE = "status_source"
+KEY_SHUNT_ENERGY_SOURCE = "energy_source"
+KEY_SHUNT_DECODE_CONFIDENCE = "decode_confidence"
+KEY_SHUNT_READING_VERIFIED = "reading_verified"
+
 
 @dataclass
 class RenogyBLESensorDescription(SensorEntityDescription):
@@ -170,7 +190,11 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
-        value_fn=lambda data: data.get(KEY_SHUNT_ENERGY),
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_ENERGY)
+            if data.get(KEY_SHUNT_ENERGY) is not None
+            else data.get(KEY_SHUNT_ESTIMATED_ENERGY)  # Fallback to SOC-based estimation
+        ),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_STATUS,
@@ -184,6 +208,164 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
             if data.get(KEY_SHUNT_CURRENT, 0) is not None
             and data.get(KEY_SHUNT_CURRENT, 0) < -0.05
             else "idle"
+        ),
+    ),
+    # Extended sensors - available in notify mode (BW110 packets)
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_1,
+        name="Shunt Temperature 1",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_TEMPERATURE_1),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_2,
+        name="Shunt Temperature 2",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_TEMPERATURE_2),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_3,
+        name="Shunt Temperature 3",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_TEMPERATURE_3),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_STARTER_VOLTAGE,
+        name="Shunt Starter Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_STARTER_VOLTAGE]), 2)
+            if data.get(KEY_SHUNT_STARTER_VOLTAGE) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ESTIMATED_ENERGY,
+        name="Shunt Estimated Energy",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_ESTIMATED_ENERGY),
+    ),
+    # Historical/statistical values (device firmware dependent)
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_1,
+        name="Shunt Historical Value 1",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_1),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_2,
+        name="Shunt Historical Value 2",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_2),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_3,
+        name="Shunt Historical Value 3",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_3),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_4,
+        name="Shunt Historical Value 4",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_4),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_5,
+        name="Shunt Historical Value 5",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_5),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_6,
+        name="Shunt Historical Value 6",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_6),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ADDITIONAL_VALUE,
+        name="Shunt Additional Value",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_ADDITIONAL_VALUE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_SEQUENCE,
+        name="Shunt Packet Sequence",
+        device_class=None,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_SEQUENCE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_VERBOSE,
+        name="Shunt Verbose Mode",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            "enabled"
+            if str(data.get(KEY_SHUNT_VERBOSE, "")).strip().lower()
+            in {"1", "true", "yes", "on"}
+            else "disabled"
+            if str(data.get(KEY_SHUNT_VERBOSE, "")).strip().lower()
+            in {"0", "false", "no", "off"}
+            else "unknown"
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_STATUS_SOURCE,
+        name="Shunt Status Source",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_STATUS_SOURCE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ENERGY_SOURCE,
+        name="Shunt Energy Source",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_ENERGY_SOURCE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_DECODE_CONFIDENCE,
+        name="Shunt Decode Confidence",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_DECODE_CONFIDENCE)
+        or data.get("conf")
+        or "unknown",
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_READING_VERIFIED,
+        name="Shunt Reading Verified",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_READING_VERIFIED)
+            if data.get(KEY_SHUNT_READING_VERIFIED) is not None
+            else data.get("verified")
         ),
     ),
 )
@@ -1258,6 +1440,60 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
             attrs["data_source"] = "device"
         elif self.coordinator.data:
             attrs["data_source"] = "coordinator"
+
+        # Expose shunt-specific metadata that is useful for troubleshooting
+        # and validating parser behavior.
+        if self._device_type == DeviceType.SHUNT300.value:
+            shunt_data = None
+            if self.device and self.device.parsed_data:
+                shunt_data = self.device.parsed_data
+            elif self.coordinator.data:
+                shunt_data = self.coordinator.data
+
+            if shunt_data:
+                # In notify mode, RSSI is usually unavailable. Show a readable value.
+                if "rssi" not in attrs:
+                    attrs["rssi"] = "N/A"
+
+                verbose_value = shunt_data.get(KEY_SHUNT_VERBOSE)
+                if verbose_value is not None:
+                    verbose_normalized = str(verbose_value).strip().lower()
+                    attrs["verbose_mode"] = (
+                        "enabled"
+                        if verbose_normalized in {"1", "true", "yes", "on"}
+                        else "disabled"
+                        if verbose_normalized in {"0", "false", "no", "off"}
+                        else "unknown"
+                    )
+
+                status_source = shunt_data.get(KEY_SHUNT_STATUS_SOURCE)
+                if status_source is None:
+                    current_value = shunt_data.get(KEY_SHUNT_CURRENT)
+                    status_source = (
+                        "derived_current" if current_value is not None else "unknown"
+                    )
+                attrs["status_source"] = status_source
+
+                energy_source = shunt_data.get(KEY_SHUNT_ENERGY_SOURCE)
+                if energy_source is None:
+                    if shunt_data.get(KEY_SHUNT_ENERGY) is not None:
+                        energy_source = "decoded"
+                    elif shunt_data.get(KEY_SHUNT_ESTIMATED_ENERGY) is not None:
+                        energy_source = "estimated_soc"
+                    else:
+                        energy_source = "unavailable"
+                attrs["energy_source"] = energy_source
+
+                attrs["decode_confidence"] = (
+                    shunt_data.get(KEY_SHUNT_DECODE_CONFIDENCE)
+                    or shunt_data.get("conf")
+                    or "unknown"
+                )
+                reading_verified = shunt_data.get(KEY_SHUNT_READING_VERIFIED)
+                if reading_verified is None:
+                    reading_verified = shunt_data.get("verified")
+                if reading_verified is not None:
+                    attrs["reading_verified"] = reading_verified
 
         # Expose raw shunt payload details for troubleshooting.
         if (
