@@ -1090,32 +1090,17 @@ async def async_setup_entry(
     device_type = config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
     LOGGER.debug("Setting up sensors for device type: %s", device_type)
 
-    # Try to wait for a real device name before creating entities.
-    # This helps ensure entity IDs will match the real device name
-    if not coordinator.device or not is_device_name_ready(
+    # Create entities immediately without blocking startup.
+    # Entity names and IDs will update dynamically when the coordinator
+    # successfully polls the device for the first time.
+    if coordinator.device and is_device_name_ready(
         coordinator.device.name, device_type
     ):
-        LOGGER.debug("Waiting for real device name before creating entities...")
-        # Force an immediate refresh to try getting device info.
-        await coordinator.async_request_refresh()
-
-        # Wait for a short time to see if we can get the real device name
-        # We'll wait up to 10 seconds, checking every second
-        real_name_found = False
-        for _ in range(10):
-            await asyncio.sleep(1)
-            if coordinator.device and is_device_name_ready(
-                coordinator.device.name, device_type
-            ):
-                LOGGER.debug("Real device name found: %s", coordinator.device.name)
-                real_name_found = True
-                break
-
-        if not real_name_found:
-            LOGGER.debug(
-                "No real device name found after waiting. "
-                "Using generic name for entities."
-            )
+        LOGGER.debug("Device name already available: %s", coordinator.device.name)
+    else:
+        LOGGER.debug(
+            "Creating entities with generic name; will update after first poll"
+        )
 
     # Now create entities with the best name we have
     if coordinator.device and (

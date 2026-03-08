@@ -72,27 +72,17 @@ async def async_setup_entry(
         )
         return
 
-    if not coordinator.device or not is_device_name_ready(
+    # Create switch immediately without blocking startup.
+    # Entity names and IDs will update dynamically when the coordinator
+    # successfully polls the device for the first time.
+    if coordinator.device and is_device_name_ready(
         coordinator.device.name, device_type
     ):
-        LOGGER.debug("Waiting for real device name before creating switches...")
-        await coordinator.async_request_refresh()
-
-        real_name_found = False
-        for _ in range(10):
-            await asyncio.sleep(1)
-            if coordinator.device and is_device_name_ready(
-                coordinator.device.name, device_type
-            ):
-                LOGGER.debug("Real device name found: %s", coordinator.device.name)
-                real_name_found = True
-                break
-
-        if not real_name_found:
-            LOGGER.debug(
-                "No real device name found after waiting. "
-                "Using generic name for entities."
-            )
+        LOGGER.debug("Device name already available: %s", coordinator.device.name)
+    else:
+        LOGGER.debug(
+            "Creating switch with generic name; will update after first poll"
+        )
 
     device = coordinator.device if coordinator.device else None
     async_add_entities([RenogyLoadSwitch(coordinator, device, device_type)])
