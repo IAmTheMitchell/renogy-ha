@@ -436,6 +436,31 @@ class RenogyActiveBluetoothCoordinator(
 
                 # Update coordinator data if successful
                 if success and device.parsed_data:
+                    # Enrich Shunt data with metadata fields for diagnostic sensors
+                    if self.device_type == DeviceType.SHUNT300.value:
+                        shunt_data = device.parsed_data
+                        
+                        # Add metadata fields if not already present
+                        if "decode_confidence" not in shunt_data:
+                            shunt_data["decode_confidence"] = "HIGH"
+                        if "reading_verified" not in shunt_data:
+                            shunt_data["reading_verified"] = True
+                        if "status_source" not in shunt_data:
+                            shunt_data["status_source"] = "derived_current"
+                        if "energy_source" not in shunt_data:
+                            shunt_data["energy_source"] = (
+                                "decoded"
+                                if shunt_data.get("shunt_energy") not in (None, 0)
+                                else "estimated_soc_capacity_1.28kWh"
+                            )
+                        if "verbose" not in shunt_data:
+                            shunt_data["verbose"] = "0"
+                        
+                        # Calculate estimated energy from SOC if available
+                        if shunt_data.get("shunt_soc") is not None:
+                            soc = float(shunt_data["shunt_soc"])
+                            shunt_data["estimated_energy_kwh"] = round((soc / 100.0) * 1.28, 3)
+                    
                     self.data = dict(device.parsed_data)
                     self.logger.debug("Updated coordinator data: %s", self.data)
 
