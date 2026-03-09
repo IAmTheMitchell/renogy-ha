@@ -9,7 +9,14 @@ from datetime import datetime, timedelta
 from types import ModuleType
 from typing import Any, Awaitable, Callable, Optional, cast
 
-from bleak import BleakClient, BleakError
+try:
+    from bleak import BleakClient, BleakError
+except ImportError:
+    # Test environments may stub bleak without exposing BleakClient.
+    class BleakClient:  # type: ignore[no-redef]
+        """Fallback BleakClient placeholder for import-time compatibility."""
+
+    from bleak import BleakError
 try:
     from bleak_retry_connector import establish_connection
 except ImportError:
