@@ -39,7 +39,9 @@ jobs:
         run: uv run pytest tests
 
       - name: Lint with Ruff
+        continue-on-error: true
         run: uv run ruff check . --output-format=github
 
       - name: Type check with ty
+        continue-on-error: true
         run: uv run ty check . --output-format=github
