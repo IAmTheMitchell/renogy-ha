@@ -169,10 +169,15 @@ else:
     create_modbus_write_request = None
     HAS_WRITE_SUPPORT = False
 
-# Import ShuntBleClient from local shunt_ble module (since renogy-ble doesn't support Shunt yet).
+# Check if Shunt300 support is available in the library.
 try:
-    from .shunt_ble import ShuntBleClient as shunt_client_class
+    renogy_ble_shunt: ModuleType | None = importlib.import_module("renogy_ble.shunt")
 except ImportError:
+    renogy_ble_shunt = None
+
+if renogy_ble_shunt is not None:
+    shunt_client_class = getattr(renogy_ble_shunt, "ShuntBleClient", None)
+else:
     shunt_client_class = None
 
 # Check if inverter support is available in the library.
