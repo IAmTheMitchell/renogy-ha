@@ -441,6 +441,23 @@ class RenogyActiveBluetoothCoordinator(
                 device.update_availability(success, error)
                 self.last_update_success = success
 
+                # Shunt reads can fail transiently (e.g., characteristic discovery races)
+                # even when the device is still healthy. Keep last-known values available
+                # instead of flipping entities to unavailable on single read failures.
+                if (
+                    self.device_type == DeviceType.SHUNT300.value
+                    and not success
+                    and device.parsed_data
+                ):
+                    self.logger.debug(
+                        "Shunt read failed for %s, using cached data and preserving availability",
+                        device.address,
+                    )
+                    device.update_availability(True, None)
+                    self.last_update_success = True
+                    success = True
+                    error = None
+
                 # Update coordinator data if successful
                 if success and device.parsed_data:
                     # Enrich Shunt data with metadata fields for diagnostic sensors
