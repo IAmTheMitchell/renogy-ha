@@ -123,6 +123,10 @@ class InverterRegister:
 # Inverter BLE UUIDs (specific to RNGRIU models)
 INVERTER_WRITE_UUID = "0000ffd1-0000-1000-8000-00805f9b34fb"
 INVERTER_NOTIFY_UUID = "0000fff1-0000-1000-8000-00805f9b34fb"
+
+# Shunt300 uses the same UUIDs as inverter (standard Renogy BLE)
+SHUNT_WRITE_UUID = "0000ffd1-0000-1000-8000-00805f9b34fb"
+SHUNT_NOTIFY_UUID = "0000fff1-0000-1000-8000-00805f9b34fb"
 INVERTER_INIT_UUID = "0000ffd4-0000-1000-8000-00805f9b34fb"
 
 # Inverter device ID (Modbus address)

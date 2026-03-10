@@ -41,14 +41,35 @@ from .const import (
     RENOGY_INVERTER_PREFIX,
     DeviceType,
 )
-from .device_name import is_device_name_ready
 
-# Some test stubs and older HA builds may not expose these device classes.
-SENSOR_DEVICE_CLASS_FREQUENCY = getattr(SensorDeviceClass, "FREQUENCY", None)
-SENSOR_DEVICE_CLASS_APPARENT_POWER = getattr(
-    SensorDeviceClass, "APPARENT_POWER", None
-)
-SENSOR_DEVICE_CLASS_POWER_FACTOR = getattr(SensorDeviceClass, "POWER_FACTOR", None)
+UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
+SHUNT300_BT_PREFIX = "RTMShunt300"
+
+
+def _shunt_word_value(data: Dict[str, Any], index: int, scale: float = 1000.0) -> float | None:
+    """Return scaled value from shunt raw_words at index when available."""
+    raw_words = data.get("raw_words")
+    if not isinstance(raw_words, list) or index >= len(raw_words):
+        return None
+    return round(float(raw_words[index]) / scale, 3)
+
+
+def _expected_prefix_for_device_type(device_type: str) -> str:
+    """Return expected BLE name prefix for a given device type."""
+    if device_type == DeviceType.SHUNT300.value:
+        return SHUNT300_BT_PREFIX
+    if device_type == DeviceType.INVERTER.value:
+        return RENOGY_INVERTER_PREFIX
+    return RENOGY_BT_PREFIX
+
+
+def is_device_name_ready(device_name: str | None, device_type: str) -> bool:
+    """Return True when the device name is present and matches expected prefix."""
+    if not isinstance(device_name, str):
+        return False
+    if not device_name or device_name.startswith(UNKNOWN_DEVICE_NAME_PREFIX):
+        return False
+    return device_name.startswith(_expected_prefix_for_device_type(device_type))
 
 # Registry of sensor keys
 KEY_BATTERY_VOLTAGE = "battery_voltage"
@@ -117,7 +138,7 @@ KEY_SHUNT_STATUS = "shunt_status"
 KEY_SHUNT_TEMPERATURE_1 = "temp_1"
 KEY_SHUNT_TEMPERATURE_2 = "temp_2"
 KEY_SHUNT_TEMPERATURE_3 = "temp_3"
-KEY_SHUNT_STARTER_VOLTAGE = "starter_voltage"
+KEY_SHUNT_STARTER_VOLTAGE = "starter_battery_voltage"
 KEY_SHUNT_HIST_1 = "hist_1"
 KEY_SHUNT_HIST_2 = "hist_2"
 KEY_SHUNT_HIST_3 = "hist_3"
@@ -196,7 +217,7 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="Shunt Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.TOTAL,
         value_fn=lambda data: (
             data.get(KEY_SHUNT_ENERGY)
             if data.get(KEY_SHUNT_ENERGY) is not None
@@ -209,11 +230,11 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=None,
         value_fn=lambda data: (
             "charging"
-            if data.get(KEY_SHUNT_CURRENT, 0) is not None
-            and data.get(KEY_SHUNT_CURRENT, 0) > 0.05
+            if data.get(KEY_SHUNT_CURRENT) is not None
+            and data.get(KEY_SHUNT_CURRENT) > 0.05
             else "discharging"
-            if data.get(KEY_SHUNT_CURRENT, 0) is not None
-            and data.get(KEY_SHUNT_CURRENT, 0) < -0.05
+            if data.get(KEY_SHUNT_CURRENT) is not None
+            and data.get(KEY_SHUNT_CURRENT) < -0.05
             else "idle"
         ),
     ),
@@ -225,7 +246,13 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_TEMPERATURE_1),
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_TEMPERATURE_1]), 1)
+            if data.get(KEY_SHUNT_TEMPERATURE_1) is not None
+            else round(float(data["battery_temperature"]), 1)
+            if data.get("battery_temperature") is not None
+            else None
+        ),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_TEMPERATURE_2,
@@ -234,7 +261,11 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_TEMPERATURE_2),
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_TEMPERATURE_2)
+            if data.get(KEY_SHUNT_TEMPERATURE_2) is not None
+            else _shunt_word_value(data, 38)
+        ),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_TEMPERATURE_3,
@@ -243,7 +274,11 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_TEMPERATURE_3),
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_TEMPERATURE_3)
+            if data.get(KEY_SHUNT_TEMPERATURE_3) is not None
+            else _shunt_word_value(data, 40)
+        ),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_STARTER_VOLTAGE,
@@ -264,7 +299,7 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="Shunt Estimated Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.TOTAL,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: data.get(KEY_SHUNT_ESTIMATED_ENERGY),
     ),
@@ -274,57 +309,68 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="Shunt Historical Value 1",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_HIST_1),
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_1) or _shunt_word_value(data, 42),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_HIST_2,
         name="Shunt Historical Value 2",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_HIST_2),
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_2) or _shunt_word_value(data, 44),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_HIST_3,
         name="Shunt Historical Value 3",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_HIST_3),
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_3) or _shunt_word_value(data, 46),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_HIST_4,
         name="Shunt Historical Value 4",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_HIST_4),
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_4) or _shunt_word_value(data, 48),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_HIST_5,
         name="Shunt Historical Value 5",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_HIST_5),
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_5) or _shunt_word_value(data, 50),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_HIST_6,
         name="Shunt Historical Value 6",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_HIST_6),
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_6) or _shunt_word_value(data, 52),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_ADDITIONAL_VALUE,
         name="Shunt Additional Value",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_ADDITIONAL_VALUE),
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_ADDITIONAL_VALUE)
+            if data.get(KEY_SHUNT_ADDITIONAL_VALUE) is not None
+            else _shunt_word_value(data, 53)
+            or _shunt_word_value(data, 34)
+        ),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_SEQUENCE,
         name="Shunt Packet Sequence",
         device_class=None,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_SEQUENCE),
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_SEQUENCE)
+            if data.get(KEY_SHUNT_SEQUENCE) is not None
+            else int(data["raw_words"][-1])
+            if isinstance(data.get("raw_words"), list) and data.get("raw_words")
+            else None
+        ),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_VERBOSE,
@@ -921,7 +967,7 @@ INVERTER_AC_OUTPUT_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         key=KEY_INVERTER_AC_FREQUENCY,
         name="Inverter AC Output Frequency",
         native_unit_of_measurement="Hz",
-        device_class=SENSOR_DEVICE_CLASS_FREQUENCY,
+        device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
         value_fn=lambda data: data.get(KEY_INVERTER_AC_FREQUENCY),
@@ -930,7 +976,7 @@ INVERTER_AC_OUTPUT_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         key=KEY_INVERTER_INPUT_FREQUENCY,
         name="Inverter AC Input Frequency",
         native_unit_of_measurement="Hz",
-        device_class=SENSOR_DEVICE_CLASS_FREQUENCY,
+        device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
         value_fn=lambda data: data.get(KEY_INVERTER_INPUT_FREQUENCY),
@@ -947,7 +993,7 @@ INVERTER_AC_OUTPUT_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         key=KEY_INVERTER_LOAD_APPARENT_POWER,
         name="Inverter Load Apparent Power",
         native_unit_of_measurement="VA",
-        device_class=SENSOR_DEVICE_CLASS_APPARENT_POWER,
+        device_class=SensorDeviceClass.APPARENT_POWER,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: data.get(KEY_INVERTER_LOAD_APPARENT_POWER),
     ),
@@ -955,7 +1001,7 @@ INVERTER_AC_OUTPUT_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         key=KEY_INVERTER_LOAD_PERCENTAGE,
         name="Inverter Load Percentage",
         native_unit_of_measurement=PERCENTAGE,
-        device_class=SENSOR_DEVICE_CLASS_POWER_FACTOR,
+        device_class=SensorDeviceClass.POWER_FACTOR,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
         value_fn=lambda data: (
@@ -1044,32 +1090,17 @@ async def async_setup_entry(
     device_type = config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
     LOGGER.debug("Setting up sensors for device type: %s", device_type)
 
-    # Try to wait for a real device name before creating entities.
-    # This helps ensure entity IDs will match the real device name
-    if not coordinator.device or not is_device_name_ready(
+    # Create entities immediately without blocking startup.
+    # Entity names and IDs will update dynamically when the coordinator
+    # successfully polls the device for the first time.
+    if coordinator.device and is_device_name_ready(
         coordinator.device.name, device_type
     ):
-        LOGGER.debug("Waiting for real device name before creating entities...")
-        # Force an immediate refresh to try getting device info.
-        await coordinator.async_request_refresh()
-
-        # Wait for a short time to see if we can get the real device name
-        # We'll wait up to 10 seconds, checking every second
-        real_name_found = False
-        for _ in range(10):
-            await asyncio.sleep(1)
-            if coordinator.device and is_device_name_ready(
-                coordinator.device.name, device_type
-            ):
-                LOGGER.debug("Real device name found: %s", coordinator.device.name)
-                real_name_found = True
-                break
-
-        if not real_name_found:
-            LOGGER.debug(
-                "No real device name found after waiting. "
-                "Using generic name for entities."
-            )
+        LOGGER.debug("Device name already available: %s", coordinator.device.name)
+    else:
+        LOGGER.debug(
+            "Creating entities with generic name; will update after first poll"
+        )
 
     # Now create entities with the best name we have
     if coordinator.device and (

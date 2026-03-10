@@ -17,7 +17,15 @@ from .const import (
     DeviceType,
     LOGGER,
 )
-from .device_name import has_real_device_name
+
+UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
+
+
+def has_real_device_name(device_name: str | None) -> bool:
+    """Return True when the provided name is usable and not a placeholder."""
+    if not isinstance(device_name, str):
+        return False
+    return bool(device_name) and not device_name.startswith(UNKNOWN_DEVICE_NAME_PREFIX)
 
 # List of platforms this integration supports
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]

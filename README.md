@@ -16,6 +16,7 @@ Tested:
 - Renogy Rover
 - Renogy Wanderer
 - Renogy DC-DC Charger
+- Renogy Smart Shunt 300
 
 Should work, but untested:
 
