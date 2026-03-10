@@ -5,7 +5,10 @@
 ![HACS](https://github.com/IAmTheMitchell/renogy-ha/actions/workflows/validate.yml/badge.svg)
 ![Release](https://github.com/IAmTheMitchell/renogy-ha/actions/workflows/release.yml/badge.svg)
 
-This custom Home Assistant integration provides monitoring capabilities for Renogy devices via Bluetooth Low Energy (BLE) connection with BT-1 and BT-2 modules.
+This custom Home Assistant integration provides monitoring capabilities for
+Renogy devices over Bluetooth Low Energy (BLE). Charge controllers and DCC
+chargers use BT-1 or BT-2 modules; Smart Shunt 300 devices advertise directly
+over BLE as `RTMShunt300*`.
 
 > **Disclaimer:** This integration is experimental software. Use caution when controlling electrical loads, and ensure any connected equipment is properly rated and protected.
 
@@ -25,9 +28,11 @@ Should work, but untested:
 ## Features
 
 - Automatic discovery of Renogy BLE devices
+- Automatic discovery of Smart Shunt 300 devices advertising `RTMShunt300*`
 - Monitor battery status (voltage, current, temperature, charge state)
 - Monitor solar panel (PV) performance metrics
 - Monitor load status and statistics
+- Monitor Smart Shunt voltage, current, power, state of charge, and derived energy
 - Turn the DC load output on/off (supported controllers only)
 - Monitor controller information
 - All data exposed as Home Assistant sensors
@@ -45,8 +50,10 @@ Should work, but untested:
 
 _Includes Amazon affiliate links which provide a small commission to support this project._
 
-- Compatible Renogy device (see above) with [BT-1](https://amzn.to/4pq4csm) or [BT-2](https://amzn.to/4iTNSO8) Bluetooth module
-  - Make sure to purchase the correct module for your device! Different devices use different ports.
+- Compatible Renogy device (see above)
+  - Charge controllers and DCC chargers require a [BT-1](https://amzn.to/4pq4csm) or [BT-2](https://amzn.to/4iTNSO8) Bluetooth module.
+  - Smart Shunt 300 devices use their built-in BLE radio and do not require a BT-1 or BT-2 dongle.
+  - Make sure to purchase the correct module for your device. Different devices use different ports.
 - Bluetooth radio for Home Assistant
   - [ESP32 for Bluetooth proxy](https://amzn.to/4lSBHkV) (Recommended)
   - [USB Bluetooth adapter](https://amzn.to/4lsxDrU)
@@ -119,6 +126,17 @@ Some Renogy charge controllers expose a controllable DC load output. This integr
 - Device Information
 - Operating Status
 
+### Smart Shunt Sensors
+
+- Shunt Voltage
+- Shunt Current
+- Shunt Power
+- Shunt State of Charge
+- Shunt Charge Status
+- Shunt Energy
+
+> **Caution:** Shunt support is experimental.
+
 All sensors are automatically added to Home Assistant's Energy Dashboard where applicable.
 
 ## Troubleshooting
@@ -134,10 +152,12 @@ It can be extremely helpful to enable debug logging when troubleshooting issues.
 
 ### Device Not Found
 
-1. Verify your Renogy device has a BT-1 or BT-2 module installed
-2. Check that Bluetooth is enabled on your Home Assistant host
-3. Ensure the device is within range (typically 10m/33ft)
-4. Restart the Bluetooth adapter
+1. Verify the device is supported by this integration
+2. For controllers or DCC chargers, confirm a BT-1 or BT-2 module is installed
+3. For Smart Shunt 300 devices, confirm the BLE name starts with `RTMShunt300`
+4. Check that Bluetooth is enabled on your Home Assistant host
+5. Ensure the device is within range (typically 10m/33ft)
+6. Restart the Bluetooth adapter
 
 ### Connection Issues
 
@@ -152,6 +172,7 @@ It can be extremely helpful to enable debug logging when troubleshooting issues.
 - Verify your device firmware is up to date
 - Check the Renogy app to compare readings
 - Note that some values (like daily totals) reset at midnight
+- Smart Shunt energy is integration-derived rather than read directly from the device
 
 ## Support
 
