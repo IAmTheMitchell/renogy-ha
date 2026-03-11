@@ -6,21 +6,9 @@ import logging
 import traceback
 from datetime import datetime, timedelta
 from types import ModuleType
-from typing import Any, Callable, Optional, cast
+from typing import Any, Awaitable, Callable, Optional, cast
 
-try:
-    from bleak import BleakClient, BleakError
-except ImportError:
-    # Test environments may stub bleak without exposing BleakClient.
-    class BleakClient:  # type: ignore[no-redef]
-        """Fallback BleakClient placeholder for import-time compatibility."""
-
-    from bleak import BleakError
-try:
-    from bleak_retry_connector import establish_connection
-except ImportError:
-    establish_connection = None
-
+from bleak import BleakError
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothChange,
@@ -35,11 +23,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble import ble as renogy_ble_module
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
-from .const import (
-    DEFAULT_DEVICE_TYPE,
-    DEFAULT_SCAN_INTERVAL,
-    DeviceType,
-)
+from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, DeviceType
 from .device_name import detect_device_type_from_ble_name, has_real_device_name
 
 # Check if write_register is available in the library.
@@ -57,7 +41,6 @@ else:
     create_modbus_write_request = None
     HAS_WRITE_SUPPORT = False
 
-# Check if Shunt300 support is available in the library.
 try:
     renogy_ble_shunt: ModuleType | None = importlib.import_module("renogy_ble.shunt")
 except ImportError:
@@ -68,19 +51,6 @@ if renogy_ble_shunt is not None:
 else:
     shunt_client_class = None
 
-# Check if inverter support is available in the library.
-try:
-    renogy_ble_inverter: ModuleType | None = importlib.import_module(
-        "renogy_ble.inverter"
-    )
-except ImportError:
-    renogy_ble_inverter = None
-
-if renogy_ble_inverter is not None:
-    inverter_client_class = getattr(renogy_ble_inverter, "InverterBleClient", None)
-else:
-    inverter_client_class = None
-
 LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 
 
@@ -88,8 +58,6 @@ class RenogyActiveBluetoothCoordinator(
     ActiveBluetoothDataUpdateCoordinator[dict[str, Any]]
 ):
     """Class to manage fetching Renogy BLE data via active connections."""
-
-    _global_connection_lock: asyncio.Lock | None = None
 
     def __init__(
         self,
@@ -135,26 +103,6 @@ class RenogyActiveBluetoothCoordinator(
         # Add connection lock to prevent multiple concurrent connections
         self._connection_lock = asyncio.Lock()
         self._connection_in_progress = False
-        self._startup_time = (
-            datetime.now()
-        )  # Track initialization time for startup stabilization
-
-        if RenogyActiveBluetoothCoordinator._global_connection_lock is None:
-            RenogyActiveBluetoothCoordinator._global_connection_lock = asyncio.Lock()
-
-    def _build_ble_client_for_type(self, device_type: str) -> RenogyBleClient:
-        """Build a BLE client suitable for the configured device type."""
-        scanner = bluetooth.async_get_scanner(self.hass)
-        if device_type == DeviceType.SHUNT300.value and shunt_client_class is not None:
-            return cast(RenogyBleClient, shunt_client_class())
-
-        if device_type == DeviceType.SHUNT300.value:
-            self.logger.warning(
-                "ShuntBleClient not available in installed renogy-ble; "
-                "falling back to RenogyBleClient for %s",
-                self.address,
-            )
-        return RenogyBleClient(scanner=scanner)
 
     def _build_ble_client_for_type(self, device_type: str) -> RenogyBleClient:
         """Build a BLE client suitable for the configured device type."""
@@ -407,118 +355,47 @@ class RenogyActiveBluetoothCoordinator(
 
     async def _read_device_data(self, service_info: BluetoothServiceInfoBleak) -> bool:
         """Read data from a Renogy BLE device using active connection."""
-        global_lock = RenogyActiveBluetoothCoordinator._global_connection_lock
-        if global_lock is None:
-            global_lock = asyncio.Lock()
-            RenogyActiveBluetoothCoordinator._global_connection_lock = global_lock
+        async with self._connection_lock:
+            try:
+                self._connection_in_progress = True
+                success = False
+                error: Exception | None = None
+                device = self._update_device_from_service_info(service_info)
+                self.logger.debug(
+                    "Polling %s device: %s (%s)",
+                    device.device_type,
+                    device.name,
+                    device.address,
+                )
 
-        async with global_lock:
-            async with self._connection_lock:
                 try:
-                    self._connection_in_progress = True
+                    read_result = await self._ble_client.read_device(device)
+                except (BleakError, asyncio.TimeoutError) as err:
                     success = False
-                    error: Exception | None = None
-                    device = self._update_device_from_service_info(service_info)
+                    error = err
                     self.logger.debug(
-                        "Polling %s device: %s (%s)",
-                        device.device_type,
-                        device.name,
+                        "BLE read failed for %s: %s",
                         device.address,
+                        err,
                     )
+                else:
+                    success = read_result.success
+                    error = read_result.error
+                    if error is not None and not isinstance(error, Exception):
+                        error = Exception(str(error))
 
-                    # Check if this is an inverter - use custom reading logic
-                    if self.device_type == DeviceType.INVERTER.value:
-                        self.logger.debug("Using inverter-specific BLE reading")
-                        try:
-                            success = await self._read_inverter_data(service_info)
-                            error = (
-                                None if success else Exception("Inverter read failed")
-                            )
-                        except Exception as err:
-                            success = False
-                            error = err
-                            self.logger.debug(
-                                "Inverter read failed for %s: %s",
-                                device.address,
-                                err,
-                            )
-                    else:
-                        # Use standard renogy_ble library for controllers/DCC
-                        try:
-                            read_result = await self._ble_client.read_device(device)
-                        except (BleakError, asyncio.TimeoutError) as err:
-                            success = False
-                            error = err
-                            self.logger.debug(
-                                "BLE read failed for %s: %s",
-                                device.address,
-                                err,
-                            )
-                        else:
-                            success = read_result.success
-                            error = read_result.error
-                            if error is not None and not isinstance(error, Exception):
-                                error = Exception(str(error))
+                # Always update the device availability and last_update_success
+                device.update_availability(success, error)
+                self.last_update_success = success
 
-                    # Always update the device availability and last_update_success
-                    device.update_availability(success, error)
-                    self.last_update_success = success
+                # Update coordinator data if successful
+                if success and device.parsed_data:
+                    self.data = dict(device.parsed_data)
+                    self.logger.debug("Updated coordinator data: %s", self.data)
 
-                    # Shunt reads can fail transiently (e.g.,
-                    # characteristic discovery races)
-                    # even when the device is still healthy.
-                    # Keep last-known values available
-                    # instead of flipping entities to unavailable
-                    # on single read failures.
-                    if (
-                        self.device_type == DeviceType.SHUNT300.value
-                        and not success
-                        and device.parsed_data
-                    ):
-                        self.logger.debug(
-                            "Shunt read failed for %s, using cached data and "
-                            "preserving availability",
-                            device.address,
-                        )
-                        device.update_availability(True, None)
-                        self.last_update_success = True
-                        success = True
-
-                    # Update coordinator data if successful
-                    if success and device.parsed_data:
-                        # Enrich Shunt data with metadata fields for diagnostic sensors
-                        if self.device_type == DeviceType.SHUNT300.value:
-                            shunt_data = device.parsed_data
-
-                            # Add metadata fields if not already present
-                            if "decode_confidence" not in shunt_data:
-                                shunt_data["decode_confidence"] = "HIGH"
-                            if "reading_verified" not in shunt_data:
-                                shunt_data["reading_verified"] = True
-                            if "status_source" not in shunt_data:
-                                shunt_data["status_source"] = "derived_current"
-                            if "energy_source" not in shunt_data:
-                                shunt_data["energy_source"] = (
-                                    "decoded"
-                                    if shunt_data.get("shunt_energy") not in (None, 0)
-                                    else "estimated_soc_capacity_1.28kWh"
-                                )
-                            if "verbose" not in shunt_data:
-                                shunt_data["verbose"] = "0"
-
-                            # Calculate estimated energy from SOC if available
-                            if shunt_data.get("shunt_soc") is not None:
-                                soc = float(shunt_data["shunt_soc"])
-                                shunt_data["estimated_energy_kwh"] = round(
-                                    (soc / 100.0) * 1.28, 3
-                                )
-
-                        self.data = dict(device.parsed_data)
-                        self.logger.debug("Updated coordinator data: %s", self.data)
-
-                    return success
-                finally:
-                    self._connection_in_progress = False
+                return success
+            finally:
+                self._connection_in_progress = False
 
     async def async_set_load_state(self, state: bool) -> bool:
         """Set the DC load on/off."""
@@ -535,47 +412,41 @@ class RenogyActiveBluetoothCoordinator(
             )
             return False
 
-        global_lock = RenogyActiveBluetoothCoordinator._global_connection_lock
-        if global_lock is None:
-            global_lock = asyncio.Lock()
-            RenogyActiveBluetoothCoordinator._global_connection_lock = global_lock
-
-        async with global_lock:
-            async with self._connection_lock:
-                self._connection_in_progress = True
-                try:
-                    device = self._update_device_from_service_info(service_info)
-                    value = 1 if state else 0
-                    write_single_register = getattr(
-                        self._ble_client, "write_single_register", None
+        async with self._connection_lock:
+            self._connection_in_progress = True
+            try:
+                device = self._update_device_from_service_info(service_info)
+                value = 1 if state else 0
+                write_single_register = getattr(
+                    self._ble_client, "write_single_register", None
+                )
+                if write_single_register is None:
+                    self.logger.error(
+                        "Renogy BLE library does not support write_single_register"
                     )
-                    if write_single_register is None:
-                        self.logger.error(
-                            "Renogy BLE library does not support write_single_register"
-                        )
-                        device.update_availability(False, None)
-                        self.last_update_success = False
-                        return False
+                    device.update_availability(False, None)
+                    self.last_update_success = False
+                    return False
 
-                    write_result = await write_single_register(
-                        device, LOAD_CONTROL_REGISTER, value
-                    )
-                    device.update_availability(write_result.success, write_result.error)
-                    self.last_update_success = write_result.success
+                write_result = await write_single_register(
+                    device, LOAD_CONTROL_REGISTER, value
+                )
+                device.update_availability(write_result.success, write_result.error)
+                self.last_update_success = write_result.success
 
-                    if write_result.success:
-                        load_state = "on" if state else "off"
-                        if device.parsed_data is not None:
-                            device.parsed_data["load_status"] = load_state
-                        if isinstance(self.data, dict):
-                            self.data["load_status"] = load_state
-                        else:
-                            self.data = {"load_status": load_state}
-                        self.async_update_listeners()
+                if write_result.success:
+                    load_state = "on" if state else "off"
+                    if device.parsed_data is not None:
+                        device.parsed_data["load_status"] = load_state
+                    if isinstance(self.data, dict):
+                        self.data["load_status"] = load_state
+                    else:
+                        self.data = {"load_status": load_state}
+                    self.async_update_listeners()
 
-                    return write_result.success
-                finally:
-                    self._connection_in_progress = False
+                return write_result.success
+            finally:
+                self._connection_in_progress = False
 
     async def _async_poll_device(
         self, service_info: BluetoothServiceInfoBleak
@@ -618,19 +489,6 @@ class RenogyActiveBluetoothCoordinator(
         self, service_info: BluetoothServiceInfoBleak
     ) -> None:
         """Handle the device going unavailable."""
-        # Don't mark as unavailable if we've successfully polled recently
-        # (device disconnects after active reads, which is normal)
-        if self.last_update_success and self.last_poll_time:
-            time_since_poll = (datetime.now() - self.last_poll_time).total_seconds()
-            if time_since_poll < self.scan_interval * 2:
-                self.logger.debug(
-                    "Device %s BLE unavailable but last poll was %ds ago (successful), "
-                    "keeping status",
-                    service_info.address,
-                    time_since_poll,
-                )
-                return
-
         self.logger.info("Device %s is no longer available", service_info.address)
         self.last_update_success = False
         self.async_update_listeners()
@@ -647,82 +505,47 @@ class RenogyActiveBluetoothCoordinator(
             self.device.rssi = service_info.advertisement.rssi
             self.device.last_seen = datetime.now()
 
-    def _crc16_modbus(self, data: bytes) -> int:
-        """Calculate Modbus CRC-16."""
-        crc = 0xFFFF
-        for byte in data:
-            crc ^= byte
-            for _ in range(8):
-                if crc & 0x0001:
-                    crc = (crc >> 1) ^ 0xA001
-                else:
-                    crc >>= 1
-        return crc
-
-    async def _read_inverter_data(
-        self, service_info: BluetoothServiceInfoBleak
-    ) -> bool:
-        """Read data from Renogy inverter using renogy-ble public API only."""
-        device = self.device
-        if not device or inverter_client_class is None:
-            self.logger.error("Inverter client class not available or device missing.")
-            return False
-
-        try:
-            # Use the upstream renogy-ble inverter client for all BLE/Modbus operations
-            try:
-                inverter_client = inverter_client_class(
-                    scanner=bluetooth.async_get_scanner(self.hass)
-                )
-            except TypeError:
-                inverter_client = inverter_client_class()
-
-            read_result = await inverter_client.read_device(device)
-            if read_result.success and read_result.parsed_data:
-                device.parsed_data = dict(read_result.parsed_data)
-                self.logger.debug("Parsed inverter data: %s", device.parsed_data)
-                return True
-            else:
-                self.logger.warning("Inverter read_device did not return data.")
-                return False
-        except Exception as e:
-            self.logger.error(
-                "Error reading inverter data via renogy-ble: %s", e, exc_info=True
-            )
-            return False
-
     async def async_write_register(self, register: int, value: int) -> bool:
+        """Write a single register value to the device.
+
+        Args:
+            register: Register address to write (e.g., 0xE004 for battery type)
+            value: 16-bit value to write
+
+        Returns:
+            True if write was successful, False otherwise
         """
-        Write a single register value to the inverter using renogy-ble public API only.
-        """
-        if not self.device or inverter_client_class is None:
+        if not self.device:
+            self.logger.error("Cannot write register: no device connected")
+            return False
+
+        # Check if write support is available in renogy-ble library
+        if not HAS_WRITE_SUPPORT:
             self.logger.error(
-                "Cannot write register: inverter client or device missing."
+                "Write support not available in renogy-ble library. "
+                "Please update to a version with write_register support."
             )
             return False
 
-        try:
+        # Try to use the library's write method if available.
+        write_register_fn = getattr(self._ble_client, "write_register", None)
+        if callable(write_register_fn):
+            write_register = cast(
+                Callable[[RenogyBLEDevice, int, int], Awaitable[bool]],
+                write_register_fn,
+            )
             try:
-                inverter_client = inverter_client_class(
-                    scanner=bluetooth.async_get_scanner(self.hass)
-                )
-            except TypeError:
-                inverter_client = inverter_client_class()
-
-            write_register_fn = getattr(inverter_client, "write_register", None)
-            if not callable(write_register_fn):
-                self.logger.error(
-                    "write_register method not available in InverterBleClient. "
-                    "Please update renogy-ble library."
-                )
+                success = await write_register(self.device, register, value)
+                if success:
+                    # Trigger a refresh to update the new value
+                    await self.async_request_refresh()
+                return success
+            except Exception as e:
+                self.logger.error("Error writing register %s: %s", hex(register), e)
                 return False
-
-            success = await write_register_fn(self.device, register, value)
-            if success:
-                await self.async_request_refresh()
-            return success
-        except Exception as e:
+        else:
             self.logger.error(
-                "Error writing register %s via renogy-ble: %s", hex(register), e
+                "write_register method not available in RenogyBleClient. "
+                "Please update renogy-ble library."
             )
             return False

@@ -15,7 +15,6 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     LOGGER,
-    DeviceType,
 )
 from .device_name import has_real_device_name
 
@@ -116,31 +115,22 @@ async def update_device_registry(
     """Update device in registry."""
     try:
         device_registry = async_get_device_registry(hass)
-
-        # Get model - check inverter_model for inverters, model for controllers
-        model = device.device_type.capitalize()
-        if device.parsed_data:
-            if "inverter_model" in device.parsed_data:
-                model = device.parsed_data["inverter_model"]
-            elif "model" in device.parsed_data:
-                model = device.parsed_data["model"]
-
-        # For inverters, use the model as the device name; for others use device.name
-        device_name = device.name
-        if device.device_type == DeviceType.INVERTER and device.parsed_data:
-            if "inverter_model" in device.parsed_data:
-                device_name = device.parsed_data["inverter_model"]
+        model = (
+            device.parsed_data.get("model", device.device_type.capitalize())
+            if device.parsed_data
+            else device.device_type.capitalize()
+        )
 
         # Find the device in the registry using the domain and device address
         device_entry = device_registry.async_get_device({(DOMAIN, device.address)})
 
         if device_entry:
-            # Update the device name and model
+            # Update the device name
             LOGGER.debug(
-                "Updating device registry: name=%s, model=%s", device_name, model
+                "Updating device registry entry with real name: %s", device.name
             )
             device_registry.async_update_device(
-                device_entry.id, name=device_name, model=model
+                device_entry.id, name=device.name, model=model
             )
         else:
             LOGGER.debug("Device %s not found in registry for update", device.address)
