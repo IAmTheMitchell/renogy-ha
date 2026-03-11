@@ -15,6 +15,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     LOGGER,
+    DeviceType,
 )
 from .device_name import has_real_device_name
 
@@ -33,6 +34,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if not device_address:
         LOGGER.error("No device address provided in config entry")
+        return False
+
+    if device_type not in [e.value for e in DeviceType]:
+        LOGGER.error(f"Unsupported device type: {device_type}")
         return False
 
     LOGGER.info(

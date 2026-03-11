@@ -54,7 +54,9 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def _is_renogy_device(self, discovery_info: BluetoothServiceInfoBleak) -> bool:
         """Check if a BLE device advertises a supported Renogy name."""
-        return is_supported_renogy_ble_name(discovery_info.name)
+        # Accept inverter prefix as supported (hardcoded to 'RIV' for now)
+        name = discovery_info.name or ""
+        return is_supported_renogy_ble_name(name) or name.startswith("RIV")
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak

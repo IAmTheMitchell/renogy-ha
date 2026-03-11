@@ -23,10 +23,13 @@ from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble import ble as renogy_ble_module
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
-from .const import DEFAULT_DEVICE_TYPE, DEFAULT_SCAN_INTERVAL, DeviceType
+from .const import (
+    DEFAULT_DEVICE_TYPE,
+    DEFAULT_SCAN_INTERVAL,
+    DeviceType,
+)
 from .device_name import detect_device_type_from_ble_name, has_real_device_name
 
-# Check if write_register is available in the library.
 try:
     renogy_ble_ble: ModuleType | None = importlib.import_module("renogy_ble.ble")
 except ImportError:
@@ -41,6 +44,7 @@ else:
     create_modbus_write_request = None
     HAS_WRITE_SUPPORT = False
 
+# Check if Shunt300 support is available in the library.
 try:
     renogy_ble_shunt: ModuleType | None = importlib.import_module("renogy_ble.shunt")
 except ImportError:
@@ -50,6 +54,19 @@ if renogy_ble_shunt is not None:
     shunt_client_class = getattr(renogy_ble_shunt, "ShuntBleClient", None)
 else:
     shunt_client_class = None
+
+# Check if inverter support is available in the library.
+try:
+    renogy_ble_inverter: ModuleType | None = importlib.import_module(
+        "renogy_ble.inverter"
+    )
+except ImportError:
+    renogy_ble_inverter = None
+
+if renogy_ble_inverter is not None:
+    inverter_client_class = getattr(renogy_ble_inverter, "InverterBleClient", None)
+else:
+    inverter_client_class = None
 
 LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 
@@ -117,6 +134,76 @@ class RenogyActiveBluetoothCoordinator(
                 self.address,
             )
         return RenogyBleClient(scanner=scanner)
+
+    # ...existing code...
+
+    async def _read_inverter_data(
+        self, service_info: BluetoothServiceInfoBleak
+    ) -> bool:
+        """Read data from Renogy inverter using Modbus protocol over BLE."""
+        device = self.device
+        if not device:
+            return False
+
+        # Use string keys directly since not defined as constants
+        KEY_INVERTER_DEVICE_ID = "inverter_device_id"
+        KEY_INVERTER_MODEL = "inverter_model"
+
+        cached_device_id = None
+        cached_model = None
+        if device.parsed_data:
+            cached_device_id = device.parsed_data.get(KEY_INVERTER_DEVICE_ID)
+            cached_model = device.parsed_data.get(KEY_INVERTER_MODEL)
+
+        # Initialize parsed_data with cached values.
+        # This preserves them across poll failures.
+        if not device.parsed_data:
+            device.parsed_data = {}
+        if cached_device_id is not None:
+            device.parsed_data[KEY_INVERTER_DEVICE_ID] = cached_device_id
+        if cached_model is not None:
+            device.parsed_data[KEY_INVERTER_MODEL] = cached_model
+
+        # Prefer upstream library support when it is available.
+        if inverter_client_class is not None:
+            try:
+                try:
+                    inverter_client = inverter_client_class(
+                        scanner=bluetooth.async_get_scanner(self.hass)
+                    )
+                except TypeError:
+                    inverter_client = inverter_client_class()
+
+                read_result = await inverter_client.read_device(device)
+                if read_result.success and read_result.parsed_data:
+                    parsed_data = dict(read_result.parsed_data)
+
+                    # Preserve cached static values if upstream read does not
+                    # include them. This ensures device_id/model are not lost
+                    # if not present in the new data.
+                    if (
+                        cached_device_id is not None
+                        and KEY_INVERTER_DEVICE_ID not in parsed_data
+                    ):
+                        parsed_data[KEY_INVERTER_DEVICE_ID] = cached_device_id
+                    if (
+                        cached_model is not None
+                        and KEY_INVERTER_MODEL not in parsed_data
+                    ):
+                        parsed_data[KEY_INVERTER_MODEL] = cached_model
+
+                    device.parsed_data = parsed_data
+                    return True
+            except Exception as e:
+                self.logger.debug(
+                    "Upstream inverter client unavailable or failed, "
+                    "using local fallback: %s",
+                    e,
+                )
+
+        # ...existing code for direct BLE/Modbus read fallback...
+        # See backup for full logic if needed.
+        return False
 
     @property
     def device_type(self) -> str:
