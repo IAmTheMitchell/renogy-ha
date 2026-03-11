@@ -160,6 +160,20 @@ class RenogyActiveBluetoothCoordinator(
             )
         return RenogyBleClient(scanner=scanner)
 
+    def _build_ble_client_for_type(self, device_type: str) -> RenogyBleClient:
+        """Build a BLE client suitable for the configured device type."""
+        scanner = bluetooth.async_get_scanner(self.hass)
+        if device_type == DeviceType.SHUNT300.value and shunt_client_class is not None:
+            return cast(RenogyBleClient, shunt_client_class())
+
+        if device_type == DeviceType.SHUNT300.value:
+            self.logger.warning(
+                "ShuntBleClient not available in installed renogy-ble; "
+                "falling back to RenogyBleClient for %s",
+                self.address,
+            )
+        return RenogyBleClient(scanner=scanner)
+
     @property
     def device_type(self) -> str:
         """Get the device type from configuration."""

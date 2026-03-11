@@ -1,0 +1,116 @@
+name: Beta Release
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: beta-release-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  beta-release:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.title, 'chore(main): release ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse release version
+        id: version
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          raw_version="${PR_TITLE#chore(main): release }"
+          if [[ -z "${raw_version}" || "${raw_version}" == "${PR_TITLE}" ]]; then
+            echo "Unable to parse release version from PR title: ${PR_TITLE}" >&2
+            exit 1
+          fi
+
+          if [[ "${raw_version}" == v* ]]; then
+            version="${raw_version}"
+          else
+            version="v${raw_version}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Find next beta tag
+        id: beta
+        uses: actions/github-script@v7
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        with:
+          github-token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          script: |
+            const version = process.env.RELEASE_VERSION;
+            const sha = context.payload.pull_request.head.sha;
+            const prefix = `${version}-beta.`;
+
+            const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const matcher = new RegExp(`^${escapeRegex(version)}-beta\\.(\\d+)$`);
+
+            const releases = await github.paginate(
+              github.rest.repos.listReleases,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+              },
+            );
+
+            let highest = 0;
+
+            for (const release of releases) {
+              const match = release.tag_name.match(matcher);
+              if (!match) {
+                continue;
+              }
+
+              if (release.target_commitish === sha) {
+                core.setOutput("tag", release.tag_name);
+                core.setOutput("exists", "true");
+                return;
+              }
+
+              highest = Math.max(highest, Number.parseInt(match[1], 10));
+            }
+
+            core.setOutput("tag", `${prefix}${highest + 1}`);
+            core.setOutput("exists", "false");
+
+      - name: Create beta release
+        if: steps.beta.outputs.exists != 'true'
+        uses: actions/github-script@v7
+        env:
+          BETA_TAG: ${{ steps.beta.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        with:
+          github-token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          script: |
+            const pullRequest = context.payload.pull_request;
+
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: process.env.BETA_TAG,
+              target_commitish: pullRequest.head.sha,
+              name: process.env.BETA_TAG,
+              body: [
+                `Beta release for Release Please PR #${pullRequest.number}.`,
+                "",
+                `Target release: ${process.env.RELEASE_VERSION}`,
+                `Source commit: ${pullRequest.head.sha}`,
+                `Source PR: ${pullRequest.html_url}`,
+              ].join("\n"),
+              prerelease: true,
+              draft: false,
+            });

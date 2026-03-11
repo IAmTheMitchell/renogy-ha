@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## [0.5.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.4.1...v0.5.0) (2026-03-11)
+
+
+### Features
+
+* add support for Renogy Smart Shunt 300 ([#77](https://github.com/IAmTheMitchell/renogy-ha/issues/77)) ([123013a](https://github.com/IAmTheMitchell/renogy-ha/commit/123013ae5fdfe43e50a69c24686a413520e2331c))
+
+
+### Documentation
+
+* add contributing guidelines for the project ([#71](https://github.com/IAmTheMitchell/renogy-ha/issues/71)) ([4854c38](https://github.com/IAmTheMitchell/renogy-ha/commit/4854c38f5179004fde23677ba71c913bf2eaa691))
+
 ## [0.4.1](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.4.0...v0.4.1) (2026-02-11)
 
 
