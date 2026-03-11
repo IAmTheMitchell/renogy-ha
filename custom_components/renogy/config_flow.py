@@ -21,9 +21,9 @@ from .const import (
     LOGGER,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
-    RENOGY_BT_PREFIX,
     SUPPORTED_DEVICE_TYPES,
 )
+from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name
 
 # Common schema fields for device configuration
 DEVICE_TYPE_SCHEMA = {
@@ -50,12 +50,11 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._discovered_devices: dict[str, BluetoothServiceInfoBleak] = {}
         self._discovered_device: BluetoothServiceInfoBleak | None = None
+        self._default_device_type: str = DEFAULT_DEVICE_TYPE
 
     def _is_renogy_device(self, discovery_info: BluetoothServiceInfoBleak) -> bool:
-        """Check if a device is a supported Renogy device."""
-        return discovery_info.name is not None and discovery_info.name.startswith(
-            RENOGY_BT_PREFIX
-        )
+        """Check if a BLE device advertises a supported Renogy name."""
+        return is_supported_renogy_ble_name(discovery_info.name)
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
@@ -77,6 +76,9 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Store the discovered device for later
         self._discovered_device = discovery_info
+        self._default_device_type = detect_device_type_from_ble_name(
+            discovery_info.name, DEFAULT_DEVICE_TYPE
+        )
 
         # Set title to user-readable name
         self.context["title_placeholders"] = {
@@ -133,9 +135,17 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
         # If we have a discovered device from bluetooth auto-discovery,
         # just show config options (scan interval, etc)
         if self._discovered_device:
+            discovered_schema = vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DEVICE_TYPE, default=self._default_device_type
+                    ): vol.In(DEVICE_TYPES),
+                    **SCAN_INTERVAL_SCHEMA,
+                }
+            )
             return self.async_show_form(
                 step_id="user",
-                data_schema=CONFIG_SCHEMA,
+                data_schema=discovered_schema,
                 description_placeholders={
                     "device_name": self._discovered_device.name,
                     "default_interval": str(DEFAULT_SCAN_INTERVAL),

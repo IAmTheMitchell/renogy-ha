@@ -16,6 +16,7 @@ from .const import (
     DOMAIN,
     LOGGER,
 )
+from .device_name import has_real_device_name
 
 # List of platforms this integration supports
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
@@ -104,9 +105,7 @@ async def _handle_device_update(
 
         # Update the device name in the Home Assistant device registry
         # This will ensure the device name is updated in the UI
-        if device.name != "Unknown Renogy Device" and not device.name.startswith(
-            "Unknown"
-        ):
+        if has_real_device_name(device.name):
             await update_device_registry(hass, entry, device)
 
 
