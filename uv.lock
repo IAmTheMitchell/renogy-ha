@@ -370,7 +370,7 @@ wheels = [
 
 [[package]]
 name = "bleak"
-version = "1.0.1"
+version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dbus-fast", marker = "sys_platform == 'linux'" },
@@ -382,25 +382,28 @@ dependencies = [
     { name = "winrt-windows-devices-bluetooth-advertisement", marker = "sys_platform == 'win32'" },
     { name = "winrt-windows-devices-bluetooth-genericattributeprofile", marker = "sys_platform == 'win32'" },
     { name = "winrt-windows-devices-enumeration", marker = "sys_platform == 'win32'" },
+    { name = "winrt-windows-devices-radios", marker = "sys_platform == 'win32'" },
     { name = "winrt-windows-foundation", marker = "sys_platform == 'win32'" },
     { name = "winrt-windows-foundation-collections", marker = "sys_platform == 'win32'" },
     { name = "winrt-windows-storage-streams", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d2/64/84a97528641bf917d0213bb28a1dc0ced916836edc3e342e25c4e8b1a63b/bleak-1.0.1.tar.gz", hash = "sha256:6177487c4eb08743a155e1295ff871eb2a61669b538bdbf35db45ea29cf7a41d", size = 115135, upload-time = "2025-06-30T23:09:17.925Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/8a/5acbd4da6a5a301fab56ff6d6e9e6b6945e6e4a2d1d213898c21b1d3a19b/bleak-2.1.1.tar.gz", hash = "sha256:4600cc5852f2392ce886547e127623f188e689489c5946d422172adf80635cf9", size = 120634, upload-time = "2025-12-31T20:43:28.697Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/97/98ba9c8f645f0bf6648b4f5bd997170b3f794d9006c20fdbfe0096c803eb/bleak-1.0.1-py3-none-any.whl", hash = "sha256:8f99bcb2fb74950466622b1f932ab661c74dcd48a3d122e95b661aa0705e5a6a", size = 135281, upload-time = "2025-06-30T23:09:16.883Z" },
+    { url = "https://files.pythonhosted.org/packages/99/fe/22aec895f040c1e457d6e6fcc79286fbb17d54602600ab2a58837bec7be1/bleak-2.1.1-py3-none-any.whl", hash = "sha256:61ac1925073b580c896a92a8c404088c5e5ec9dc3c5bd6fc17554a15779d83de", size = 141258, upload-time = "2025-12-31T20:43:27.302Z" },
 ]
 
 [[package]]
 name = "bleak-retry-connector"
-version = "4.4.3"
+version = "4.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "bleak" },
+    { name = "bluetooth-adapters", marker = "sys_platform == 'linux'" },
     { name = "dbus-fast", marker = "sys_platform == 'linux'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b6/08/8a62e114d5c1a7a0b4fee1c21a845061b0cc03bf617cc8ee7c27b2f164f9/bleak_retry_connector-4.4.3.tar.gz", hash = "sha256:70aa305dbd26eaf0586dd24723daac93ee3dd6a465e9782bf02b711fcbc4a527", size = 18652, upload-time = "2025-08-29T00:43:40.716Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/32/02/494f6a642b2aed04123a07071944681a0776259d656212133c10d0fb4b27/bleak_retry_connector-4.6.0.tar.gz", hash = "sha256:0645ca814fe9e0f2e0716ffdae5e54de25de75de6197145a1784f20f58e76844", size = 18732, upload-time = "2026-03-07T03:06:36.882Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/0f/445cbd2cd41ca6af16bcecce50eeda984d49b98e53ece1e80ad5b7fc98e4/bleak_retry_connector-4.4.3-py3-none-any.whl", hash = "sha256:17a478d525706488973b181fc789e960bc3fb4bcd94ccb0eee7b7b682442577b", size = 18610, upload-time = "2025-08-29T00:43:39.26Z" },
+    { url = "https://files.pythonhosted.org/packages/23/38/091973e8b930a551b5454f9a4d6fd3fed55a73d28769e75b1d7761b46572/bleak_retry_connector-4.6.0-py3-none-any.whl", hash = "sha256:6b5ecab9dee8a67b1e64cccec47ffa8c55737b86550c366e02d11ce003d57ebd", size = 18731, upload-time = "2026-03-07T03:06:35.472Z" },
 ]
 
 [[package]]
@@ -1406,15 +1409,15 @@ wheels = [
 
 [[package]]
 name = "renogy-ble"
-version = "1.3.1"
+version = "2.0.0b40"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bleak" },
     { name = "bleak-retry-connector" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/f3/5db424123d0407b7813e570bb164c569c4164d078c9f2e642e100ba68577/renogy_ble-1.3.1.tar.gz", hash = "sha256:e6a5dfc52dbe782de311b4c0d08a9c9cc02c7fb735ab7d803579b0ff76820b26", size = 59254, upload-time = "2026-03-11T01:32:18.918Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/81/073c316b8dccf79cbaa83dff5fb03d462c576c943b6be6ae8c54bef6727a/renogy_ble-2.0.0b40.tar.gz", hash = "sha256:b83580321723eeace95392250d5be2d8e393f17fc4853c295ed090da433392c8", size = 47871, upload-time = "2026-03-11T02:20:16.764Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d6/3f/02ccf4bf3de0c0bb9d7582e20de6a19c8debd4a18d83ab00901bc550790a/renogy_ble-1.3.1-py3-none-any.whl", hash = "sha256:50c33a65956b1d0a3677174d95e6acc5f6efdf04cba4583cf24b920eb65ed02a", size = 22273, upload-time = "2026-03-11T01:32:17.799Z" },
+    { url = "https://files.pythonhosted.org/packages/80/e3/5123f86453189c14ea5dcd21dd6afe4f8b1824aa708ee986ce7340be29e1/renogy_ble-2.0.0b40-py3-none-any.whl", hash = "sha256:8816dc3023c02296524458b96cbef1ee03d72caf0f3b80dd48e92036d3ae067c", size = 22305, upload-time = "2026-03-11T02:20:18.035Z" },
 ]
 
 [[package]]
@@ -1437,7 +1440,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "homeassistant", specifier = ">=2026.3.0" },
-    { name = "renogy-ble", specifier = ">=1.3.1" },
+    { name = "renogy-ble", specifier = ">=2.0.0b40" },
 ]
 
 [package.metadata.requires-dev]
@@ -1844,6 +1847,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/41/31/5785cd1ec54dc0f0e6f3e6a466d07a62b8014a6e2b782e80444ef87e83ab/winrt_windows_devices_enumeration-3.2.1-cp314-cp314-win32.whl", hash = "sha256:e087364273ed7c717cd0191fed4be9def6fdf229fe9b536a4b8d0228f7814106", size = 134252, upload-time = "2025-09-20T07:10:12.935Z" },
     { url = "https://files.pythonhosted.org/packages/cb/f6/68d91068048410f49794c0b19c45759c63ca559607068cfe5affba2f211b/winrt_windows_devices_enumeration-3.2.1-cp314-cp314-win_amd64.whl", hash = "sha256:0da1ddb8285d97a6775c36265d7157acf1bbcb88bcc9a7ce9a4549906c822472", size = 145509, upload-time = "2025-09-20T07:10:13.797Z" },
     { url = "https://files.pythonhosted.org/packages/5c/a4/898951d5bfc474aa9c7d133fe30870f0f2184f4ba3027eafb779d30eb7bc/winrt_windows_devices_enumeration-3.2.1-cp314-cp314-win_arm64.whl", hash = "sha256:09bf07e74e897e97a49a9275d0a647819254ddb74142806bbbcf4777ed240a22", size = 141334, upload-time = "2025-09-20T07:10:14.637Z" },
+]
+
+[[package]]
+name = "winrt-windows-devices-radios"
+version = "3.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "winrt-runtime" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5e/02/9704ea359ad8b0d6faa1011f98fb477e8fb6eac5201f39d19e73c2407e7b/winrt_windows_devices_radios-3.2.1.tar.gz", hash = "sha256:4dc9b9d1501846049eb79428d64ec698d6476c27a357999b78a8331072e18a0b", size = 5908, upload-time = "2025-06-06T14:41:44.868Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/76/79/4627afae6b389ddd1e5f1d691663c6b14d6c8f98959082aed1217cc57ef9/winrt_windows_devices_radios-3.2.1-cp314-cp314-win32.whl", hash = "sha256:21452e1cae50e44cd1d5e78159e1b9986ac3389b66458ad89caa196ce5eca2d6", size = 39521, upload-time = "2025-09-20T07:11:17.992Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/7c/c6aea91908ee7279ed51d12157bc8aeecb8850af2441073c3c91b261ad31/winrt_windows_devices_radios-3.2.1-cp314-cp314-win_amd64.whl", hash = "sha256:6a8413e586fe597c6849607885cca7e0549da33ae5699165d11f7911534c6eaf", size = 41121, upload-time = "2025-09-20T07:11:18.747Z" },
+    { url = "https://files.pythonhosted.org/packages/86/c5/652f14e3c501452ad8e0723518d9bbd729219b47f4a4dbe2966c2f82dca8/winrt_windows_devices_radios-3.2.1-cp314-cp314-win_arm64.whl", hash = "sha256:39129fd9d09103adb003575f59881c1a5a70a43310547850150b46c6f4020312", size = 38114, upload-time = "2025-09-20T07:11:19.599Z" },
 ]
 
 [[package]]
