@@ -21,8 +21,8 @@ from .const import (
     LOGGER,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
-    RENOGY_BT_PREFIX,
-    RENOGY_INVERTER_PREFIX,
+    # RENOGY_BT_PREFIX,  # Unused import removed
+    # RENOGY_INVERTER_PREFIX,  # Unused import removed
     SUPPORTED_DEVICE_TYPES,
 )
 from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name

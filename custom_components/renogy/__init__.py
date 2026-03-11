@@ -14,8 +14,8 @@ from .const import (
     DEFAULT_DEVICE_TYPE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    DeviceType,
     LOGGER,
+    DeviceType,
 )
 from .device_name import has_real_device_name
 
@@ -116,7 +116,7 @@ async def update_device_registry(
     """Update device in registry."""
     try:
         device_registry = async_get_device_registry(hass)
-        
+
         # Get model - check inverter_model for inverters, model for controllers
         model = device.device_type.capitalize()
         if device.parsed_data:
@@ -124,7 +124,7 @@ async def update_device_registry(
                 model = device.parsed_data["inverter_model"]
             elif "model" in device.parsed_data:
                 model = device.parsed_data["model"]
-        
+
         # For inverters, use the model as the device name; for others use device.name
         device_name = device.name
         if device.device_type == DeviceType.INVERTER and device.parsed_data:

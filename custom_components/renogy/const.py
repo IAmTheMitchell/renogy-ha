@@ -95,7 +95,7 @@ DCC_MAX_CURRENT_TO_DEVICE = {amp: amp * 100 for amp in DCC_MAX_CURRENT_OPTIONS}
 # Base register: 4000, reading 32 registers
 class InverterRegister:
     """Modbus register addresses for RIV1220PU inverter.
-    
+
     Based on validated test script discover_and_read_renogy_sensors.py
     Reading from register 4000 with these offsets:
     - Index 0-1: AC Input V/I
@@ -112,12 +112,12 @@ class InverterRegister:
     # Index 4 = AC Output Frequency (register 4004)
     # Index 5 = Battery Voltage (register 4005)
     # Index 6 = Temperature (register 4006)
-    
-    BATTERY_VOLTAGE = 4005      # Index 5 when reading from 4000
-    AC_OUTPUT_VOLTAGE = 4002    # Index 2 when reading from 4000
-    AC_OUTPUT_CURRENT = 4003    # Index 3 when reading from 4000
+
+    BATTERY_VOLTAGE = 4005  # Index 5 when reading from 4000
+    AC_OUTPUT_VOLTAGE = 4002  # Index 2 when reading from 4000
+    AC_OUTPUT_CURRENT = 4003  # Index 3 when reading from 4000
     AC_OUTPUT_FREQUENCY = 4004  # Index 4 when reading from 4000
-    TEMPERATURE = 4006          # Index 6 when reading from 4000
+    TEMPERATURE = 4006  # Index 6 when reading from 4000
 
 
 # Inverter BLE UUIDs (specific to RNGRIU models)
