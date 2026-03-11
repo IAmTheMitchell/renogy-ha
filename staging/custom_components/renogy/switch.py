@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -37,6 +36,7 @@ def is_device_name_ready(device_name: str | None, device_type: str) -> bool:
     if not device_name or device_name.startswith(UNKNOWN_DEVICE_NAME_PREFIX):
         return False
     return True
+
 
 KEY_LOAD_STATUS = "load_status"
 
@@ -80,9 +80,7 @@ async def async_setup_entry(
     ):
         LOGGER.debug("Device name already available: %s", coordinator.device.name)
     else:
-        LOGGER.debug(
-            "Creating switch with generic name; will update after first poll"
-        )
+        LOGGER.debug("Creating switch with generic name; will update after first poll")
 
     device = coordinator.device if coordinator.device else None
     async_add_entities([RenogyLoadSwitch(coordinator, device, device_type)])

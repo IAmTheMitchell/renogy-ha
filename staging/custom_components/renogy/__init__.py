@@ -14,8 +14,8 @@ from .const import (
     DEFAULT_DEVICE_TYPE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    DeviceType,
     LOGGER,
+    DeviceType,
 )
 
 UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
@@ -26,6 +26,7 @@ def has_real_device_name(device_name: str | None) -> bool:
     if not isinstance(device_name, str):
         return False
     return bool(device_name) and not device_name.startswith(UNKNOWN_DEVICE_NAME_PREFIX)
+
 
 # List of platforms this integration supports
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
@@ -124,7 +125,7 @@ async def update_device_registry(
     """Update device in registry."""
     try:
         device_registry = async_get_device_registry(hass)
-        
+
         # Get model - check inverter_model for inverters, model for controllers
         model = device.device_type.capitalize()
         if device.parsed_data:
@@ -132,7 +133,7 @@ async def update_device_registry(
                 model = device.parsed_data["inverter_model"]
             elif "model" in device.parsed_data:
                 model = device.parsed_data["model"]
-        
+
         # For inverters, use the model as the device name; for others use device.name
         device_name = device.name
         if device.device_type == DeviceType.INVERTER and device.parsed_data:

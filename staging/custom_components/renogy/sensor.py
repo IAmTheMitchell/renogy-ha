@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -26,7 +25,12 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo, async_get as async_get_device_registry
+from homeassistant.helpers.device_registry import (
+    DeviceInfo,
+)
+from homeassistant.helpers.device_registry import (
+    async_get as async_get_device_registry,
+)
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -46,7 +50,9 @@ UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
 SHUNT300_BT_PREFIX = "RTMShunt300"
 
 
-def _shunt_word_value(data: Dict[str, Any], index: int, scale: float = 1000.0) -> float | None:
+def _shunt_word_value(
+    data: Dict[str, Any], index: int, scale: float = 1000.0
+) -> float | None:
     """Return scaled value from shunt raw_words at index when available."""
     raw_words = data.get("raw_words")
     if not isinstance(raw_words, list) or index >= len(raw_words):
@@ -70,6 +76,7 @@ def is_device_name_ready(device_name: str | None, device_type: str) -> bool:
     if not device_name or device_name.startswith(UNKNOWN_DEVICE_NAME_PREFIX):
         return False
     return device_name.startswith(_expected_prefix_for_device_type(device_type))
+
 
 # Registry of sensor keys
 KEY_BATTERY_VOLTAGE = "battery_voltage"
@@ -221,7 +228,9 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         value_fn=lambda data: (
             data.get(KEY_SHUNT_ENERGY)
             if data.get(KEY_SHUNT_ENERGY) is not None
-            else data.get(KEY_SHUNT_ESTIMATED_ENERGY)  # Fallback to SOC-based estimation
+            else data.get(
+                KEY_SHUNT_ESTIMATED_ENERGY
+            )  # Fallback to SOC-based estimation
         ),
     ),
     RenogyBLESensorDescription(
@@ -354,8 +363,7 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         value_fn=lambda data: (
             data.get(KEY_SHUNT_ADDITIONAL_VALUE)
             if data.get(KEY_SHUNT_ADDITIONAL_VALUE) is not None
-            else _shunt_word_value(data, 53)
-            or _shunt_word_value(data, 34)
+            else _shunt_word_value(data, 53) or _shunt_word_value(data, 34)
         ),
     ),
     RenogyBLESensorDescription(
@@ -406,9 +414,9 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="Shunt Decode Confidence",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_DECODE_CONFIDENCE)
-        or data.get("conf")
-        or "unknown",
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_DECODE_CONFIDENCE) or data.get("conf") or "unknown"
+        ),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_READING_VERIFIED,
@@ -1034,15 +1042,19 @@ INVERTER_STATUS_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: data.get(KEY_INVERTER_MODEL),
     ),
-    # Note: INVERTER_MODE (register 4408) not available in RIV1220PU's 4002-4033 register range
-    # Note: TOTAL_ENERGY (registers 4330-4331) not available in RIV1220PU's 4002-4033 register range
+    # Note: INVERTER_MODE (register 4408) not available in RIV1220PU's
+    # 4002-4033 register range.
+    # Note: TOTAL_ENERGY (registers 4330-4331) not available in RIV1220PU's
+    # 4002-4033 register range.
+        # Note: INVERTER_MODE (register 4408) not available in RIV1220PU's
+        # 4002-4033 register range.
+        # Note: TOTAL_ENERGY (registers 4330-4331) not available in RIV1220PU's
+        # 4002-4033 register range.
 )
 
 # All inverter sensors combined
 INVERTER_ALL_SENSORS = (
-    INVERTER_BATTERY_SENSORS
-    + INVERTER_AC_OUTPUT_SENSORS
-    + INVERTER_STATUS_SENSORS
+    INVERTER_BATTERY_SENSORS + INVERTER_AC_OUTPUT_SENSORS + INVERTER_STATUS_SENSORS
 )
 
 # All sensors combined (for controller type)
@@ -1292,13 +1304,23 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         """Return if the sensor is available."""
         # Basic coordinator availability check
         if not self.coordinator.last_update_success:
-            if self.entity_description.key in [KEY_INVERTER_MODEL, KEY_INVERTER_DEVICE_ID]:
-                LOGGER.debug("%s: unavailable - last_update_success=%s", self.name, self.coordinator.last_update_success)
+            if self.entity_description.key in [
+                KEY_INVERTER_MODEL,
+                KEY_INVERTER_DEVICE_ID,
+            ]:
+                LOGGER.debug(
+                    "%s: unavailable - last_update_success=%s",
+                    self.name,
+                    self.coordinator.last_update_success,
+                )
             return False
 
         # Check device availability if we have a device
         if self._device and not self._device.is_available:
-            if self.entity_description.key in [KEY_INVERTER_MODEL, KEY_INVERTER_DEVICE_ID]:
+            if self.entity_description.key in [
+                KEY_INVERTER_MODEL,
+                KEY_INVERTER_DEVICE_ID,
+            ]:
                 LOGGER.debug("%s: unavailable - device not available", self.name)
             return False
 
@@ -1310,10 +1332,18 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         elif self.coordinator.data:
             data_available = True
 
-        if not data_available and self.entity_description.key in [KEY_INVERTER_MODEL, KEY_INVERTER_DEVICE_ID]:
-            LOGGER.debug("%s: unavailable - no parsed_data or coordinator data. _device=%s, coordinator.data=%s", 
-                        self.name, self._device is not None, self.coordinator.data is not None)
-        
+        if not data_available and self.entity_description.key in [
+            KEY_INVERTER_MODEL,
+            KEY_INVERTER_DEVICE_ID,
+        ]:
+            LOGGER.debug(
+                "%s: unavailable - no parsed_data or coordinator data. "
+                "_device=%s, coordinator.data=%s",
+                self.name,
+                self._device is not None,
+                self.coordinator.data is not None,
+            )
+
         return data_available
 
     @property
@@ -1431,19 +1461,22 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                         identifiers={(DOMAIN, self._device.address)},
                     )
                     if device_entry:
-                        # Always update if we have a model name, don't compare with current name
+                        # Always update if we have a model name.
+                        # Don't compare with current name.
                         # This ensures the model name persists even after restarts
                         updates = {}
                         if device_entry.name != device_registry_name:
                             updates["name"] = device_registry_name
                         # Also clear name_by_user if it was set to generic "Inverter"
-                        if device_entry.name_by_user in ("Inverter", "RNGRIU2255355535"):
+                        if device_entry.name_by_user in (
+                            "Inverter",
+                            "RNGRIU2255355535",
+                        ):
                             updates["name_by_user"] = None
-                        
+
                         if updates:
                             device_registry.async_update_device(
-                                device_entry.id,
-                                **updates
+                                device_entry.id, **updates
                             )
                             LOGGER.debug(
                                 "Updated device registry for %s: %s",

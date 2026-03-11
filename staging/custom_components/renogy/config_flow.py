@@ -60,6 +60,7 @@ def detect_device_type_from_ble_name(
         return "shunt300"
     return default_device_type
 
+
 # Common schema fields for device configuration
 DEVICE_TYPE_SCHEMA = {
     vol.Required(CONF_DEVICE_TYPE, default=DEFAULT_DEVICE_TYPE): vol.In(DEVICE_TYPES),
