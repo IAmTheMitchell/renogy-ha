@@ -45,11 +45,11 @@ jobs:
 
       - name: Find next beta tag
         id: beta
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         with:
-          github-token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          github-token: ${{ github.token }}
           script: |
             const version = process.env.RELEASE_VERSION;
             const sha = context.payload.pull_request.head.sha;
@@ -89,12 +89,12 @@ jobs:
 
       - name: Create beta release
         if: steps.beta.outputs.exists != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           BETA_TAG: ${{ steps.beta.outputs.tag }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         with:
-          github-token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          github-token: ${{ github.token }}
           script: |
             const pullRequest = context.payload.pull_request;
 
