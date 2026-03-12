@@ -329,7 +329,7 @@ class RenogyMaxCurrentSelect(SelectEntity):
                 display = f"{current_int}A"
                 self._attr_current_option = display
                 return display
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
 
         return None
