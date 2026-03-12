@@ -187,3 +187,4 @@ repomix-output.xml
 # Local Staging Folder
 staging/
 INVERTER/
+clean_env.sh
