@@ -183,3 +183,7 @@ repomix-output.xml
 
 # Documentation PDFs
 *.pdf
+
+# Local Staging Folder
+staging/
+INVERTER/
