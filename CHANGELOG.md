@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## [0.6.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.5.0...v0.6.0) (2026-03-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* require Home Assistant 2026.3 and Python 3.14.2 ([#84](https://github.com/IAmTheMitchell/renogy-ha/issues/84))
+
+### Features
+
+* require Home Assistant 2026.3 and Python 3.14.2 ([#84](https://github.com/IAmTheMitchell/renogy-ha/issues/84)) ([8dd7e98](https://github.com/IAmTheMitchell/renogy-ha/commit/8dd7e9857d785b9b0a7e7a6cd9d46a6e6c55f090))
+
+
+### Bug Fixes
+
+* use github token for beta release workflow ([#86](https://github.com/IAmTheMitchell/renogy-ha/issues/86)) ([d8a3764](https://github.com/IAmTheMitchell/renogy-ha/commit/d8a3764d19608d25b4533bc082b976be16fd325f))
+
 ## [0.5.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.4.1...v0.5.0) (2026-03-11)
 
 
