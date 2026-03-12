@@ -41,6 +41,7 @@ SUPPORTED_DEVICE_TYPES = [
     DeviceType.CONTROLLER.value,
     DeviceType.DCC.value,
     DeviceType.SHUNT300.value,
+    DeviceType.INVERTER.value,
 ]
 
 

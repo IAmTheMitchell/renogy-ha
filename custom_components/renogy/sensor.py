@@ -689,6 +689,33 @@ DCC_ALL_SENSORS = (
 ALL_SENSORS = BATTERY_SENSORS + PV_SENSORS + LOAD_SENSORS + CONTROLLER_SENSORS
 
 # Sensor mapping by device type
+INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key="main",
+        name="Inverter Main Data",
+        device_class=None,
+        value_fn=lambda data: data.get("main"),
+    ),
+    RenogyBLESensorDescription(
+        key="load",
+        name="Inverter Load Data",
+        device_class=None,
+        value_fn=lambda data: data.get("load"),
+    ),
+    RenogyBLESensorDescription(
+        key="device_id",
+        name="Inverter Device ID",
+        device_class=None,
+        value_fn=lambda data: data.get("device_id"),
+    ),
+    RenogyBLESensorDescription(
+        key="model",
+        name="Inverter Model",
+        device_class=None,
+        value_fn=lambda data: data.get("model"),
+    ),
+)
+
 SENSORS_BY_DEVICE_TYPE = {
     DeviceType.CONTROLLER.value: {
         "Battery": BATTERY_SENSORS,
@@ -706,6 +733,9 @@ SENSORS_BY_DEVICE_TYPE = {
     },
     DeviceType.SHUNT300.value: {
         "Shunt": SHUNT300_SENSORS,
+    },
+    DeviceType.INVERTER.value: {
+        "Inverter": INVERTER_SENSORS,
     },
 }
 
