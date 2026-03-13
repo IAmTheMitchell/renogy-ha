@@ -1,0 +1,4 @@
+- renogy-ble/tests/ contains test_ble.py and test_parser.py.
+- tests/ contains test_ble.py and other test files.
+- Duplicate test_ble.py causes pytest import mismatch.
+- Solution: rename renogy-ble/tests/test_ble.py to test_ble_helpers.py unless not needed.
