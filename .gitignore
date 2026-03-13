@@ -187,3 +187,4 @@ repomix-output.xml
 # Local Staging Folder
 staging/
 clean_env.sh
+branch_health_report.txt
