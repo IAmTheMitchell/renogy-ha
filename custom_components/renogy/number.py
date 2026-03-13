@@ -34,7 +34,7 @@ from .const import (
 )
 
 
-@dataclass
+@dataclass(frozen=True)
 class RenogyNumberEntityDescription(NumberEntityDescription):
     """Describes a Renogy number entity."""
 
