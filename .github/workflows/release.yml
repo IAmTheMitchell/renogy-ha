@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  security-events: write
 
 jobs:
   release-please:
@@ -17,8 +18,9 @@ jobs:
       release_created: ${{ steps.release-please.outputs.release_created }}
       tag_name: ${{ steps.release-please.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
-        id: release-please
-        with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          config-file: release-please-config.json
+        - uses: actions/checkout@v4
+        - uses: googleapis/release-please-action@v4
+          id: release-please
+          with:
+            token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+            config-file: release-please-config.json
