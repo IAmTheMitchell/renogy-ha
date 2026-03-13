@@ -976,7 +976,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                                     self.name,
                                 )
                                 return None
-                        except (ValueError, TypeError):
+                        except ValueError, TypeError:
                             LOGGER.warning(
                                 "Invalid numeric value for %s: %s",
                                 self.name,
