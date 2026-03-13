@@ -1,12 +1,15 @@
 """BLE communication module for Renogy devices."""
 
+from __future__ import annotations
+
 import asyncio
 import importlib
 import logging
 import traceback
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from types import ModuleType
-from typing import Any, Awaitable, Callable, Optional, cast
+from typing import Any, cast
 
 from bleak import BleakError
 from homeassistant.components import bluetooth
@@ -67,7 +70,8 @@ class RenogyActiveBluetoothCoordinator(
         address: str,
         scan_interval: int = DEFAULT_SCAN_INTERVAL,
         device_type: str = DEFAULT_DEVICE_TYPE,
-        device_data_callback: Optional[Callable[[RenogyBLEDevice], None]] = None,
+        device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
+        | None = None,
     ):
         """Initialize the coordinator."""
         super().__init__(
@@ -79,10 +83,10 @@ class RenogyActiveBluetoothCoordinator(
             mode=BluetoothScanningMode.ACTIVE,
             connectable=True,
         )
-        self.device: Optional[RenogyBLEDevice] = None
+        self.device: RenogyBLEDevice | None = None
         self.scan_interval = scan_interval
         self.device_type = device_type
-        self.last_poll_time: Optional[datetime] = None
+        self.last_poll_time: datetime | None = None
         self.device_data_callback = device_data_callback
         self.logger.debug(
             "Initialized coordinator for %s as %s with %ss interval",

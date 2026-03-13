@@ -107,7 +107,7 @@ KEY_SHUNT_ENERGY_DISCHARGED_TOTAL = "energy_discharged_total"
 KEY_SHUNT_STATUS = "shunt_status"
 
 
-@dataclass
+@dataclass(frozen=True)
 class RenogyBLESensorDescription(SensorEntityDescription):
     """Describes a Renogy BLE sensor."""
 

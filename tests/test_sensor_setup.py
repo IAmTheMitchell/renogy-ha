@@ -68,7 +68,7 @@ def _install_module_stubs() -> None:
     class SensorEntity:
         """Stub SensorEntity class for testing."""
 
-    @dataclass
+    @dataclass(frozen=True)
     class SensorEntityDescription:
         """Stub SensorEntityDescription for testing."""
 

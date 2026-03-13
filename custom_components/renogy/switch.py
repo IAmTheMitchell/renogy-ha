@@ -29,7 +29,7 @@ from .device_name import is_device_name_ready
 KEY_LOAD_STATUS = "load_status"
 
 
-@dataclass
+@dataclass(frozen=True)
 class RenogyBLESwitchDescription(SwitchEntityDescription):
     """Describes a Renogy BLE switch."""
 
