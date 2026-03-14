@@ -68,14 +68,14 @@ def _install_module_stubs() -> None:
         """Stub SwitchEntity class for testing."""
 
     @dataclass(frozen=True)
-    class SwitchEntityDescription:
+    class TestSwitchEntityDescription:
         """Stub SwitchEntityDescription for testing."""
 
         key: str | None = None
         name: str | None = None
 
     switch_module.SwitchEntity = SwitchEntity
-    switch_module.SwitchEntityDescription = SwitchEntityDescription
+    switch_module.SwitchEntityDescription = TestSwitchEntityDescription
     sys.modules["homeassistant.components.switch"] = switch_module
 
     helpers_module = cast(Any, types.ModuleType("homeassistant.helpers"))

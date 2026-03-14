@@ -69,7 +69,7 @@ def _install_module_stubs() -> None:
         """Stub SensorEntity class for testing."""
 
     @dataclass(frozen=True)
-    class SensorEntityDescription:
+    class TestSensorEntityDescription:
         """Stub SensorEntityDescription for testing."""
 
         key: str | None = None
@@ -97,7 +97,7 @@ def _install_module_stubs() -> None:
         TOTAL_INCREASING = "total_increasing"
 
     sensor_module.SensorEntity = SensorEntity
-    sensor_module.SensorEntityDescription = SensorEntityDescription
+    sensor_module.SensorEntityDescription = TestSensorEntityDescription
     sensor_module.SensorDeviceClass = SensorDeviceClass
     sensor_module.SensorStateClass = SensorStateClass
     sys.modules["homeassistant.components.sensor"] = sensor_module

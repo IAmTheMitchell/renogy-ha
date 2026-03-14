@@ -32,8 +32,8 @@ class EntityCategory(str, Enum):
 
 
 @dataclass
-class SensorEntityDescription:
-    """Description class for sensor entities."""
+class MockSensorEntityDescription:
+    """Mock description class for sensor entities."""
 
     key: str
     name: Optional[str] = None

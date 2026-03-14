@@ -21,9 +21,48 @@ from .const import (
     LOGGER,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
+    RENOGY_BT_PREFIX,
+    RENOGY_INVERTER_PREFIX,
     SUPPORTED_DEVICE_TYPES,
 )
-from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name
+
+UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
+SHUNT300_BT_PREFIX = "RTMShunt300"
+
+
+def has_real_device_name(device_name: str | None) -> bool:
+    """Return True when the provided name is usable and not a placeholder."""
+    if not isinstance(device_name, str):
+        return False
+    return bool(device_name) and not device_name.startswith(UNKNOWN_DEVICE_NAME_PREFIX)
+
+
+def is_supported_renogy_ble_name(device_name: str | None) -> bool:
+    """Return True for BLE names advertised by supported Renogy devices."""
+    if not has_real_device_name(device_name):
+        return False
+    if device_name is None:
+        return False
+    return bool(
+        device_name.startswith(RENOGY_BT_PREFIX)
+        or device_name.startswith(RENOGY_INVERTER_PREFIX)
+        or device_name.startswith(SHUNT300_BT_PREFIX)
+    )
+
+
+def detect_device_type_from_ble_name(
+    device_name: str | None, default_device_type: str = DEFAULT_DEVICE_TYPE
+) -> str:
+    """Infer the device type from a BLE name, with a provided default fallback."""
+    if not has_real_device_name(device_name):
+        return default_device_type
+    if device_name is not None:
+        if device_name.startswith(RENOGY_INVERTER_PREFIX):
+            return "inverter"
+        if device_name.startswith(SHUNT300_BT_PREFIX):
+            return "shunt300"
+    return default_device_type
+
 
 # Common schema fields for device configuration
 DEVICE_TYPE_SCHEMA = {
