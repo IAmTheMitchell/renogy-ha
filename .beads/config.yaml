@@ -52,3 +52,10 @@
 # - linear.api-key
 # - github.org
 # - github.repo
+
+routing.mode: "explicit"
+routing.default: .
+repos:
+  primary: "."
+  additional:
+    - "../renogy-ble"
