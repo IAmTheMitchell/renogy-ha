@@ -262,3 +262,53 @@ def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:
         assert (
             description.state_class == sensor_module.SensorStateClass.TOTAL_INCREASING
         )
+
+
+def test_shunt_status_sensor_exposes_troubleshooting_attributes() -> None:
+    """Ensure SHUNT300 entities expose extra troubleshooting metadata."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {
+        sensor_module.KEY_SHUNT_CURRENT: 1.23,
+        sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL: 0.45,
+        sensor_module.KEY_SHUNT_VERBOSE: "1",
+        sensor_module.KEY_SHUNT_DECODE_CONFIDENCE: "high",
+        sensor_module.KEY_SHUNT_READING_VERIFIED: True,
+        "raw_payload": "deadbeef",
+        "raw_words": [1, 2, 3],
+    }
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_STATUS
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+    attrs = entity.extra_state_attributes
+
+    assert attrs["rssi"] == "N/A"
+    assert attrs["data_source"] == "device"
+    assert attrs["verbose_mode"] == "enabled"
+    assert attrs["status_source"] == "derived_current"
+    assert attrs["energy_source"] == "integrated"
+    assert attrs["decode_confidence"] == "high"
+    assert attrs["reading_verified"] is True
+    assert attrs["raw_payload"] == "deadbeef"
+    assert attrs["raw_words"] == [1, 2, 3]
