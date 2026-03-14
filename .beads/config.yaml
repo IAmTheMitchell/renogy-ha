@@ -58,4 +58,4 @@ routing.default: .
 repos:
   primary: "."
   additional:
-    - "/home/mitchell/home_assistant/renogy/renogy-ble"
+    - "../renogy-ble"
