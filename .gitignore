@@ -183,3 +183,8 @@ repomix-output.xml
 
 # Documentation PDFs
 *.pdf
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
+.beads/issues.jsonl

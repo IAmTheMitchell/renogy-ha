@@ -66,3 +66,24 @@ Fix all Python formatting and linting issues.
 - Type annotation requirements
 - Missing return types
 - Inconsistent quotes/semicolons
+
+## Issue Tracking
+
+This repo uses `bd` (Beads) for active task tracking.
+
+- Run `bd ready` before starting work.
+- Use `bd prime` when you need the current Beads workflow context.
+- Track Home Assistant integration work here.
+- When work belongs in `renogy-ble`, create it there explicitly with `bd create --repo ../renogy-ble ...` from this repo, or create it directly in the `renogy-ble` repo.
+- For cross-repo work, create a coordinating issue here and link the `renogy-ble` implementation issue with a dependency.
+- If sibling `renogy-ble` issues are not visible here, run `bd export -o .beads/issues.jsonl` in `renogy-ble`, then run `bd repo sync` here. This is required for multi-repo hydration with `bd 0.60.0`.
+- Do not use markdown TODO lists for active work.
+
+## External Contributors
+
+External contributors may submit normal PRs without using Beads.
+
+- Maintainers use Beads for planning and coordination.
+- If you are not using Beads, ignore Beads-specific task-tracking steps and follow the normal repo instructions for code, tests, and PR quality.
+- Do not modify tracked Beads configuration unless your change is specifically about the Beads workflow.
+- Do not commit runtime Beads artifacts such as `.beads/issues.jsonl`.
