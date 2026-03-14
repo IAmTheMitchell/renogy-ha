@@ -33,6 +33,7 @@ def test_supported_renogy_name_prefixes() -> None:
     device_name_module = _load_device_name_module()
 
     assert device_name_module.is_supported_renogy_ble_name("BT-TH-123456")
+    assert device_name_module.is_supported_renogy_ble_name("RNGRIU123456")
     assert device_name_module.is_supported_renogy_ble_name(
         f"{device_name_module.SHUNT300_BT_PREFIX}A1B2"
     )
@@ -45,6 +46,10 @@ def test_detect_device_type_from_ble_name() -> None:
     device_name_module = _load_device_name_module()
     const_module = importlib.import_module("custom_components.renogy.const")
 
+    assert (
+        device_name_module.detect_device_type_from_ble_name("RNGRIU123456")
+        == const_module.DeviceType.INVERTER.value
+    )
     assert (
         device_name_module.detect_device_type_from_ble_name("RTMShunt300A1B2")
         == const_module.DeviceType.SHUNT300.value
@@ -67,6 +72,9 @@ def test_is_device_name_ready_by_device_type() -> None:
     )
     assert device_name_module.is_device_name_ready(
         "RTMShunt300A1B2", const_module.DeviceType.SHUNT300.value
+    )
+    assert device_name_module.is_device_name_ready(
+        "RNGRIU123456", const_module.DeviceType.INVERTER.value
     )
     assert not device_name_module.is_device_name_ready(
         "RTMShunt300A1B2", const_module.DeviceType.CONTROLLER.value
