@@ -76,4 +76,5 @@ This repo uses `bd` (Beads) for active task tracking.
 - Track Home Assistant integration work here.
 - When work belongs in `renogy-ble`, create it there explicitly with `bd create --repo ../renogy-ble ...` from this repo, or create it directly in the `renogy-ble` repo.
 - For cross-repo work, create a coordinating issue here and link the `renogy-ble` implementation issue with a dependency.
+- If sibling `renogy-ble` issues are not visible here, run `bd export -o .beads/issues.jsonl` in `renogy-ble`, then run `bd repo sync` here. This is required for multi-repo hydration with `bd 0.60.0`.
 - Do not use markdown TODO lists for active work.
