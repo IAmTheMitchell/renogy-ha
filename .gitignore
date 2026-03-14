@@ -183,3 +183,9 @@ repomix-output.xml
 
 # Documentation PDFs
 *.pdf
+
+# Local Staging Folder
+staging/
+clean_env.sh
+branch_health_report.txt
+renogy_logs.txt

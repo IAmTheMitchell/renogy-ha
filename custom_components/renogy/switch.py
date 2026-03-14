@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -24,7 +23,20 @@ from .const import (
     LOGGER,
     DeviceType,
 )
-from .device_name import is_device_name_ready
+
+UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
+
+
+def is_device_name_ready(device_name: str | None, device_type: str) -> bool:
+    """Return True when the device name is present and matches expected prefix."""
+    if device_type != DeviceType.CONTROLLER.value:
+        return True
+    if not isinstance(device_name, str):
+        return False
+    if not device_name or device_name.startswith(UNKNOWN_DEVICE_NAME_PREFIX):
+        return False
+    return True
+
 
 KEY_LOAD_STATUS = "load_status"
 
@@ -60,27 +72,15 @@ async def async_setup_entry(
         )
         return
 
-    if not coordinator.device or not is_device_name_ready(
+    # Create switch immediately without blocking startup.
+    # Entity names and IDs will update dynamically when the coordinator
+    # successfully polls the device for the first time.
+    if coordinator.device and is_device_name_ready(
         coordinator.device.name, device_type
     ):
-        LOGGER.debug("Waiting for real device name before creating switches...")
-        await coordinator.async_request_refresh()
-
-        real_name_found = False
-        for _ in range(10):
-            await asyncio.sleep(1)
-            if coordinator.device and is_device_name_ready(
-                coordinator.device.name, device_type
-            ):
-                LOGGER.debug("Real device name found: %s", coordinator.device.name)
-                real_name_found = True
-                break
-
-        if not real_name_found:
-            LOGGER.debug(
-                "No real device name found after waiting. "
-                "Using generic name for entities."
-            )
+        LOGGER.debug("Device name already available: %s", coordinator.device.name)
+    else:
+        LOGGER.debug("Creating switch with generic name; will update after first poll")
 
     device = coordinator.device if coordinator.device else None
     async_add_entities([RenogyLoadSwitch(coordinator, device, device_type)])
