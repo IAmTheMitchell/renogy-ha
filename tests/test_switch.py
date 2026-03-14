@@ -67,7 +67,7 @@ def _install_module_stubs() -> None:
     class SwitchEntity:
         """Stub SwitchEntity class for testing."""
 
-    @dataclass
+    @dataclass(frozen=True)
     class SwitchEntityDescription:
         """Stub SwitchEntityDescription for testing."""
 

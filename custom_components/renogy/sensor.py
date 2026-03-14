@@ -120,7 +120,7 @@ KEY_INVERTER_DEVICE_ID = "inverter_device_id"
 KEY_INVERTER_MODEL = "inverter_model"
 
 
-@dataclass
+@dataclass(frozen=True)
 class RenogyBLESensorDescription(SensorEntityDescription):
     """Describes a Renogy BLE sensor."""
 
