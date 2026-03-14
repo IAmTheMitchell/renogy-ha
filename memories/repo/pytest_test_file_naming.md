@@ -1,4 +1,0 @@
-- Avoid duplicate test module names across workspace (e.g., test_ble.py in both tests/ and renogy-ble/tests/).
-- If duplicate found, rename one to a unique name (e.g., test_ble_helpers.py).
-- If not needed, remove the duplicate test file.
-- Pytest import file mismatch errors are caused by duplicate test module names.
