@@ -242,6 +242,42 @@ def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
     async_add_entities.assert_not_called()
 
 
+def test_sensor_setup_does_not_wait_for_named_inverter() -> None:
+    """Ensure setup skips refresh/wait loop when inverter name is already available."""
+    sensor_module = _load_sensor_module()
+
+    device = MagicMock()
+    device.name = "RNGRIU123456"
+    device.address = "AA:BB:CC:DD:EE:FF"
+
+    coordinator = MagicMock()
+    coordinator.device = device
+    coordinator.address = device.address
+    coordinator.async_request_refresh = AsyncMock()
+
+    hass = MagicMock()
+    hass.data = {sensor_module.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {
+        sensor_module.CONF_DEVICE_TYPE: sensor_module.DeviceType.INVERTER.value
+    }
+
+    async_add_entities = MagicMock()
+
+    with patch.object(sensor_module, "create_device_entities", return_value=[]):
+        with patch.object(
+            sensor_module, "create_coordinator_entities", return_value=[]
+        ):
+            asyncio.run(
+                sensor_module.async_setup_entry(hass, config_entry, async_add_entities)
+            )
+
+    coordinator.async_request_refresh.assert_not_awaited()
+    async_add_entities.assert_not_called()
+
+
 def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:
     """Ensure shunt energy total sensors use a valid monotonic state class."""
     sensor_module = _load_sensor_module()
@@ -262,6 +298,39 @@ def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:
         assert (
             description.state_class == sensor_module.SensorStateClass.TOTAL_INCREASING
         )
+
+
+def test_inverter_sensor_uses_model_in_device_info() -> None:
+    """Ensure inverter entities expose the parsed inverter model in device info."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RNGRIU123456"
+    device.parsed_data = {sensor_module.KEY_MODEL: "RIV1220PU-126"}
+
+    description = next(
+        item
+        for item in sensor_module.INVERTER_SENSORS
+        if item.key == sensor_module.KEY_MODEL
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Inverter",
+        sensor_module.DeviceType.INVERTER.value,
+    )
+
+    assert entity._attr_name == "RNGRIU123456 Model"
+    assert entity._attr_device_info["model"] == "RIV1220PU-126"
 
 
 def test_inverter_sensor_mapping_uses_library_field_names() -> None:

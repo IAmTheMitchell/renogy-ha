@@ -195,3 +195,27 @@ def test_shunt_device_uses_library_shunt_client():
     )
 
     assert coordinator._ble_client.__class__.__name__ == "ShuntBleClient"
+
+
+def test_inverter_name_detection_updates_device_type():
+    """Ensure RNGRIU advertisements are treated as inverter devices."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RNGRIU123456",
+        rssi=-55,
+    )
+
+    device = coordinator._update_device_from_service_info(service_info)
+
+    assert coordinator.device_type == "inverter"
+    assert device.device_type == "inverter"
+    assert device.name == "RNGRIU123456"
