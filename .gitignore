@@ -185,6 +185,8 @@ repomix-output.xml
 *.pdf
 
 # Local Staging Folder
+.gitignore
 staging/
 clean_env.sh
 branch_health_report.txt
+renogy_logs.txt
