@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from .const import DEFAULT_DEVICE_TYPE, RENOGY_BT_PREFIX, DeviceType
+from .const import (
+    DEFAULT_DEVICE_TYPE,
+    RENOGY_BT_PREFIX,
+    RENOGY_INVERTER_PREFIX,
+    DeviceType,
+)
 
 UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
 SHUNT300_BT_PREFIX = "RTMShunt300"
@@ -10,13 +15,14 @@ SHUNT300_BT_PREFIX = "RTMShunt300"
 DEVICE_NAME_PREFIX_BY_TYPE: dict[str, str] = {
     DeviceType.CONTROLLER.value: RENOGY_BT_PREFIX,
     DeviceType.BATTERY.value: RENOGY_BT_PREFIX,
-    DeviceType.INVERTER.value: RENOGY_BT_PREFIX,
+    DeviceType.INVERTER.value: RENOGY_INVERTER_PREFIX,
     DeviceType.DCC.value: RENOGY_BT_PREFIX,
     DeviceType.SHUNT300.value: SHUNT300_BT_PREFIX,
 }
 
 SUPPORTED_BLE_NAME_PREFIXES: tuple[str, ...] = (
     RENOGY_BT_PREFIX,
+    RENOGY_INVERTER_PREFIX,
     SHUNT300_BT_PREFIX,
 )
 
@@ -53,6 +59,8 @@ def detect_device_type_from_ble_name(
     """Infer the device type from a BLE name, with a provided default fallback."""
     if not isinstance(device_name, str) or not has_real_device_name(device_name):
         return default_device_type
+    if device_name.startswith(RENOGY_INVERTER_PREFIX):
+        return DeviceType.INVERTER.value
     if device_name.startswith(SHUNT300_BT_PREFIX):
         return DeviceType.SHUNT300.value
     return default_device_type
