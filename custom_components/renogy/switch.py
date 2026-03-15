@@ -64,7 +64,10 @@ async def async_setup_entry(
     ):
         LOGGER.debug("Creating switches without waiting for a resolved device name")
 
-    device = coordinator.device if coordinator.device else None
+    device = coordinator.device
+    if device and not is_device_name_ready(device.name, device_type):
+        device = None
+
     async_add_entities([RenogyLoadSwitch(coordinator, device, device_type)])
 
 
@@ -116,32 +119,35 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
                 sw_version=device_type.capitalize(),
             )
 
+    def _update_device_metadata(self, device: RenogyBLEDevice) -> None:
+        """Refresh entity metadata from the latest device details."""
+        device_model = f"Renogy {self._device_type.capitalize()}"
+        if device.parsed_data and "model" in device.parsed_data:
+            device_model = device.parsed_data["model"]
+
+        self._attr_unique_id = f"{device.address}_{self.entity_description.key}"
+        self._attr_name = f"{device.name} {self.entity_description.name}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device.address)},
+            name=device.name,
+            manufacturer=ATTR_MANUFACTURER,
+            model=device_model,
+            hw_version=f"BLE Address: {device.address}",
+            sw_version=self._device_type.capitalize(),
+        )
+
     @property
     def device(self) -> Optional[RenogyBLEDevice]:
         """Get the current device - either stored or from coordinator."""
-        if self._device:
-            return self._device
-
-        if hasattr(self.coordinator, "device") and self.coordinator.device:
-            self._device = self.coordinator.device
-
-            device_model = f"Renogy {self._device_type.capitalize()}"
-            if self._device.parsed_data and "model" in self._device.parsed_data:
-                device_model = self._device.parsed_data["model"]
-
-            self._attr_unique_id = (
-                f"{self._device.address}_{self.entity_description.key}"
-            )
-            self._attr_name = f"{self._device.name} {self.entity_description.name}"
-            self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, self._device.address)},
-                name=self._device.name,
-                manufacturer=ATTR_MANUFACTURER,
-                model=device_model,
-                hw_version=f"BLE Address: {self._device.address}",
-                sw_version=self._device_type.capitalize(),
-            )
-            LOGGER.debug("Updated device info with real name: %s", self._device.name)
+        coordinator_device = getattr(self.coordinator, "device", None)
+        if coordinator_device and (
+            self._device is None
+            or self._device is not coordinator_device
+            or self._device.name != coordinator_device.name
+        ):
+            self._device = coordinator_device
+            self._update_device_metadata(self._device)
+            LOGGER.debug("Updated device info with name: %s", self._device.name)
 
         return self._device
 
