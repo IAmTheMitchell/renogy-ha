@@ -12,4 +12,4 @@ __pycache__/
 *.tmp
 
 # Ignore Home Assistant integration cache
-__pycache__/
+custom_components/renogy/__pycache__/
