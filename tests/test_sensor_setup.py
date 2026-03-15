@@ -242,6 +242,43 @@ def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
     async_add_entities.assert_not_called()
 
 
+def test_sensor_setup_does_not_wait_for_unknown_device_name() -> None:
+    """Ensure setup creates generic entities immediately when name is unresolved."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.device = None
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.async_request_refresh = AsyncMock()
+
+    hass = MagicMock()
+    hass.data = {sensor_module.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {
+        sensor_module.CONF_DEVICE_TYPE: sensor_module.DeviceType.CONTROLLER.value
+    }
+
+    async_add_entities = MagicMock()
+
+    with patch.object(sensor_module, "create_device_entities", return_value=[]):
+        with patch.object(
+            sensor_module,
+            "create_coordinator_entities",
+            return_value=["entity"],
+        ) as create_coordinator_entities:
+            asyncio.run(
+                sensor_module.async_setup_entry(hass, config_entry, async_add_entities)
+            )
+
+    coordinator.async_request_refresh.assert_not_awaited()
+    create_coordinator_entities.assert_called_once_with(
+        coordinator, sensor_module.DeviceType.CONTROLLER.value
+    )
+    async_add_entities.assert_called_once_with(["entity"])
+
+
 def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:
     """Ensure shunt energy total sensors use a valid monotonic state class."""
     sensor_module = _load_sensor_module()

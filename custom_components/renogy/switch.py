@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -63,24 +62,7 @@ async def async_setup_entry(
     if not coordinator.device or not is_device_name_ready(
         coordinator.device.name, device_type
     ):
-        LOGGER.debug("Waiting for real device name before creating switches...")
-        await coordinator.async_request_refresh()
-
-        real_name_found = False
-        for _ in range(10):
-            await asyncio.sleep(1)
-            if coordinator.device and is_device_name_ready(
-                coordinator.device.name, device_type
-            ):
-                LOGGER.debug("Real device name found: %s", coordinator.device.name)
-                real_name_found = True
-                break
-
-        if not real_name_found:
-            LOGGER.debug(
-                "No real device name found after waiting. "
-                "Using generic name for entities."
-            )
+        LOGGER.debug("Creating switches without waiting for a resolved device name")
 
     device = coordinator.device if coordinator.device else None
     async_add_entities([RenogyLoadSwitch(coordinator, device, device_type)])
