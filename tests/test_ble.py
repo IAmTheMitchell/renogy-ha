@@ -209,7 +209,9 @@ def test_shunt_poll_keeps_last_good_data_when_library_read_fails():
         scan_interval=30,
         device_type="shunt300",
     )
-    coordinator.data = {"shunt_voltage": 13.2, "reading_verified": True}
+    cached_data = {"shunt_voltage": 13.2, "reading_verified": True}
+    failed_read_data = {"shunt_voltage": 15.7, "reading_verified": False}
+    coordinator.data = dict(cached_data)
 
     service_info = ble_module.BluetoothServiceInfoBleak(
         address="AA:BB:CC:DD:EE:FF",
@@ -220,15 +222,15 @@ def test_shunt_poll_keeps_last_good_data_when_library_read_fails():
     coordinator._ble_client.read_device = AsyncMock(
         return_value=MagicMock(
             success=False,
-            parsed_data={"shunt_voltage": 13.2, "reading_verified": True},
+            parsed_data=failed_read_data,
             error=RuntimeError("history-only payload"),
         )
     )
 
     result = asyncio.run(coordinator._async_poll_device(service_info))
 
-    assert result == {"shunt_voltage": 13.2, "reading_verified": True}
-    assert coordinator.data == {"shunt_voltage": 13.2, "reading_verified": True}
+    assert result == cached_data
+    assert coordinator.data == cached_data
     assert coordinator.last_update_success is False
     coordinator.device.update_availability.assert_called_once()
     call_args = coordinator.device.update_availability.call_args[0]
