@@ -38,6 +38,7 @@ from .const import (
     DOMAIN,
     LOGGER,
     RENOGY_BT_PREFIX,
+    RENOGY_INVERTER_PREFIX,
     DeviceType,
 )
 from .device_name import is_device_name_ready
@@ -105,6 +106,15 @@ KEY_SHUNT_SOC = "shunt_soc"
 KEY_SHUNT_ENERGY_CHARGED_TOTAL = "energy_charged_total"
 KEY_SHUNT_ENERGY_DISCHARGED_TOTAL = "energy_discharged_total"
 KEY_SHUNT_STATUS = "shunt_status"
+
+# Inverter-specific sensor keys
+KEY_AC_OUTPUT_VOLTAGE = "ac_output_voltage"
+KEY_AC_OUTPUT_CURRENT = "ac_output_current"
+KEY_AC_OUTPUT_FREQUENCY = "ac_output_frequency"
+KEY_INPUT_FREQUENCY = "input_frequency"
+KEY_LOAD_ACTIVE_POWER = "load_active_power"
+KEY_LOAD_APPARENT_POWER = "load_apparent_power"
+KEY_TEMPERATURE = "temperature"
 
 
 @dataclass(frozen=True)
@@ -685,6 +695,85 @@ DCC_ALL_SENSORS = (
     + DCC_DIAGNOSTIC_SENSORS
 )
 
+# Inverter sensors
+INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_VOLTAGE,
+        name="Battery Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_AC_OUTPUT_VOLTAGE,
+        name="AC Output Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_AC_OUTPUT_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_AC_OUTPUT_CURRENT,
+        name="AC Output Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_AC_OUTPUT_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_AC_OUTPUT_FREQUENCY,
+        name="AC Output Frequency",
+        native_unit_of_measurement="Hz",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_AC_OUTPUT_FREQUENCY),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_INPUT_FREQUENCY,
+        name="Input Frequency",
+        native_unit_of_measurement="Hz",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_INPUT_FREQUENCY),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_LOAD_ACTIVE_POWER,
+        name="Load Active Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_LOAD_ACTIVE_POWER),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_LOAD_APPARENT_POWER,
+        name="Load Apparent Power",
+        native_unit_of_measurement="VA",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_LOAD_APPARENT_POWER),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_TEMPERATURE,
+        name="Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_TEMPERATURE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DEVICE_ID,
+        name="Device ID",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_DEVICE_ID),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_MODEL,
+        name="Model",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_MODEL),
+    ),
+)
+
 # All sensors combined (for controller type)
 ALL_SENSORS = BATTERY_SENSORS + PV_SENSORS + LOAD_SENSORS + CONTROLLER_SENSORS
 
@@ -703,6 +792,9 @@ SENSORS_BY_DEVICE_TYPE = {
         "Status": DCC_STATUS_SENSORS,
         "Statistics": DCC_STATISTICS_SENSORS,
         "Diagnostic": DCC_DIAGNOSTIC_SENSORS,
+    },
+    DeviceType.INVERTER.value: {
+        "Inverter": INVERTER_SENSORS,
     },
     DeviceType.SHUNT300.value: {
         "Shunt": SHUNT300_SENSORS,
@@ -755,6 +847,7 @@ async def async_setup_entry(
     # Now create entities with the best name we have
     if coordinator.device and (
         coordinator.device.name.startswith(RENOGY_BT_PREFIX)
+        or coordinator.device.name.startswith(RENOGY_INVERTER_PREFIX)
         or not coordinator.device.name.startswith("Unknown")
     ):
         LOGGER.info("Creating entities with device name: %s", coordinator.device.name)
