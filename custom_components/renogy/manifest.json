@@ -25,5 +25,5 @@
   "requirements": [
     "renogy-ble>=2.1.0"
   ],
-  "version": "0.5.0"
+  "version": "0.6.0"
 }
