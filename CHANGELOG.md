@@ -1,6 +1,28 @@
 # CHANGELOG
 
 
+## [0.6.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.5.0...v0.6.0) (2026-03-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* require Home Assistant 2026.3 and Python 3.14.2 ([#84](https://github.com/IAmTheMitchell/renogy-ha/issues/84))
+
+### Features
+
+* add SHUNT300 troubleshooting attributes ([#98](https://github.com/IAmTheMitchell/renogy-ha/issues/98)) ([b7007bc](https://github.com/IAmTheMitchell/renogy-ha/commit/b7007bc4cecae4bf8886d9913480dd07a3afa523))
+* require Home Assistant 2026.3 and Python 3.14.2 ([#84](https://github.com/IAmTheMitchell/renogy-ha/issues/84)) ([8dd7e98](https://github.com/IAmTheMitchell/renogy-ha/commit/8dd7e9857d785b9b0a7e7a6cd9d46a6e6c55f090))
+
+
+### Bug Fixes
+
+* use github token for beta release workflow ([#86](https://github.com/IAmTheMitchell/renogy-ha/issues/86)) ([d8a3764](https://github.com/IAmTheMitchell/renogy-ha/commit/d8a3764d19608d25b4533bc082b976be16fd325f))
+
+
+### Documentation
+
+* update readme to reflect that renogy-ha is now a default HACS repository ([#99](https://github.com/IAmTheMitchell/renogy-ha/issues/99)) ([91fc00e](https://github.com/IAmTheMitchell/renogy-ha/commit/91fc00eaac06eae8dfe8e16343d71fd554385da4))
+
 ## [0.5.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.4.1...v0.5.0) (2026-03-11)
 
 
