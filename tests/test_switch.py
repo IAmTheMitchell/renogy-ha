@@ -8,7 +8,7 @@ import types
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 
 def _install_module_stubs() -> None:
@@ -194,3 +194,75 @@ def test_switch_setup_adds_controller_switch() -> None:
     entities = async_add_entities.call_args[0][0]
     assert len(entities) == 1
     assert isinstance(entities[0], switch_module.RenogyLoadSwitch)
+
+
+def test_switch_setup_does_not_wait_for_unknown_device_name() -> None:
+    """Ensure switch setup completes without waiting for a resolved device name."""
+    switch_module = _load_switch_module()
+
+    coordinator = MagicMock()
+    coordinator.device = None
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.data = {}
+    coordinator.last_update_success = True
+    coordinator.async_request_refresh = AsyncMock()
+
+    hass = MagicMock()
+    hass.data = {switch_module.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {
+        switch_module.CONF_DEVICE_TYPE: switch_module.DeviceType.CONTROLLER.value
+    }
+
+    async_add_entities = MagicMock()
+
+    asyncio.run(switch_module.async_setup_entry(hass, config_entry, async_add_entities))
+
+    coordinator.async_request_refresh.assert_not_awaited()
+    async_add_entities.assert_called_once()
+    entities = async_add_entities.call_args[0][0]
+    assert len(entities) == 1
+    assert isinstance(entities[0], switch_module.RenogyLoadSwitch)
+    assert entities[0]._device is None
+
+
+def test_switch_updates_metadata_when_coordinator_name_resolves() -> None:
+    """Ensure a later coordinator name update refreshes switch metadata."""
+    switch_module = _load_switch_module()
+
+    unresolved_device = MagicMock()
+    unresolved_device.name = "Unknown Device"
+    unresolved_device.address = "AA:BB:CC:DD:EE:FF"
+    unresolved_device.parsed_data = {}
+    unresolved_device.is_available = True
+
+    coordinator = MagicMock()
+    coordinator.device = unresolved_device
+    coordinator.address = unresolved_device.address
+    coordinator.data = {}
+    coordinator.last_update_success = True
+
+    entity = switch_module.RenogyLoadSwitch(
+        coordinator=coordinator,
+        device=None,
+        device_type=switch_module.DeviceType.CONTROLLER.value,
+    )
+    entity.async_write_ha_state = MagicMock()
+
+    resolved_device = MagicMock()
+    resolved_device.name = "BT-TH-12345"
+    resolved_device.address = unresolved_device.address
+    resolved_device.parsed_data = {"model": "Rover 40A"}
+    resolved_device.is_available = True
+
+    coordinator.device = resolved_device
+
+    entity._handle_coordinator_update()
+
+    assert entity._device is resolved_device
+    assert entity._attr_name == "BT-TH-12345 DC Load"
+    assert entity._attr_device_info["name"] == "BT-TH-12345"
+    assert entity._attr_device_info["model"] == "Rover 40A"
+    entity.async_write_ha_state.assert_called_once()
