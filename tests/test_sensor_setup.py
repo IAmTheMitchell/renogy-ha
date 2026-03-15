@@ -314,6 +314,42 @@ def test_shunt_status_sensor_exposes_troubleshooting_attributes() -> None:
     assert attrs["raw_words"] == [1, 2, 3]
 
 
+def test_shunt_status_sensor_preserves_zero_decode_confidence() -> None:
+    """Ensure zero decode confidence remains visible in troubleshooting attributes."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {
+        sensor_module.KEY_SHUNT_CURRENT: 1.23,
+        sensor_module.KEY_SHUNT_DECODE_CONFIDENCE: 0,
+    }
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_STATUS
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+
+    assert entity.extra_state_attributes["decode_confidence"] == 0
+
+
 def test_inverter_sensor_mapping_uses_library_field_names() -> None:
     """Ensure inverter entities map directly to renogy-ble parsed field names."""
     sensor_module = _load_sensor_module()

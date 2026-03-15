@@ -1178,11 +1178,12 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                         energy_source = "unavailable"
                 attrs["energy_source"] = energy_source
 
-                attrs["decode_confidence"] = (
-                    shunt_data.get(KEY_SHUNT_DECODE_CONFIDENCE)
-                    or shunt_data.get("conf")
-                    or "unknown"
-                )
+                decode_confidence = shunt_data.get(KEY_SHUNT_DECODE_CONFIDENCE)
+                if decode_confidence is None:
+                    decode_confidence = shunt_data.get("conf")
+                if decode_confidence is None:
+                    decode_confidence = "unknown"
+                attrs["decode_confidence"] = decode_confidence
                 reading_verified = shunt_data.get(KEY_SHUNT_READING_VERIFIED)
                 if reading_verified is None:
                     reading_verified = shunt_data.get("verified")
