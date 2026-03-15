@@ -195,3 +195,42 @@ def test_shunt_device_uses_library_shunt_client():
     )
 
     assert coordinator._ble_client.__class__.__name__ == "ShuntBleClient"
+
+
+def test_shunt_poll_keeps_last_good_data_when_library_read_fails():
+    """Ensure HA preserves the last good shunt snapshot on library read failure."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=logger,
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+    )
+    coordinator.data = {"shunt_voltage": 13.2, "reading_verified": True}
+
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RTMShunt300A1B2",
+        rssi=-60,
+    )
+
+    coordinator._ble_client.read_device = AsyncMock(
+        return_value=MagicMock(
+            success=False,
+            parsed_data={"shunt_voltage": 13.2, "reading_verified": True},
+            error=RuntimeError("history-only payload"),
+        )
+    )
+
+    result = asyncio.run(coordinator._async_poll_device(service_info))
+
+    assert result == {"shunt_voltage": 13.2, "reading_verified": True}
+    assert coordinator.data == {"shunt_voltage": 13.2, "reading_verified": True}
+    assert coordinator.last_update_success is False
+    coordinator.device.update_availability.assert_called_once()
+    call_args = coordinator.device.update_availability.call_args[0]
+    assert call_args[0] is False
+    assert "history-only payload" in str(call_args[1])
