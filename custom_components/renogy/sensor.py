@@ -106,6 +106,11 @@ KEY_SHUNT_SOC = "shunt_soc"
 KEY_SHUNT_ENERGY_CHARGED_TOTAL = "energy_charged_total"
 KEY_SHUNT_ENERGY_DISCHARGED_TOTAL = "energy_discharged_total"
 KEY_SHUNT_STATUS = "shunt_status"
+KEY_SHUNT_VERBOSE = "verbose"
+KEY_SHUNT_STATUS_SOURCE = "status_source"
+KEY_SHUNT_ENERGY_SOURCE = "energy_source"
+KEY_SHUNT_DECODE_CONFIDENCE = "decode_confidence"
+KEY_SHUNT_READING_VERIFIED = "reading_verified"
 
 # Inverter-specific sensor keys
 KEY_AC_OUTPUT_VOLTAGE = "ac_output_voltage"
@@ -1130,6 +1135,60 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
             attrs["data_source"] = "device"
         elif self.coordinator.data:
             attrs["data_source"] = "coordinator"
+
+        if self._device_type == DeviceType.SHUNT300.value:
+            shunt_data = None
+            if self.device and self.device.parsed_data:
+                shunt_data = self.device.parsed_data
+            elif self.coordinator.data:
+                shunt_data = self.coordinator.data
+
+            if shunt_data:
+                if "rssi" not in attrs:
+                    attrs["rssi"] = "N/A"
+
+                verbose_value = shunt_data.get(KEY_SHUNT_VERBOSE)
+                if verbose_value is not None:
+                    verbose_normalized = str(verbose_value).strip().lower()
+                    attrs["verbose_mode"] = (
+                        "enabled"
+                        if verbose_normalized in {"1", "true", "yes", "on"}
+                        else "disabled"
+                        if verbose_normalized in {"0", "false", "no", "off"}
+                        else "unknown"
+                    )
+
+                status_source = shunt_data.get(KEY_SHUNT_STATUS_SOURCE)
+                if status_source is None:
+                    status_source = (
+                        "derived_current"
+                        if shunt_data.get(KEY_SHUNT_CURRENT) is not None
+                        else "unknown"
+                    )
+                attrs["status_source"] = status_source
+
+                energy_source = shunt_data.get(KEY_SHUNT_ENERGY_SOURCE)
+                if energy_source is None:
+                    if (
+                        shunt_data.get(KEY_SHUNT_ENERGY_CHARGED_TOTAL) is not None
+                        or shunt_data.get(KEY_SHUNT_ENERGY_DISCHARGED_TOTAL) is not None
+                    ):
+                        energy_source = "integrated"
+                    else:
+                        energy_source = "unavailable"
+                attrs["energy_source"] = energy_source
+
+                decode_confidence = shunt_data.get(KEY_SHUNT_DECODE_CONFIDENCE)
+                if decode_confidence is None:
+                    decode_confidence = shunt_data.get("conf")
+                if decode_confidence is None:
+                    decode_confidence = "unknown"
+                attrs["decode_confidence"] = decode_confidence
+                reading_verified = shunt_data.get(KEY_SHUNT_READING_VERIFIED)
+                if reading_verified is None:
+                    reading_verified = shunt_data.get("verified")
+                if reading_verified is not None:
+                    attrs["reading_verified"] = reading_verified
 
         # Expose raw shunt payload details for troubleshooting.
         if (
