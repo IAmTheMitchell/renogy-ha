@@ -63,14 +63,8 @@ _Includes Amazon affiliate links which provide a small commission to support thi
 This integration can be installed via HACS (Home Assistant Community Store).
 
 1. Ensure you have [HACS](https://hacs.xyz/) installed
-2. Add this repository to your HACS custom repositories:
-   - Click on HACS in the sidebar
-   - Click on the three dots in the top right corner
-   - Select "Custom repositories"
-   - Add this repository URL
-   - Select "Integration" as the category
-3. Search for "Renogy" in the HACS store and install it
-4. Restart Home Assistant
+2. Search for "Renogy" in the HACS store and install it
+3. Restart Home Assistant
 
 ## Configuration
 
