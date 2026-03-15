@@ -312,3 +312,35 @@ def test_shunt_status_sensor_exposes_troubleshooting_attributes() -> None:
     assert attrs["reading_verified"] is True
     assert attrs["raw_payload"] == "deadbeef"
     assert attrs["raw_words"] == [1, 2, 3]
+
+
+def test_inverter_sensor_mapping_uses_library_field_names() -> None:
+    """Ensure inverter entities map directly to renogy-ble parsed field names."""
+    sensor_module = _load_sensor_module()
+
+    descriptions = {
+        description.key: description for description in sensor_module.INVERTER_SENSORS
+    }
+    sample_data = {
+        sensor_module.KEY_BATTERY_VOLTAGE: 40.0,
+        sensor_module.KEY_AC_OUTPUT_VOLTAGE: 230.0,
+        sensor_module.KEY_AC_OUTPUT_CURRENT: 5.0,
+        sensor_module.KEY_AC_OUTPUT_FREQUENCY: 50.0,
+        sensor_module.KEY_INPUT_FREQUENCY: 50.0,
+        sensor_module.KEY_LOAD_ACTIVE_POWER: 500,
+        sensor_module.KEY_LOAD_APPARENT_POWER: 550,
+        sensor_module.KEY_TEMPERATURE: 25.3,
+        sensor_module.KEY_DEVICE_ID: 32,
+        sensor_module.KEY_MODEL: "RIV1220PU-126",
+    }
+
+    assert descriptions[sensor_module.KEY_BATTERY_VOLTAGE].value_fn(sample_data) == 40.0
+    assert (
+        descriptions[sensor_module.KEY_AC_OUTPUT_VOLTAGE].value_fn(sample_data) == 230.0
+    )
+    assert (
+        descriptions[sensor_module.KEY_LOAD_ACTIVE_POWER].value_fn(sample_data) == 500
+    )
+    assert (
+        descriptions[sensor_module.KEY_MODEL].value_fn(sample_data) == "RIV1220PU-126"
+    )
