@@ -9,19 +9,28 @@ from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
 )
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_ADDRESS, CONF_SCAN_INTERVAL
 
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_SHUNT_CONNECTION_MODE,
     DEFAULT_DEVICE_TYPE,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SHUNT_CONNECTION_MODE,
     DEVICE_TYPES,
     DOMAIN,
     LOGGER,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
+    SHUNT_CONNECTION_MODES,
     SUPPORTED_DEVICE_TYPES,
+    DeviceType,
 )
 from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name
 
@@ -41,6 +50,18 @@ SCAN_INTERVAL_SCHEMA = {
 CONFIG_SCHEMA = vol.Schema({**DEVICE_TYPE_SCHEMA, **SCAN_INTERVAL_SCHEMA})
 
 
+def _build_shunt_options_schema(default_mode: str) -> vol.Schema:
+    """Build the Smart Shunt options schema."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_SHUNT_CONNECTION_MODE,
+                default=default_mode,
+            ): vol.In(SHUNT_CONNECTION_MODES)
+        }
+    )
+
+
 class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Renogy BLE."""
 
@@ -51,6 +72,11 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_devices: dict[str, BluetoothServiceInfoBleak] = {}
         self._discovered_device: BluetoothServiceInfoBleak | None = None
         self._default_device_type: str = DEFAULT_DEVICE_TYPE
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> RenogyOptionsFlowHandler:
+        """Return the options flow for this handler."""
+        return RenogyOptionsFlowHandler(config_entry)
 
     def _is_renogy_device(self, discovery_info: BluetoothServiceInfoBleak) -> bool:
         """Check if a BLE device advertises a supported Renogy name."""
@@ -205,4 +231,33 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
         LOGGER.debug(
             "Found %s unconfigured Renogy devices", len(self._discovered_devices)
+        )
+
+
+class RenogyOptionsFlowHandler(OptionsFlow):
+    """Handle Renogy BLE options."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize the options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage integration options."""
+        device_type = self._config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
+
+        if device_type != DeviceType.SHUNT300.value:
+            return self.async_create_entry(title="", data={})
+
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_mode = self._config_entry.options.get(
+            CONF_SHUNT_CONNECTION_MODE,
+            DEFAULT_SHUNT_CONNECTION_MODE,
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_build_shunt_options_schema(current_mode),
         )

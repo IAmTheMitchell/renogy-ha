@@ -11,10 +11,13 @@ from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     CONF_DEVICE_TYPE,
     CONF_SCAN_INTERVAL,
+    CONF_SHUNT_CONNECTION_MODE,
     DEFAULT_DEVICE_TYPE,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SHUNT_CONNECTION_MODE,
     DOMAIN,
     LOGGER,
+    DeviceType,
 )
 from .device_name import has_real_device_name
 
@@ -30,16 +33,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     device_address = entry.data.get(CONF_ADDRESS)
     device_type = entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
+    shunt_connection_mode = _get_shunt_connection_mode(entry)
 
     if not device_address:
         LOGGER.error("No device address provided in config entry")
         return False
 
     LOGGER.info(
-        "Configuring Renogy BLE device %s as %s with scan interval %ss",
+        "Configuring Renogy BLE device %s as %s with scan interval %ss "
+        "(shunt mode: %s)",
         device_address,
         device_type,
         scan_interval,
+        shunt_connection_mode,
     )
 
     # Create a coordinator for this entry
@@ -49,8 +55,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         address=device_address,
         scan_interval=scan_interval,
         device_type=device_type,
+        shunt_connection_mode=shunt_connection_mode,
         device_data_callback=lambda device: _handle_device_update(hass, entry, device),
     )
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 
     # Store coordinator and devices in hass.data
     hass.data.setdefault(DOMAIN, {})
@@ -78,6 +86,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.async_create_task(coordinator.async_request_refresh())
 
     return True
+
+
+def _get_shunt_connection_mode(entry: ConfigEntry) -> str:
+    """Return the configured Smart Shunt connection mode for an entry."""
+    device_type = entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
+    if device_type != DeviceType.SHUNT300.value:
+        return DEFAULT_SHUNT_CONNECTION_MODE
+
+    return entry.options.get(
+        CONF_SHUNT_CONNECTION_MODE,
+        DEFAULT_SHUNT_CONNECTION_MODE,
+    )
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def _handle_device_update(
