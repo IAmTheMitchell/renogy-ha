@@ -113,6 +113,7 @@ KEY_SHUNT_POWER = "shunt_power"
 KEY_SHUNT_SOC = "shunt_soc"
 KEY_SHUNT_ENERGY_CHARGED_TOTAL = "energy_charged_total"
 KEY_SHUNT_ENERGY_DISCHARGED_TOTAL = "energy_discharged_total"
+KEY_SHUNT_ESTIMATED_ENERGY = "estimated_energy_kwh"
 KEY_SHUNT_STATUS = "shunt_status"
 KEY_SHUNT_VERBOSE = "verbose"
 KEY_SHUNT_STATUS_SOURCE = "status_source"
@@ -214,6 +215,20 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda data: data.get(KEY_SHUNT_ENERGY_DISCHARGED_TOTAL),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ESTIMATED_ENERGY,
+        name="Shunt Estimated Energy",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            round(
+                (float(data[KEY_SHUNT_SOC]) / 100.0) * SHUNT_ESTIMATED_CAPACITY_KWH, 3
+            )
+            if data.get(KEY_SHUNT_SOC) is not None
+            else None
+        ),
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_STATUS,

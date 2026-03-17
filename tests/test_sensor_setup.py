@@ -304,6 +304,20 @@ def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:
         )
 
 
+def test_shunt_estimated_energy_has_no_state_class() -> None:
+    """Ensure shunt estimated energy does not use an invalid state class."""
+    sensor_module = _load_sensor_module()
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_ESTIMATED_ENERGY
+    )
+
+    assert description.device_class == sensor_module.SensorDeviceClass.ENERGY
+    assert description.state_class is None
+
+
 def test_shunt_status_sensor_exposes_troubleshooting_attributes() -> None:
     """Ensure SHUNT300 entities expose extra troubleshooting metadata."""
     sensor_module = _load_sensor_module()
