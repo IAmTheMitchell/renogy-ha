@@ -114,8 +114,10 @@ def _install_module_stubs() -> None:
     class RenogyBleClient:
         """Stub RenogyBleClient for testing."""
 
-        def __init__(self, scanner):
+        def __init__(self, scanner, transport_mode="per_operation"):
             self.scanner = scanner
+            self.transport_mode = transport_mode
+            self.close = AsyncMock()
 
         async def read_device(self, device):
             return MagicMock(success=True, error=None)
@@ -246,6 +248,54 @@ def test_intermittent_shunt_device_uses_library_shunt_client():
     )
 
     assert coordinator._ble_client.__class__.__name__ == "ShuntBleClient"
+
+
+def test_non_shunt_device_defaults_to_intermittent_client():
+    """Ensure non-shunt devices default to reconnect-per-refresh transport."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+
+    assert coordinator._ble_client.__class__.__name__ == "RenogyBleClient"
+    assert coordinator._ble_client.transport_mode == "per_operation"
+
+
+def test_non_shunt_persistent_mode_uses_library_persistent_transport():
+    """Ensure non-shunt persistent mode opts into the library session transport."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+
+    assert coordinator._ble_client.__class__.__name__ == "RenogyBleClient"
+    assert coordinator._ble_client.transport_mode == "persistent_session"
+
+
+def test_async_shutdown_closes_persistent_library_client():
+    """Ensure coordinator shutdown releases any persistent library session."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+
+    asyncio.run(coordinator.async_shutdown())
+
+    coordinator._ble_client.close.assert_awaited_once()
 
 
 def test_sustained_shunt_refresh_does_not_poll():

@@ -30,9 +30,11 @@ from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
 from .const import (
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_NON_SHUNT_CONNECTION_MODE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
     DeviceType,
+    NonShuntConnectionMode,
     ShuntConnectionMode,
 )
 from .device_name import detect_device_type_from_ble_name, has_real_device_name
@@ -95,6 +97,7 @@ class RenogyActiveBluetoothCoordinator(
         scan_interval: int = DEFAULT_SCAN_INTERVAL,
         device_type: str = DEFAULT_DEVICE_TYPE,
         shunt_connection_mode: str = DEFAULT_SHUNT_CONNECTION_MODE,
+        non_shunt_connection_mode: str = DEFAULT_NON_SHUNT_CONNECTION_MODE,
         device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
         | None = None,
     ):
@@ -111,15 +114,18 @@ class RenogyActiveBluetoothCoordinator(
         self.device: RenogyBLEDevice | None = None
         self.scan_interval = scan_interval
         self.shunt_connection_mode = shunt_connection_mode
+        self.non_shunt_connection_mode = non_shunt_connection_mode
         self.device_type = device_type
         self.last_poll_time: datetime | None = None
         self.device_data_callback = device_data_callback
         self.logger.debug(
-            "Initialized coordinator for %s as %s with %ss interval (%s shunt mode)",
+            "Initialized coordinator for %s as %s with %ss interval "
+            "(%s shunt mode, %s non-shunt mode)",
             address,
             device_type,
             scan_interval,
             shunt_connection_mode,
+            non_shunt_connection_mode,
         )
 
         self._ble_client = self._build_ble_client_for_type(device_type)
@@ -156,7 +162,17 @@ class RenogyActiveBluetoothCoordinator(
                 "falling back to RenogyBleClient for %s",
                 self.address,
             )
-        return RenogyBleClient(scanner=scanner)
+        return self._build_generic_ble_client(scanner)
+
+    def _build_generic_ble_client(self, scanner: Any) -> RenogyBleClient:
+        """Build the generic library client for the active device mode."""
+        client_kwargs: dict[str, Any] = {"scanner": scanner}
+        if self._uses_persistent_non_shunt_session():
+            client_kwargs["transport_mode"] = (
+                NonShuntConnectionMode.PERSISTENT_SESSION.value
+            )
+
+        return RenogyBleClient(**client_kwargs)
 
     def _uses_sustained_shunt_listener(self, device_type: str | None = None) -> bool:
         """Return whether this coordinator should keep a sustained shunt listener."""
@@ -172,6 +188,17 @@ class RenogyActiveBluetoothCoordinator(
         return (
             resolved_type == DeviceType.SHUNT300.value
             and self.shunt_connection_mode == ShuntConnectionMode.INTERMITTENT.value
+        )
+
+    def _uses_persistent_non_shunt_session(
+        self, device_type: str | None = None
+    ) -> bool:
+        """Return whether persistent mode is enabled for a non-shunt device."""
+        resolved_type = device_type or self.device_type
+        return (
+            resolved_type != DeviceType.SHUNT300.value
+            and self.non_shunt_connection_mode
+            == NonShuntConnectionMode.PERSISTENT_SESSION.value
         )
 
     @property
@@ -322,6 +349,14 @@ class RenogyActiveBluetoothCoordinator(
         # Clean up any other resources that might need to be released
         self._update_listeners = []
 
+    async def async_shutdown(self) -> None:
+        """Stop polling and release any persistent BLE sessions."""
+        self.async_stop()
+
+        close_client = getattr(self._ble_client, "close", None)
+        if callable(close_client):
+            await close_client()
+
     def _update_device_from_service_info(
         self, service_info: BluetoothServiceInfoBleak
     ) -> RenogyBLEDevice:
@@ -396,6 +431,32 @@ class RenogyActiveBluetoothCoordinator(
             )
             self._ble_client = RenogyBleClient(
                 scanner=bluetooth.async_get_scanner(self.hass)
+            )
+        elif (
+            self.device.device_type != DeviceType.SHUNT300.value
+            and self._uses_persistent_non_shunt_session(self.device.device_type)
+            and getattr(self._ble_client, "_transport_mode", None)
+            != NonShuntConnectionMode.PERSISTENT_SESSION.value
+        ):
+            self.logger.debug(
+                "Switching BLE client to persistent non-shunt mode for %s",
+                service_info.address,
+            )
+            self._ble_client = self._build_generic_ble_client(
+                bluetooth.async_get_scanner(self.hass)
+            )
+        elif (
+            self.device.device_type != DeviceType.SHUNT300.value
+            and not self._uses_persistent_non_shunt_session(self.device.device_type)
+            and getattr(self._ble_client, "_transport_mode", None)
+            == NonShuntConnectionMode.PERSISTENT_SESSION.value
+        ):
+            self.logger.debug(
+                "Switching BLE client to intermittent non-shunt mode for %s",
+                service_info.address,
+            )
+            self._ble_client = self._build_generic_ble_client(
+                bluetooth.async_get_scanner(self.hass)
             )
 
         return self.device
