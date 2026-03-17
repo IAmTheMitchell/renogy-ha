@@ -10,6 +10,7 @@ last-touched
 
 # Local version tracking (prevents upgrade notification spam after git ops)
 .local_version
+.beads-credential-key
 
 # Worktree redirect file (contains relative path to main repo's .beads/)
 # Must not be committed as paths would be wrong in other clones
