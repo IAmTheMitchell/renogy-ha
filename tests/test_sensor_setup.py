@@ -225,6 +225,12 @@ def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
     coordinator.device = device
     coordinator.address = device.address
     coordinator.async_request_refresh = AsyncMock()
+    coordinator.last_update_success = True
+    coordinator.warn_rssi = -80
+    coordinator.critical_rssi = -90
+
+    device.is_available = True
+    device.rssi = None
 
     hass = MagicMock()
     hass.data = {sensor_module.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
@@ -246,7 +252,13 @@ def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
             )
 
     coordinator.async_request_refresh.assert_not_awaited()
-    async_add_entities.assert_not_called()
+    async_add_entities.assert_called_once()
+    aggregate_entities = async_add_entities.call_args.args[0]
+    assert len(aggregate_entities) == 1
+    assert isinstance(
+        aggregate_entities[0],
+        sensor_module.RenogyAggregateHealthSensor,
+    )
 
 
 def test_sensor_setup_does_not_wait_for_unknown_device_name() -> None:
@@ -257,6 +269,9 @@ def test_sensor_setup_does_not_wait_for_unknown_device_name() -> None:
     coordinator.device = None
     coordinator.address = "AA:BB:CC:DD:EE:FF"
     coordinator.async_request_refresh = AsyncMock()
+    coordinator.last_update_success = True
+    coordinator.warn_rssi = -80
+    coordinator.critical_rssi = -90
 
     hass = MagicMock()
     hass.data = {sensor_module.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
@@ -283,7 +298,7 @@ def test_sensor_setup_does_not_wait_for_unknown_device_name() -> None:
     create_coordinator_entities.assert_called_once_with(
         coordinator, sensor_module.DeviceType.CONTROLLER.value
     )
-    async_add_entities.assert_called_once_with(["entity"])
+    async_add_entities.assert_any_call(["entity"])
 
 
 def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:

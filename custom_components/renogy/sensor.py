@@ -176,7 +176,17 @@ def _compute_health_status(
 
     warn_rssi = getattr(coordinator, "warn_rssi", DEFAULT_WARN_RSSI)
     critical_rssi = getattr(coordinator, "critical_rssi", DEFAULT_CRITICAL_RSSI)
-    rssi = device.rssi if device and getattr(device, "rssi", None) is not None else None
+    if not isinstance(warn_rssi, (int, float)):
+        warn_rssi = DEFAULT_WARN_RSSI
+    if not isinstance(critical_rssi, (int, float)):
+        critical_rssi = DEFAULT_CRITICAL_RSSI
+
+    rssi = (
+        device.rssi
+        if device
+        and isinstance(getattr(device, "rssi", None), (int, float))
+        else None
+    )
 
     if rssi is not None:
         if rssi <= critical_rssi:
@@ -184,10 +194,12 @@ def _compute_health_status(
         if rssi <= warn_rssi:
             return "warn"
 
-    if getattr(coordinator, "_shunt_auto_fallback_active", False):
+    auto_fallback = getattr(coordinator, "_shunt_auto_fallback_active", False)
+    if isinstance(auto_fallback, bool) and auto_fallback:
         return "warn"
 
-    if getattr(coordinator, "_shunt_listener_failures", 0) > 0:
+    failures = getattr(coordinator, "_shunt_listener_failures", 0)
+    if isinstance(failures, int) and failures > 0:
         return "warn"
 
     return "healthy"
@@ -1622,9 +1634,10 @@ class RenogyAggregateHealthSensor(SensorEntity):
 
         if total_devices == 0:
             aggregate_status = "unknown"
-        elif status_counts.get("critical", 0) > 0 or status_counts.get(
-            "disconnected", 0
-        ) > 0:
+        elif (
+            status_counts.get("critical", 0) > 0
+            or status_counts.get("disconnected", 0) > 0
+        ):
             aggregate_status = "critical"
         elif status_counts.get("warn", 0) > 0:
             aggregate_status = "warn"
