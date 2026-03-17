@@ -556,6 +556,7 @@ class RenogyActiveBluetoothCoordinator(
                 self.last_update_success = False
                 if self.device is not None:
                     self.device.update_availability(False, err)
+                self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
                 self.logger.debug(
                     "Smart Shunt listener error for %s: %s",
                     self.address,

@@ -340,6 +340,51 @@ def test_sustained_shunt_notification_recovers_from_duplicate_payload_after_erro
     assert coordinator.device.update_availability.call_args_list[-1][0] == (True, None)
 
 
+def test_sustained_shunt_listener_error_notifies_entities():
+    """Ensure sustained listener errors notify listeners about availability changes."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    hass.loop.call_soon_threadsafe = lambda callback: callback()
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=logger,
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+        shunt_connection_mode="sustained",
+    )
+    listener = MagicMock()
+    coordinator.async_add_listener(listener)
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RTMShunt300A1B2",
+        rssi=-60,
+    )
+    ble_module.bluetooth.async_last_service_info.return_value = service_info
+    client = MagicMock()
+    client.start_notify = AsyncMock(side_effect=RuntimeError("notify failed"))
+    client.stop_notify = AsyncMock()
+    client.disconnect = AsyncMock()
+    ble_module.establish_connection = AsyncMock(return_value=client)
+    original_sleep = ble_module.asyncio.sleep
+    ble_module.asyncio.sleep = AsyncMock(side_effect=asyncio.CancelledError())
+
+    try:
+        try:
+            asyncio.run(coordinator._shunt_notification_loop())
+        except asyncio.CancelledError:
+            pass
+    finally:
+        ble_module.asyncio.sleep = original_sleep
+
+    assert coordinator.last_update_success is False
+    coordinator.device.update_availability.assert_called_with(
+        False, client.start_notify.side_effect
+    )
+    assert listener.call_count == 1
+
+
 def test_shunt_poll_keeps_last_good_data_when_library_read_fails():
     """Ensure HA preserves the last good shunt snapshot on library read failure."""
     ble_module = _load_ble_module()
