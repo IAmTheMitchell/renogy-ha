@@ -25,46 +25,64 @@ Requires the `button-card` custom card.
 type: custom:button-card
 entity: sensor.renogy_health
 name: Renogy Health
-show_state: true
 show_icon: false
+show_state: false
 tap_action:
   action: more-info
+
 styles:
+  grid:
+    - grid-template-areas: '"n status" "summary summary" "failures failures"'
+    - grid-template-columns: 1fr auto
+    - grid-template-rows: min-content min-content min-content
+    - row-gap: 6px
   card:
-    - padding: 16px
-    - border-radius: 12px
-    - background: var(--card-background-color)
-    - color: var(--primary-text-color)
+    - padding: 16px 18px
+    - border-radius: 14px
+    - background: "linear-gradient(135deg, #141414 0%, #1e1e1e 100%)"
+    - color: "#f3f3f3"
   name:
     - font-size: 18px
-    - font-weight: 600
-  state:
-    - font-size: 14px
-    - opacity: 0.8
+    - font-weight: 700
+  custom_fields:
+    status:
+      - grid-area: status
+      - align-self: center
+      - justify-self: end
+      - padding: 4px 10px
+      - border-radius: 999px
+      - font-size: 12px
+      - font-weight: 700
+      - text-transform: uppercase
+    summary:
+      - grid-area: summary
+      - font-size: 13px
+      - opacity: 0.85
+    failures:
+      - grid-area: failures
+      - font-size: 12px
+      - opacity: 0.75
+
 custom_fields:
   status: |
     [[[
       const s = entity?.state;
-      if (s === "critical") return "🔴 Critical";
-      if (s === "warn") return "🟡 Warning";
-      if (s === "healthy") return "🟢 Healthy";
-      return "⚪ Unknown";
+      if (s === "critical") return `<span style="background:#7a1111;color:#fff">Critical</span>`;
+      if (s === "warn") return `<span style="background:#7a5a11;color:#fff">Warning</span>`;
+      if (s === "healthy") return `<span style="background:#116b2f;color:#fff">Healthy</span>`;
+      return `<span style="background:#444;color:#fff">Unknown</span>`;
     ]]]
-  failing: |
+  summary: |
+    [[[
+      const a = entity?.attributes || {};
+      return `Devices: ${a.total_devices ?? 0} · Warn: ${a.warn_devices ?? 0} · Critical: ${a.critical_devices ?? 0} · Offline: ${a.disconnected_devices ?? 0}`;
+    ]]]
+  failures: |
     [[[
       const list = entity?.attributes?.failing_devices || [];
       if (!list.length) return "All devices healthy";
-      return list.map(d => `${d.name || d.address} (${d.status})`).join(", ");
+      return "Issues: " + list.map(d => `${d.name || d.address} (${d.status})`).join(", ");
     ]]]
-styles:
-  custom_fields:
-    status:
-      - font-size: 14px
-      - margin-top: 6px
-    failing:
-      - font-size: 12px
-      - margin-top: 8px
-      - opacity: 0.8
 ```
 
 ### Entities-Card Alternative
