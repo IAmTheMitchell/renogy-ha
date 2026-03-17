@@ -19,7 +19,8 @@ It summarizes all Renogy devices and lists failing devices in attributes.
 
 ### Button-Card Snippet
 
-Requires the `button-card` custom card.
+Requires the `button-card` custom card. Install it via HACS:
+`HACS → Frontend → Button Card`.
 
 ```yaml
 type: custom:button-card
