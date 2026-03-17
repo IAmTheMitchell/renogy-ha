@@ -489,7 +489,9 @@ class RenogyActiveBluetoothCoordinator(
         stale = (
             now - self._last_sustained_shunt_push >= SHUNT_FORCE_UPDATE_INTERVAL_SECONDS
         )
-        if not changed and not stale:
+        # Keep the recovery path alive after a transient listener failure even
+        # when the first restored payload matches the previous values.
+        if not changed and not stale and self.last_update_success:
             return
 
         if self.device is not None:
