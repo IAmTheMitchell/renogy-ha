@@ -123,6 +123,18 @@ KEY_SHUNT_STATUS_SOURCE = "status_source"
 KEY_SHUNT_ENERGY_SOURCE = "energy_source"
 KEY_SHUNT_DECODE_CONFIDENCE = "decode_confidence"
 KEY_SHUNT_READING_VERIFIED = "reading_verified"
+KEY_SHUNT_TEMPERATURE_1 = "temp_1"
+KEY_SHUNT_TEMPERATURE_2 = "temp_2"
+KEY_SHUNT_TEMPERATURE_3 = "temp_3"
+KEY_SHUNT_STARTER_VOLTAGE = "starter_battery_voltage"
+KEY_SHUNT_HIST_1 = "hist_1"
+KEY_SHUNT_HIST_2 = "hist_2"
+KEY_SHUNT_HIST_3 = "hist_3"
+KEY_SHUNT_HIST_4 = "hist_4"
+KEY_SHUNT_HIST_5 = "hist_5"
+KEY_SHUNT_HIST_6 = "hist_6"
+KEY_SHUNT_ADDITIONAL_VALUE = "additional_value"
+KEY_SHUNT_SEQUENCE = "sequence"
 
 # Device health sensor key
 KEY_HEALTH_STATUS = "health_status"
@@ -253,6 +265,75 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         value_fn=lambda data: data.get(KEY_SHUNT_ENERGY_DISCHARGED_TOTAL),
     ),
     RenogyBLESensorDescription(
+        key=KEY_SHUNT_STATUS,
+        name="Shunt Charge Status",
+        device_class=None,
+        value_fn=lambda data: (
+            "charging"
+            if data.get(KEY_SHUNT_CURRENT, 0) is not None
+            and data.get(KEY_SHUNT_CURRENT, 0) > 0.05
+            else "discharging"
+            if data.get(KEY_SHUNT_CURRENT, 0) is not None
+            and data.get(KEY_SHUNT_CURRENT, 0) < -0.05
+            else "idle"
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_1,
+        name="Shunt Temperature 1",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_TEMPERATURE_1]), 1)
+            if data.get(KEY_SHUNT_TEMPERATURE_1) is not None
+            else round(float(data["battery_temperature"]), 1)
+            if data.get("battery_temperature") is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_2,
+        name="Shunt Temperature 2",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_TEMPERATURE_2)
+            if data.get(KEY_SHUNT_TEMPERATURE_2) is not None
+            else _shunt_word_value(data, 38)
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_3,
+        name="Shunt Temperature 3",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_TEMPERATURE_3)
+            if data.get(KEY_SHUNT_TEMPERATURE_3) is not None
+            else _shunt_word_value(data, 40)
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_STARTER_VOLTAGE,
+        name="Shunt Starter Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_STARTER_VOLTAGE]), 2)
+            if data.get(KEY_SHUNT_STARTER_VOLTAGE) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
         key=KEY_SHUNT_ESTIMATED_ENERGY,
         name="Shunt Estimated Energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -267,17 +348,119 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         ),
     ),
     RenogyBLESensorDescription(
-        key=KEY_SHUNT_STATUS,
-        name="Shunt Charge Status",
+        key=KEY_SHUNT_HIST_1,
+        name="Shunt Historical Value 1",
         device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_1) or _shunt_word_value(data, 42),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_2,
+        name="Shunt Historical Value 2",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_2) or _shunt_word_value(data, 44),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_3,
+        name="Shunt Historical Value 3",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_3) or _shunt_word_value(data, 46),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_4,
+        name="Shunt Historical Value 4",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_4) or _shunt_word_value(data, 48),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_5,
+        name="Shunt Historical Value 5",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_5) or _shunt_word_value(data, 50),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_6,
+        name="Shunt Historical Value 6",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_6) or _shunt_word_value(data, 52),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ADDITIONAL_VALUE,
+        name="Shunt Additional Value",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: (
-            "charging"
-            if data.get(KEY_SHUNT_CURRENT, 0) is not None
-            and data.get(KEY_SHUNT_CURRENT, 0) > 0.05
-            else "discharging"
-            if data.get(KEY_SHUNT_CURRENT, 0) is not None
-            and data.get(KEY_SHUNT_CURRENT, 0) < -0.05
-            else "idle"
+            data.get(KEY_SHUNT_ADDITIONAL_VALUE)
+            if data.get(KEY_SHUNT_ADDITIONAL_VALUE) is not None
+            else _shunt_word_value(data, 53) or _shunt_word_value(data, 34)
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_SEQUENCE,
+        name="Shunt Packet Sequence",
+        device_class=None,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_SEQUENCE)
+            if data.get(KEY_SHUNT_SEQUENCE) is not None
+            else int(data["raw_words"][-1])
+            if isinstance(data.get("raw_words"), list) and data.get("raw_words")
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_VERBOSE,
+        name="Shunt Verbose Mode",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            "enabled"
+            if str(data.get(KEY_SHUNT_VERBOSE, "")).strip().lower()
+            in {"1", "true", "yes", "on"}
+            else "disabled"
+            if str(data.get(KEY_SHUNT_VERBOSE, "")).strip().lower()
+            in {"0", "false", "no", "off"}
+            else "unknown"
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_STATUS_SOURCE,
+        name="Shunt Status Source",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_STATUS_SOURCE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ENERGY_SOURCE,
+        name="Shunt Energy Source",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_ENERGY_SOURCE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_DECODE_CONFIDENCE,
+        name="Shunt Decode Confidence",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_DECODE_CONFIDENCE) or data.get("conf") or "unknown"
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_READING_VERIFIED,
+        name="Shunt Reading Verified",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_READING_VERIFIED)
+            if data.get(KEY_SHUNT_READING_VERIFIED) is not None
+            else data.get("verified")
         ),
     ),
 )
