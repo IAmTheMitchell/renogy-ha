@@ -44,6 +44,7 @@ class ShuntConnectionMode(Enum):
 
     SUSTAINED = "sustained"
     INTERMITTENT = "intermittent"
+    AUTO = "auto"
 
 
 SHUNT_CONNECTION_MODES = [mode.value for mode in ShuntConnectionMode]

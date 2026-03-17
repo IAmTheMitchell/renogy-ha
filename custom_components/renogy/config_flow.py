@@ -31,6 +31,7 @@ from .const import (
     SHUNT_CONNECTION_MODES,
     SUPPORTED_DEVICE_TYPES,
     DeviceType,
+    ShuntConnectionMode,
 )
 from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name
 
@@ -260,4 +261,9 @@ class RenogyOptionsFlowHandler(OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=_build_shunt_options_schema(current_mode),
+            description_placeholders={
+                "sustained": ShuntConnectionMode.SUSTAINED.value,
+                "intermittent": ShuntConnectionMode.INTERMITTENT.value,
+                "auto": ShuntConnectionMode.AUTO.value,
+            },
         )

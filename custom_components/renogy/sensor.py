@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -1209,6 +1210,29 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                     reading_verified = shunt_data.get("verified")
                 if reading_verified is not None:
                     attrs["reading_verified"] = reading_verified
+
+                coordinator = self.coordinator
+                connection_mode = getattr(coordinator, "shunt_connection_mode", None)
+                attrs["shunt_connection_mode"] = (
+                    connection_mode if isinstance(connection_mode, str) else "unknown"
+                )
+                listener_task = getattr(coordinator, "_shunt_listener_task", None)
+                attrs["shunt_listener_active"] = isinstance(listener_task, asyncio.Task)
+                failures = getattr(coordinator, "_shunt_listener_failures", 0)
+                attrs["shunt_listener_failures"] = (
+                    failures if isinstance(failures, int) else 0
+                )
+                last_success = getattr(
+                    coordinator, "_shunt_listener_last_success", None
+                )
+                if last_success:
+                    attrs["shunt_listener_last_success"] = last_success
+                auto_fallback = getattr(
+                    coordinator, "_shunt_auto_fallback_active", False
+                )
+                attrs["shunt_auto_fallback_active"] = (
+                    auto_fallback if isinstance(auto_fallback, bool) else False
+                )
 
         # Expose raw shunt payload details for troubleshooting.
         if (

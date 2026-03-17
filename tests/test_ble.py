@@ -248,6 +248,42 @@ def test_intermittent_shunt_device_uses_library_shunt_client():
     assert coordinator._ble_client.__class__.__name__ == "ShuntBleClient"
 
 
+def test_auto_shunt_device_starts_with_sustained_listener():
+    """Ensure auto SHUNT300 mode starts with sustained listener behavior."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+        shunt_connection_mode="auto",
+    )
+
+    assert coordinator._ble_client.__class__.__name__ == "RenogyBleClient"
+    assert coordinator._uses_sustained_shunt_listener() is True
+
+
+def test_auto_shunt_fallback_switches_to_polling_client():
+    """Ensure auto mode falls back to polling after repeated failures."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+        shunt_connection_mode="auto",
+    )
+
+    for _ in range(ble_module.SHUNT_AUTO_FALLBACK_FAILURES):
+        coordinator._handle_shunt_listener_failure(RuntimeError("boom"))
+
+    assert coordinator._shunt_auto_fallback_active is True
+    assert coordinator._uses_sustained_shunt_listener() is False
+    assert coordinator._ble_client.__class__.__name__ == "ShuntBleClient"
+
+
 def test_sustained_shunt_refresh_does_not_poll():
     """Ensure sustained SHUNT300 refresh requests do not open a competing read."""
     ble_module = _load_ble_module()

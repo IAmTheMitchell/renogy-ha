@@ -366,6 +366,10 @@ def test_shunt_status_sensor_exposes_troubleshooting_attributes() -> None:
     assert attrs["reading_verified"] is True
     assert attrs["raw_payload"] == "deadbeef"
     assert attrs["raw_words"] == [1, 2, 3]
+    assert attrs["shunt_connection_mode"] == "unknown"
+    assert attrs["shunt_listener_active"] is False
+    assert attrs["shunt_listener_failures"] == 0
+    assert attrs["shunt_auto_fallback_active"] is False
 
 
 def test_shunt_status_sensor_preserves_zero_decode_confidence() -> None:
