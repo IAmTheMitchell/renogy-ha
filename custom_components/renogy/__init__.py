@@ -9,12 +9,16 @@ from homeassistant.helpers.device_registry import async_get as async_get_device_
 
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
+    CONF_CRITICAL_RSSI,
     CONF_DEVICE_TYPE,
     CONF_SCAN_INTERVAL,
     CONF_SHUNT_CONNECTION_MODE,
+    CONF_WARN_RSSI,
+    DEFAULT_CRITICAL_RSSI,
     DEFAULT_DEVICE_TYPE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
+    DEFAULT_WARN_RSSI,
     DOMAIN,
     LOGGER,
     DeviceType,
@@ -34,6 +38,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_address = entry.data.get(CONF_ADDRESS)
     device_type = entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
     shunt_connection_mode = _get_shunt_connection_mode(entry)
+    warn_rssi = entry.options.get(CONF_WARN_RSSI, DEFAULT_WARN_RSSI)
+    critical_rssi = entry.options.get(CONF_CRITICAL_RSSI, DEFAULT_CRITICAL_RSSI)
 
     if not device_address:
         LOGGER.error("No device address provided in config entry")
@@ -56,6 +62,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         scan_interval=scan_interval,
         device_type=device_type,
         shunt_connection_mode=shunt_connection_mode,
+        warn_rssi=warn_rssi,
+        critical_rssi=critical_rssi,
         device_data_callback=lambda device: _handle_device_update(hass, entry, device),
     )
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))

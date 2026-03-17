@@ -34,7 +34,9 @@ from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
+    DEFAULT_CRITICAL_RSSI,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_WARN_RSSI,
     DOMAIN,
     LOGGER,
     RENOGY_BT_PREFIX,
@@ -122,6 +124,9 @@ KEY_SHUNT_ENERGY_SOURCE = "energy_source"
 KEY_SHUNT_DECODE_CONFIDENCE = "decode_confidence"
 KEY_SHUNT_READING_VERIFIED = "reading_verified"
 
+# Device health sensor key
+KEY_HEALTH_STATUS = "health_status"
+
 # Inverter-specific sensor keys
 KEY_AC_OUTPUT_VOLTAGE = "ac_output_voltage"
 KEY_AC_OUTPUT_CURRENT = "ac_output_current"
@@ -142,6 +147,36 @@ def _shunt_word_value(
     if not isinstance(raw_words, list) or index >= len(raw_words):
         return None
     return round(float(raw_words[index]) / scale, 3)
+
+
+def _compute_health_status(
+    coordinator: RenogyActiveBluetoothCoordinator,
+    device: RenogyBLEDevice | None,
+) -> str:
+    """Compute overall device health status."""
+    if not coordinator.last_update_success:
+        return "disconnected"
+
+    if device and hasattr(device, "is_available") and not device.is_available:
+        return "disconnected"
+
+    warn_rssi = getattr(coordinator, "warn_rssi", DEFAULT_WARN_RSSI)
+    critical_rssi = getattr(coordinator, "critical_rssi", DEFAULT_CRITICAL_RSSI)
+    rssi = device.rssi if device and getattr(device, "rssi", None) is not None else None
+
+    if rssi is not None:
+        if rssi <= critical_rssi:
+            return "critical"
+        if rssi <= warn_rssi:
+            return "warn"
+
+    if getattr(coordinator, "_shunt_auto_fallback_active", False):
+        return "warn"
+
+    if getattr(coordinator, "_shunt_listener_failures", 0) > 0:
+        return "warn"
+
+    return "healthy"
 
 
 @dataclass(frozen=True)
@@ -244,6 +279,16 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
             and data.get(KEY_SHUNT_CURRENT, 0) < -0.05
             else "idle"
         ),
+    ),
+)
+
+HEALTH_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_HEALTH_STATUS,
+        name="Device Health",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=None,
     ),
 )
 
@@ -834,6 +879,7 @@ SENSORS_BY_DEVICE_TYPE = {
         "PV": PV_SENSORS,
         "Load": LOAD_SENSORS,
         "Controller": CONTROLLER_SENSORS,
+        "Health": HEALTH_SENSORS,
     },
     DeviceType.DCC.value: {
         "Battery": DCC_BATTERY_SENSORS,
@@ -842,12 +888,15 @@ SENSORS_BY_DEVICE_TYPE = {
         "Status": DCC_STATUS_SENSORS,
         "Statistics": DCC_STATISTICS_SENSORS,
         "Diagnostic": DCC_DIAGNOSTIC_SENSORS,
+        "Health": HEALTH_SENSORS,
     },
     DeviceType.SHUNT300.value: {
         "Shunt": SHUNT300_SENSORS,
+        "Health": HEALTH_SENSORS,
     },
     DeviceType.INVERTER.value: {
         "Inverter": INVERTER_SENSORS,
+        "Health": HEALTH_SENSORS,
     },
 }
 
@@ -1062,6 +1111,11 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         if self._attr_native_value is not None:
             return self._attr_native_value
 
+        if self.entity_description.key == KEY_HEALTH_STATUS:
+            value = _compute_health_status(self.coordinator, self.device)
+            self._attr_native_value = value
+            return value
+
         device = self.device
         data = None
 
@@ -1233,6 +1287,15 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 attrs["shunt_auto_fallback_active"] = (
                     auto_fallback if isinstance(auto_fallback, bool) else False
                 )
+
+        if self.entity_description.key == KEY_HEALTH_STATUS:
+            attrs["last_update_success"] = self.coordinator.last_update_success
+            attrs["warn_rssi"] = getattr(
+                self.coordinator, "warn_rssi", DEFAULT_WARN_RSSI
+            )
+            attrs["critical_rssi"] = getattr(
+                self.coordinator, "critical_rssi", DEFAULT_CRITICAL_RSSI
+            )
 
         # Expose raw shunt payload details for troubleshooting.
         if (

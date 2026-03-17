@@ -25,7 +25,9 @@
       "init": {
         "description": "Choose how the Smart Shunt maintains its connection. {sustained} keeps a continuous BLE notification listener (best for fast updates). {intermittent} polls on the scan interval (lower BLE load). {auto} starts sustained and falls back to polling after repeated failures.",
         "data": {
-          "shunt_connection_mode": "Smart Shunt connection mode"
+          "shunt_connection_mode": "Smart Shunt connection mode",
+          "warn_rssi": "Warning RSSI threshold (dBm)",
+          "critical_rssi": "Critical RSSI threshold (dBm)"
         }
       }
     }

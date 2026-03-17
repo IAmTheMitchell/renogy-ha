@@ -29,9 +29,11 @@ from renogy_ble import ble as renogy_ble_module
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
 from .const import (
+    DEFAULT_CRITICAL_RSSI,
     DEFAULT_DEVICE_TYPE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
+    DEFAULT_WARN_RSSI,
     DeviceType,
     ShuntConnectionMode,
 )
@@ -96,6 +98,8 @@ class RenogyActiveBluetoothCoordinator(
         scan_interval: int = DEFAULT_SCAN_INTERVAL,
         device_type: str = DEFAULT_DEVICE_TYPE,
         shunt_connection_mode: str = DEFAULT_SHUNT_CONNECTION_MODE,
+        warn_rssi: int = DEFAULT_WARN_RSSI,
+        critical_rssi: int = DEFAULT_CRITICAL_RSSI,
         device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
         | None = None,
     ):
@@ -112,6 +116,8 @@ class RenogyActiveBluetoothCoordinator(
         self.device: RenogyBLEDevice | None = None
         self.scan_interval = scan_interval
         self.shunt_connection_mode = shunt_connection_mode
+        self.warn_rssi = warn_rssi
+        self.critical_rssi = critical_rssi
         self.device_type = device_type
         self.last_poll_time: datetime | None = None
         self.device_data_callback = device_data_callback
