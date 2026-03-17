@@ -19,6 +19,7 @@ RENOGY_INVERTER_PREFIX = "RNGRIU"
 # Configuration parameters
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_DEVICE_TYPE = "device_type"  # New constant for device type
+CONF_SHUNT_CONNECTION_MODE = "shunt_connection_mode"
 
 # Device info
 ATTR_MANUFACTURER = "Renogy"
@@ -36,6 +37,17 @@ class DeviceType(Enum):
 # List of supported device types
 DEVICE_TYPES = [e.value for e in DeviceType]
 DEFAULT_DEVICE_TYPE = DeviceType.CONTROLLER.value
+
+
+class ShuntConnectionMode(Enum):
+    """Supported Smart Shunt connection strategies."""
+
+    SUSTAINED = "sustained"
+    INTERMITTENT = "intermittent"
+
+
+SHUNT_CONNECTION_MODES = [mode.value for mode in ShuntConnectionMode]
+DEFAULT_SHUNT_CONNECTION_MODE = ShuntConnectionMode.SUSTAINED.value
 
 # List of fully supported device types
 SUPPORTED_DEVICE_TYPES = [
