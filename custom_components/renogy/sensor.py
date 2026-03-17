@@ -193,6 +193,25 @@ def _compute_health_status(
     return "healthy"
 
 
+def _normalize_shunt_energy_source(data: Dict[str, Any]) -> str:
+    """Normalize shunt energy source for display."""
+    energy_source = data.get(KEY_SHUNT_ENERGY_SOURCE)
+    if isinstance(energy_source, str):
+        normalized = energy_source.strip().lower()
+        if normalized in {"unknown", "n/a", "na", ""}:
+            energy_source = None
+
+    if energy_source is None:
+        if (
+            data.get(KEY_SHUNT_ENERGY_CHARGED_TOTAL) is not None
+            or data.get(KEY_SHUNT_ENERGY_DISCHARGED_TOTAL) is not None
+        ):
+            return "integrated"
+        return "unavailable"
+
+    return str(energy_source)
+
+
 @dataclass(frozen=True)
 class RenogyBLESensorDescription(SensorEntityDescription):
     """Describes a Renogy BLE sensor."""
@@ -443,7 +462,7 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="Shunt Energy Source",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get(KEY_SHUNT_ENERGY_SOURCE),
+        value_fn=_normalize_shunt_energy_source,
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_DECODE_CONFIDENCE,
@@ -1446,23 +1465,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                     )
                 attrs["status_source"] = status_source
 
-                energy_source = shunt_data.get(KEY_SHUNT_ENERGY_SOURCE)
-                if isinstance(energy_source, str) and energy_source.strip().lower() in {
-                    "unknown",
-                    "n/a",
-                    "na",
-                    "",
-                }:
-                    energy_source = None
-                if energy_source is None:
-                    if (
-                        shunt_data.get(KEY_SHUNT_ENERGY_CHARGED_TOTAL) is not None
-                        or shunt_data.get(KEY_SHUNT_ENERGY_DISCHARGED_TOTAL) is not None
-                    ):
-                        energy_source = "integrated"
-                    else:
-                        energy_source = "unavailable"
-                attrs["energy_source"] = energy_source
+                attrs["energy_source"] = _normalize_shunt_energy_source(shunt_data)
 
                 decode_confidence = shunt_data.get(KEY_SHUNT_DECODE_CONFIDENCE)
                 if decode_confidence is None:

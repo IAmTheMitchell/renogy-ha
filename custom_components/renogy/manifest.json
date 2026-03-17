@@ -25,5 +25,5 @@
   "requirements": [
     "renogy-ble@git+https://github.com/rs-mini-rgb/renogy-ble.git@baa8b24"
   ],
-  "version": "0.5.10"
+  "version": "0.5.11"
 }
