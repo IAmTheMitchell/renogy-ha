@@ -1447,6 +1447,13 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 attrs["status_source"] = status_source
 
                 energy_source = shunt_data.get(KEY_SHUNT_ENERGY_SOURCE)
+                if isinstance(energy_source, str) and energy_source.strip().lower() in {
+                    "unknown",
+                    "n/a",
+                    "na",
+                    "",
+                }:
+                    energy_source = None
                 if energy_source is None:
                     if (
                         shunt_data.get(KEY_SHUNT_ENERGY_CHARGED_TOTAL) is not None
