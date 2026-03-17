@@ -138,6 +138,7 @@ KEY_SHUNT_SEQUENCE = "sequence"
 
 # Device health sensor key
 KEY_HEALTH_STATUS = "health_status"
+KEY_AGGREGATE_HEALTH_STATUS = "aggregate_health_status"
 
 # Inverter-specific sensor keys
 KEY_AC_OUTPUT_VOLTAGE = "ac_output_voltage"
@@ -149,6 +150,7 @@ KEY_LOAD_APPARENT_POWER = "load_apparent_power"
 KEY_LOAD_PERCENTAGE = "load_percentage"
 KEY_TEMPERATURE = "temperature"
 SHUNT_ESTIMATED_CAPACITY_KWH = 1.28
+AGGREGATE_HEALTH_SENSOR_KEY = "__aggregate_health_sensor__"
 
 
 def _shunt_word_value(
@@ -1123,6 +1125,25 @@ async def async_setup_entry(
     else:
         LOGGER.warning("No entities were created")
 
+    aggregate_sensor = _get_or_create_aggregate_sensor(hass, async_add_entities)
+    remove_aggregate_listener = aggregate_sensor.attach_entry(config_entry.entry_id)
+    config_entry.async_on_unload(remove_aggregate_listener)
+
+
+def _get_or_create_aggregate_sensor(
+    hass: HomeAssistant, async_add_entities: AddEntitiesCallback
+) -> "RenogyAggregateHealthSensor":
+    """Return the singleton aggregate health sensor for this integration."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    existing = domain_data.get(AGGREGATE_HEALTH_SENSOR_KEY)
+    if isinstance(existing, RenogyAggregateHealthSensor):
+        return existing
+
+    aggregate = RenogyAggregateHealthSensor(hass)
+    domain_data[AGGREGATE_HEALTH_SENSOR_KEY] = aggregate
+    async_add_entities([aggregate])
+    return aggregate
+
 
 def create_entities_helper(
     coordinator: RenogyActiveBluetoothCoordinator,
@@ -1495,3 +1516,133 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 attrs["raw_words"] = raw_words
 
         return attrs
+
+
+class RenogyAggregateHealthSensor(SensorEntity):
+    """Aggregate health view across all Renogy devices."""
+
+    _attr_name = "Renogy Health"
+    _attr_unique_id = "renogy_health_aggregate"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the aggregate health sensor."""
+        self.hass = hass
+        self._entry_listeners: dict[str, Callable[[], None]] = {}
+        self._attr_native_value = "unknown"
+        self._attr_extra_state_attributes: dict[str, Any] = {}
+        self._last_updated: datetime | None = None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "aggregate_health")},
+            name="Renogy Health",
+            manufacturer=ATTR_MANUFACTURER,
+            model="Aggregate",
+        )
+
+    def attach_entry(self, entry_id: str) -> Callable[[], None]:
+        """Attach a config entry to this aggregate sensor."""
+        if entry_id in self._entry_listeners:
+            return lambda: None
+
+        entry_data = self.hass.data.get(DOMAIN, {}).get(entry_id)
+        coordinator = (
+            entry_data.get("coordinator") if isinstance(entry_data, dict) else None
+        )
+        if coordinator is None:
+            return lambda: None
+
+        remove_listener = coordinator.async_add_listener(self._handle_update)
+        self._entry_listeners[entry_id] = remove_listener
+        self._handle_update()
+
+        def _remove() -> None:
+            remove_listener()
+            self._entry_listeners.pop(entry_id, None)
+            self._handle_update()
+
+        return _remove
+
+    def _handle_update(self) -> None:
+        """Recompute aggregate state from all known devices."""
+        self._last_updated = datetime.now()
+        aggregate_status, attributes = self._compute_aggregate_status_and_attrs()
+        self._attr_native_value = aggregate_status
+        self._attr_extra_state_attributes = attributes
+        self.async_write_ha_state()
+
+    def _compute_aggregate_status_and_attrs(self) -> tuple[str, dict[str, Any]]:
+        """Return aggregate status and attributes."""
+        failing_devices: list[dict[str, Any]] = []
+        status_counts = {
+            "healthy": 0,
+            "warn": 0,
+            "critical": 0,
+            "disconnected": 0,
+        }
+        total_devices = 0
+
+        for entry_id, entry_data in self.hass.data.get(DOMAIN, {}).items():
+            if entry_id == AGGREGATE_HEALTH_SENSOR_KEY:
+                continue
+            if not isinstance(entry_data, dict) or "coordinator" not in entry_data:
+                continue
+
+            coordinator = entry_data["coordinator"]
+            device = coordinator.device
+            if device is None:
+                devices = entry_data.get("devices", [])
+                if isinstance(devices, list) and devices:
+                    device = devices[0]
+
+            status = _compute_health_status(coordinator, device)
+            total_devices += 1
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+            if status != "healthy":
+                failing_devices.append(
+                    {
+                        "name": getattr(device, "name", None)
+                        or getattr(coordinator, "address", "unknown"),
+                        "address": getattr(coordinator, "address", None),
+                        "status": status,
+                        "device_type": getattr(device, "device_type", None),
+                        "rssi": getattr(device, "rssi", None),
+                    }
+                )
+
+        if total_devices == 0:
+            aggregate_status = "unknown"
+        elif status_counts.get("critical", 0) > 0 or status_counts.get(
+            "disconnected", 0
+        ) > 0:
+            aggregate_status = "critical"
+        elif status_counts.get("warn", 0) > 0:
+            aggregate_status = "warn"
+        elif status_counts.get("healthy", 0) == total_devices:
+            aggregate_status = "healthy"
+        else:
+            aggregate_status = "unknown"
+
+        attributes: dict[str, Any] = {
+            "last_updated": self._last_updated.isoformat()
+            if self._last_updated
+            else None,
+            "total_devices": total_devices,
+            "healthy_devices": status_counts.get("healthy", 0),
+            "warn_devices": status_counts.get("warn", 0),
+            "critical_devices": status_counts.get("critical", 0),
+            "disconnected_devices": status_counts.get("disconnected", 0),
+            "failing_devices": failing_devices,
+        }
+
+        return aggregate_status, attributes
+
+    @property
+    def native_value(self) -> Any:
+        """Return the aggregate health status."""
+        return self._attr_native_value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return aggregate health metadata."""
+        return dict(self._attr_extra_state_attributes)

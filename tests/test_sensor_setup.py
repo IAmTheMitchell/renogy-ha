@@ -68,6 +68,10 @@ def _install_module_stubs() -> None:
     class SensorEntity:
         """Stub SensorEntity class for testing."""
 
+        def async_write_ha_state(self) -> None:
+            """Stub state write for testing."""
+            return None
+
     @dataclass(frozen=True)
     class SensorEntityDescription:
         """Stub SensorEntityDescription for testing."""
@@ -437,4 +441,60 @@ def test_inverter_sensor_mapping_uses_library_field_names() -> None:
     )
     assert (
         descriptions[sensor_module.KEY_MODEL].value_fn(sample_data) == "RIV1220PU-126"
+    )
+
+
+def test_aggregate_health_sensor_rollup() -> None:
+    """Ensure aggregate health rolls up device status and lists failures."""
+    sensor_module = _load_sensor_module()
+
+    hass = MagicMock()
+    hass.data = {sensor_module.DOMAIN: {}}
+
+    coordinator_healthy = MagicMock()
+    coordinator_healthy.address = "AA:BB:CC:DD:EE:01"
+    coordinator_healthy.last_update_success = True
+    coordinator_healthy.warn_rssi = -80
+    coordinator_healthy.critical_rssi = -90
+    device_healthy = MagicMock()
+    device_healthy.name = "Renogy Healthy"
+    device_healthy.address = coordinator_healthy.address
+    device_healthy.device_type = sensor_module.DeviceType.CONTROLLER.value
+    device_healthy.is_available = True
+    device_healthy.rssi = -60
+    coordinator_healthy.device = device_healthy
+
+    coordinator_critical = MagicMock()
+    coordinator_critical.address = "AA:BB:CC:DD:EE:02"
+    coordinator_critical.last_update_success = True
+    coordinator_critical.warn_rssi = -80
+    coordinator_critical.critical_rssi = -90
+    device_critical = MagicMock()
+    device_critical.name = "Renogy Critical"
+    device_critical.address = coordinator_critical.address
+    device_critical.device_type = sensor_module.DeviceType.SHUNT300.value
+    device_critical.is_available = True
+    device_critical.rssi = -95
+    coordinator_critical.device = device_critical
+
+    hass.data[sensor_module.DOMAIN]["entry-1"] = {
+        "coordinator": coordinator_healthy,
+        "devices": [device_healthy],
+    }
+    hass.data[sensor_module.DOMAIN]["entry-2"] = {
+        "coordinator": coordinator_critical,
+        "devices": [device_critical],
+    }
+
+    entity = sensor_module.RenogyAggregateHealthSensor(hass)
+    entity._handle_update()
+
+    assert entity.native_value == "critical"
+    attrs = entity.extra_state_attributes
+    assert attrs["total_devices"] == 2
+    assert attrs["critical_devices"] == 1
+    assert attrs["healthy_devices"] == 1
+    assert any(
+        failing["name"] == "Renogy Critical" and failing["status"] == "critical"
+        for failing in attrs["failing_devices"]
     )
