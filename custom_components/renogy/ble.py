@@ -612,7 +612,15 @@ class RenogyActiveBluetoothCoordinator(
 
                 # Update coordinator data if successful
                 if success and device.parsed_data:
-                    self.data = dict(device.parsed_data)
+                    updated = dict(device.parsed_data)
+                    if device.device_type == DeviceType.INVERTER.value and isinstance(
+                        self.data, dict
+                    ):
+                        merged = dict(self.data)
+                        merged.update(updated)
+                        self.data = merged
+                    else:
+                        self.data = updated
                     self.logger.debug("Updated coordinator data: %s", self.data)
 
                 return success

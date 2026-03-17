@@ -69,6 +69,16 @@ KEY_DEVICE_ID = "device_id"
 KEY_MODEL = "model"
 KEY_MAX_DISCHARGING_POWER_TODAY = "max_discharging_power_today"
 
+# Inverter-specific sensor keys
+KEY_AC_OUTPUT_VOLTAGE = "ac_output_voltage"
+KEY_AC_OUTPUT_CURRENT = "ac_output_current"
+KEY_AC_OUTPUT_FREQUENCY = "ac_output_frequency"
+KEY_INPUT_FREQUENCY = "input_frequency"
+KEY_LOAD_ACTIVE_POWER = "load_active_power"
+KEY_LOAD_APPARENT_POWER = "load_apparent_power"
+KEY_LOAD_PERCENTAGE = "load_percentage"
+KEY_TEMPERATURE = "temperature"
+
 # DCC-specific sensor keys (DC-DC Charger)
 KEY_BATTERY_SOC = "battery_soc"
 KEY_TOTAL_CHARGING_CURRENT = "total_charging_current"
@@ -117,7 +127,19 @@ KEY_AC_OUTPUT_FREQUENCY = "ac_output_frequency"
 KEY_INPUT_FREQUENCY = "input_frequency"
 KEY_LOAD_ACTIVE_POWER = "load_active_power"
 KEY_LOAD_APPARENT_POWER = "load_apparent_power"
+KEY_LOAD_PERCENTAGE = "load_percentage"
 KEY_TEMPERATURE = "temperature"
+SHUNT_ESTIMATED_CAPACITY_KWH = 1.28
+
+
+def _shunt_word_value(
+    data: Dict[str, Any], index: int, scale: float = 1000.0
+) -> float | None:
+    """Return scaled value from shunt raw_words at index when available."""
+    raw_words = data.get("raw_words")
+    if not isinstance(raw_words, list) or index >= len(raw_words):
+        return None
+    return round(float(raw_words[index]) / scale, 3)
 
 
 @dataclass(frozen=True)
@@ -697,7 +719,6 @@ DCC_ALL_SENSORS = (
     + DCC_STATISTICS_SENSORS
     + DCC_DIAGNOSTIC_SENSORS
 )
-
 # Inverter sensors
 INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
@@ -754,6 +775,17 @@ INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         value_fn=lambda data: data.get(KEY_LOAD_APPARENT_POWER),
     ),
     RenogyBLESensorDescription(
+        key=KEY_LOAD_PERCENTAGE,
+        name="Load Percentage",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: (
+            round((data.get(KEY_LOAD_ACTIVE_POWER, 0) / 2000) * 100, 1)
+            if data.get(KEY_LOAD_ACTIVE_POWER) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
         key=KEY_TEMPERATURE,
         name="Temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -776,7 +808,6 @@ INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         value_fn=lambda data: data.get(KEY_MODEL),
     ),
 )
-
 # All sensors combined (for controller type)
 ALL_SENSORS = BATTERY_SENSORS + PV_SENSORS + LOAD_SENSORS + CONTROLLER_SENSORS
 
@@ -796,11 +827,11 @@ SENSORS_BY_DEVICE_TYPE = {
         "Statistics": DCC_STATISTICS_SENSORS,
         "Diagnostic": DCC_DIAGNOSTIC_SENSORS,
     },
-    DeviceType.INVERTER.value: {
-        "Inverter": INVERTER_SENSORS,
-    },
     DeviceType.SHUNT300.value: {
         "Shunt": SHUNT300_SENSORS,
+    },
+    DeviceType.INVERTER.value: {
+        "Inverter": INVERTER_SENSORS,
     },
 }
 
