@@ -241,9 +241,11 @@ class RenogyActiveBluetoothCoordinator(
             )
             return
 
-        # Get the last available service info for this device
-        service_info = bluetooth.async_last_service_info(self.hass, self.address)
-        if not service_info:
+        service_info = self._service_info_for_operation()
+        if (
+            service_info is None
+            and not self._can_use_cached_device_without_service_info()
+        ):
             self.logger.error(
                 "No service info available for device %s. Ensure device is within "
                 "range and powered on.",
@@ -251,6 +253,12 @@ class RenogyActiveBluetoothCoordinator(
             )
             self.last_update_success = False
             return
+        if service_info is None:
+            self.logger.debug(
+                "No service info available for %s; using cached device context for "
+                "persistent session refresh",
+                self.address,
+            )
 
         try:
             await self._async_poll_device(service_info)
@@ -345,6 +353,18 @@ class RenogyActiveBluetoothCoordinator(
         if hasattr(self, "_unsubscribe_bluetooth") and self._unsubscribe_bluetooth:
             self._unsubscribe_bluetooth()
             self._unsubscribe_bluetooth = None
+
+    def _service_info_for_operation(self) -> BluetoothServiceInfoBleak | None:
+        """Return the latest Home Assistant Bluetooth service info, if available."""
+        return bluetooth.async_last_service_info(self.hass, self.address)
+
+    def _can_use_cached_device_without_service_info(self) -> bool:
+        """Return whether operations can fall back to the cached BLE device."""
+        return (
+            self.device is not None
+            and self._client_transport_mode()
+            == NonShuntConnectionMode.PERSISTENT_SESSION.value
+        )
 
     def async_stop(self) -> None:
         """Stop polling."""
@@ -648,14 +668,27 @@ class RenogyActiveBluetoothCoordinator(
 
             await asyncio.sleep(SHUNT_RECONNECT_DELAY_SECONDS)
 
-    async def _read_device_data(self, service_info: BluetoothServiceInfoBleak) -> bool:
+    async def _read_device_data(
+        self, service_info: BluetoothServiceInfoBleak | None
+    ) -> bool:
         """Read data from a Renogy BLE device using active connection."""
         async with self._connection_lock:
             try:
                 self._connection_in_progress = True
                 success = False
                 error: Exception | None = None
-                device = self._update_device_from_service_info(service_info)
+                if service_info is not None:
+                    device = self._update_device_from_service_info(service_info)
+                elif self.device is not None:
+                    device = self.device
+                    self.logger.debug(
+                        "Using cached BLE device for %s without fresh service info",
+                        device.address,
+                    )
+                else:
+                    raise RuntimeError(
+                        "No cached BLE device is available without service info"
+                    )
                 self.logger.debug(
                     "Polling %s device: %s (%s)",
                     device.device_type,
@@ -698,19 +731,38 @@ class RenogyActiveBluetoothCoordinator(
             self.logger.debug("Connection already in progress, skipping load write")
             return False
 
-        service_info = bluetooth.async_last_service_info(self.hass, self.address)
-        if not service_info:
+        service_info = self._service_info_for_operation()
+        if (
+            service_info is None
+            and not self._can_use_cached_device_without_service_info()
+        ):
             self.logger.error(
                 "No service info available for device %s. Ensure device is within "
                 "range and powered on.",
                 self.address,
             )
             return False
+        if service_info is None:
+            self.logger.debug(
+                "No service info available for %s; using cached device context for "
+                "persistent session load write",
+                self.address,
+            )
 
         async with self._connection_lock:
             self._connection_in_progress = True
             try:
-                device = self._update_device_from_service_info(service_info)
+                if service_info is not None:
+                    device = self._update_device_from_service_info(service_info)
+                elif self.device is not None:
+                    device = self.device
+                else:
+                    self.logger.error(
+                        "Cannot write load state for %s without a cached BLE device",
+                        self.address,
+                    )
+                    self.last_update_success = False
+                    return False
                 value = 1 if state else 0
                 write_single_register = getattr(
                     self._ble_client, "write_single_register", None
@@ -744,7 +796,7 @@ class RenogyActiveBluetoothCoordinator(
                 self._connection_in_progress = False
 
     async def _async_poll_device(
-        self, service_info: BluetoothServiceInfoBleak
+        self, service_info: BluetoothServiceInfoBleak | None
     ) -> dict[str, Any]:
         """Poll the device and return parsed data."""
         if self._uses_sustained_shunt_listener():
@@ -756,9 +808,16 @@ class RenogyActiveBluetoothCoordinator(
             return self.data if isinstance(self.data, dict) else {}
 
         self.last_poll_time = datetime.now()
-        self.logger.debug(
-            "Polling device: %s (%s)", service_info.name, service_info.address
-        )
+        if service_info is not None:
+            self.logger.debug(
+                "Polling device: %s (%s)", service_info.name, service_info.address
+            )
+        elif self.device is not None:
+            self.logger.debug(
+                "Polling device from cached context: %s (%s)",
+                self.device.name,
+                self.device.address,
+            )
 
         # Read device data using service_info and Home Assistant's Bluetooth API
         success = await self._read_device_data(service_info)

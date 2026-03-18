@@ -322,6 +322,114 @@ def test_async_shutdown_closes_persistent_library_client():
     coordinator._ble_client.close.assert_awaited_once()
 
 
+def test_persistent_refresh_uses_cached_device_when_service_info_expires():
+    """Ensure persistent sessions still poll after HA drops advertisement cache."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=logger,
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._async_poll_device = AsyncMock(return_value={})
+    ble_module.bluetooth.async_last_service_info.return_value = None
+
+    asyncio.run(coordinator.async_request_refresh())
+
+    coordinator._async_poll_device.assert_awaited_once_with(None)
+    logger.error.assert_not_called()
+
+
+def test_refresh_without_service_info_still_fails_without_cached_device():
+    """Ensure missing service info still fails without persistent cached context."""
+    ble_module = _load_ble_module()
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=logger,
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    ble_module.bluetooth.async_last_service_info.return_value = None
+
+    asyncio.run(coordinator.async_request_refresh())
+
+    assert coordinator.last_update_success is False
+    logger.error.assert_called_once()
+
+
+def test_read_device_data_uses_cached_device_without_service_info():
+    """Ensure reads can reuse the cached BLE device for persistent sessions."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._ble_client.read_device = AsyncMock(
+        return_value=MagicMock(success=True, error=None)
+    )
+    coordinator.device.parsed_data = {"battery_voltage": 14.4}
+
+    success = asyncio.run(coordinator._read_device_data(None))
+
+    assert success is True
+    coordinator._ble_client.read_device.assert_awaited_once_with(coordinator.device)
+    assert coordinator.data == {"battery_voltage": 14.4}
+
+
+def test_persistent_load_write_uses_cached_device_when_service_info_expires():
+    """Ensure load writes can reuse persistent cached device context."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._ble_client.write_single_register = AsyncMock(
+        return_value=MagicMock(success=True, error=None)
+    )
+    ble_module.bluetooth.async_last_service_info.return_value = None
+
+    success = asyncio.run(coordinator.async_set_load_state(True))
+
+    assert success is True
+    coordinator._ble_client.write_single_register.assert_awaited_once_with(
+        coordinator.device,
+        0x010A,
+        1,
+    )
+
+
 def test_sustained_shunt_refresh_does_not_poll():
     """Ensure sustained SHUNT300 refresh requests do not open a competing read."""
     ble_module = _load_ble_module()
