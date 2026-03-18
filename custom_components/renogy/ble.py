@@ -174,6 +174,18 @@ class RenogyActiveBluetoothCoordinator(
 
         return RenogyBleClient(**client_kwargs)
 
+    def _client_transport_mode(self) -> str:
+        """Return the active transport mode reported by the current BLE client."""
+        return getattr(
+            self._ble_client,
+            "transport_mode",
+            getattr(
+                self._ble_client,
+                "_transport_mode",
+                NonShuntConnectionMode.INTERMITTENT.value,
+            ),
+        )
+
     def _uses_sustained_shunt_listener(self, device_type: str | None = None) -> bool:
         """Return whether this coordinator should keep a sustained shunt listener."""
         resolved_type = device_type or self.device_type
@@ -435,7 +447,7 @@ class RenogyActiveBluetoothCoordinator(
         elif (
             self.device.device_type != DeviceType.SHUNT300.value
             and self._uses_persistent_non_shunt_session(self.device.device_type)
-            and getattr(self._ble_client, "_transport_mode", None)
+            and self._client_transport_mode()
             != NonShuntConnectionMode.PERSISTENT_SESSION.value
         ):
             self.logger.debug(
@@ -448,7 +460,7 @@ class RenogyActiveBluetoothCoordinator(
         elif (
             self.device.device_type != DeviceType.SHUNT300.value
             and not self._uses_persistent_non_shunt_session(self.device.device_type)
-            and getattr(self._ble_client, "_transport_mode", None)
+            and self._client_transport_mode()
             == NonShuntConnectionMode.PERSISTENT_SESSION.value
         ):
             self.logger.debug(

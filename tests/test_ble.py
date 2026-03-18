@@ -281,6 +281,30 @@ def test_non_shunt_persistent_mode_uses_library_persistent_transport():
     assert coordinator._ble_client.transport_mode == "persistent_session"
 
 
+def test_non_shunt_persistent_mode_does_not_rebuild_client_on_update():
+    """Ensure persistent non-shunt updates keep the same library client instance."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    original_client = coordinator._ble_client
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._update_device_from_service_info(service_info)
+
+    assert coordinator._ble_client is original_client
+
+
 def test_async_shutdown_closes_persistent_library_client():
     """Ensure coordinator shutdown releases any persistent library session."""
     ble_module = _load_ble_module()
