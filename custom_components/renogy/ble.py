@@ -837,7 +837,10 @@ class RenogyActiveBluetoothCoordinator(
             return dict(self.device.parsed_data)
 
         else:
-            self.logger.info("Failed to retrieve data from %s", service_info.address)
+            failed_address = (
+                service_info.address if service_info is not None else self.address
+            )
+            self.logger.info("Failed to retrieve data from %s", failed_address)
             self.last_update_success = False
             return self.data if isinstance(self.data, dict) else {}
 
