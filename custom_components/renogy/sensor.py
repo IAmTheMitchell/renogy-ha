@@ -1548,6 +1548,14 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 if reading_verified is not None:
                     attrs["reading_verified"] = reading_verified
 
+                if self.entity_description.key == KEY_SHUNT_TEMPERATURE_1:
+                    temp_source = "unknown"
+                    if shunt_data.get(KEY_SHUNT_TEMPERATURE_1) is not None:
+                        temp_source = "shunt_temperature_1"
+                    elif shunt_data.get(KEY_BATTERY_TEMPERATURE) is not None:
+                        temp_source = "battery_temperature"
+                    attrs["temperature_1_source"] = temp_source
+
                 coordinator = self.coordinator
                 connection_mode = getattr(coordinator, "shunt_connection_mode", None)
                 attrs["shunt_connection_mode"] = (
