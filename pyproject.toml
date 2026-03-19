@@ -33,3 +33,6 @@ select = ["I", "E", "F"]  # I = isort, E = pycodestyle, F = pyflakes
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.uv.sources]
+renogy-ble = { git = "https://github.com/rs-mini-rgb/renogy-ble.git", rev = "e89b4d8" }
