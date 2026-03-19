@@ -52,8 +52,8 @@ extra_styles: |
   .device-row {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
+    justify-content: flex-start;
+    gap: 10px;
   }
   .device-dot {
     width: 12px;
@@ -61,12 +61,12 @@ extra_styles: |
   }
   .device-name {
     min-width: 170px;
-    text-align: right;
+    text-align: left;
     font-weight: 600;
   }
   .device-meta {
     min-width: 150px;
-    text-align: right;
+    text-align: left;
     opacity: 0.8;
   }
 
@@ -110,8 +110,8 @@ styles:
       - grid-area: devices
       - font-size: 12px
       - opacity: 0.9
-      - text-align: right
-      - justify-self: end
+      - text-align: left
+      - justify-self: start
 
 custom_fields:
   status: |
