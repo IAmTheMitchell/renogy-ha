@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import Protocol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
@@ -25,6 +28,13 @@ from .device_name import has_real_device_name
 
 # List of platforms this integration supports
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
+
+
+class _CoordinatorShutdownProtocol(Protocol):
+    """Coordinator interface needed for deferred shutdown."""
+
+    async def async_shutdown(self) -> None:
+        """Release coordinator resources."""
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -190,9 +200,29 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok and entry.entry_id in hass.data[DOMAIN]:
         # Stop the coordinator
         coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-        await coordinator.async_shutdown()
+        coordinator.async_stop()
+        hass.async_create_task(_async_shutdown_coordinator(coordinator, entry.entry_id))
 
         # Remove entry from hass.data
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
+
+
+async def _async_shutdown_coordinator(
+    coordinator: _CoordinatorShutdownProtocol, entry_id: str
+) -> None:
+    """Attempt coordinator shutdown without blocking entry unload."""
+    try:
+        await asyncio.wait_for(coordinator.async_shutdown(), timeout=5)
+    except TimeoutError:
+        LOGGER.warning(
+            "Timed out shutting down Renogy BLE coordinator for %s; "
+            "persistent session cleanup will continue in the background",
+            entry_id,
+        )
+    except Exception:
+        LOGGER.exception(
+            "Error shutting down Renogy BLE coordinator for %s",
+            entry_id,
+        )

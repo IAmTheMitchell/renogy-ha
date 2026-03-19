@@ -181,8 +181,8 @@ def test_reload_listener_reloads_entry() -> None:
     hass.config_entries.async_reload.assert_awaited_once_with("entry-1")
 
 
-def test_async_unload_entry_awaits_shutdown() -> None:
-    """Ensure unload awaits coordinator shutdown so BLE sessions are released."""
+def test_async_unload_entry_schedules_shutdown() -> None:
+    """Ensure unload stops immediately and schedules shutdown in the background."""
     init_module, _ = _load_init_module()
     coordinator = MagicMock(async_shutdown=AsyncMock())
     hass = MagicMock()
@@ -196,6 +196,7 @@ def test_async_unload_entry_awaits_shutdown() -> None:
         }
     }
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    hass.async_create_task = MagicMock()
 
     entry = MagicMock()
     entry.entry_id = "entry-1"
@@ -205,4 +206,24 @@ def test_async_unload_entry_awaits_shutdown() -> None:
     assert result is True
     assert init_module.DOMAIN in hass.data
     assert "entry-1" not in hass.data[init_module.DOMAIN]
+    coordinator.async_stop.assert_called_once_with()
+    coordinator.async_shutdown.assert_not_awaited()
+    hass.async_create_task.assert_called_once()
+    shutdown_coro = hass.async_create_task.call_args.args[0]
+    shutdown_coro.close()
+
+
+def test_async_shutdown_coordinator_times_out() -> None:
+    """Ensure coordinator shutdown timeouts are logged and do not raise."""
+    init_module, _ = _load_init_module()
+
+    async def never_finishes() -> None:
+        await asyncio.Future()
+
+    coordinator = MagicMock(async_shutdown=AsyncMock(side_effect=never_finishes))
+    init_module.LOGGER.warning = MagicMock()
+
+    asyncio.run(init_module._async_shutdown_coordinator(coordinator, "entry-1"))
+
     coordinator.async_shutdown.assert_awaited_once()
+    init_module.LOGGER.warning.assert_called_once()
