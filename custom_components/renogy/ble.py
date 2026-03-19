@@ -6,6 +6,7 @@ import asyncio
 import importlib
 import logging
 import traceback
+from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from types import ModuleType
@@ -31,6 +32,7 @@ from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 from .const import (
     DEFAULT_CRITICAL_RSSI,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_RSSI_TREND_WINDOW,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
     DEFAULT_WARN_RSSI,
@@ -138,6 +140,7 @@ class RenogyActiveBluetoothCoordinator(
         self._shunt_energy_client = (
             shunt_client_class() if shunt_client_class is not None else None
         )
+        self._rssi_samples = deque(maxlen=DEFAULT_RSSI_TREND_WINDOW)
         self._ble_client = self._build_ble_client_for_type(device_type)
 
         # Add required properties for Home Assistant CoordinatorEntity compatibility
@@ -402,6 +405,7 @@ class RenogyActiveBluetoothCoordinator(
                 and service_info.advertisement.rssi is not None
                 else service_info.device.rssi
             )
+            self._record_rssi(self.device.rssi)
 
             if self.device.device_type != self.device_type:
                 self.logger.debug(
@@ -434,6 +438,11 @@ class RenogyActiveBluetoothCoordinator(
             )
 
         return self.device
+
+    def _record_rssi(self, rssi: int | float | None) -> None:
+        """Store RSSI samples for trend analysis."""
+        if isinstance(rssi, (int, float)):
+            self._rssi_samples.append(float(rssi))
 
     @callback
     def _needs_poll(

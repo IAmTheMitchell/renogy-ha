@@ -16,6 +16,8 @@ It summarizes all Renogy devices and lists failing devices in attributes.
   `device_type`, and `rssi`.
 - `all_devices`: List of dictionaries for every Renogy device with `name`,
   `address`, `status`, `device_type`, and `rssi`.
+- `rssi_trend`: Per-device diagnostic sensor that reports `improving`, `stable`,
+  `declining`, or `unknown` based on recent RSSI samples.
 - `total_devices`, `healthy_devices`, `warn_devices`, `critical_devices`,
   `disconnected_devices`
 

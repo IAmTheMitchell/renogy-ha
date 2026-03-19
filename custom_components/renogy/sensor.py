@@ -36,6 +36,7 @@ from .const import (
     CONF_DEVICE_TYPE,
     DEFAULT_CRITICAL_RSSI,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_RSSI_TREND_STABLE_THRESHOLD,
     DEFAULT_WARN_RSSI,
     DOMAIN,
     LOGGER,
@@ -138,6 +139,7 @@ KEY_SHUNT_SEQUENCE = "sequence"
 
 # Device health sensor key
 KEY_HEALTH_STATUS = "health_status"
+KEY_RSSI_TREND = "rssi_trend"
 KEY_AGGREGATE_HEALTH_STATUS = "aggregate_health_status"
 
 # Inverter-specific sensor keys
@@ -202,6 +204,20 @@ def _compute_health_status(
         return "warn"
 
     return "healthy"
+
+
+def _compute_rssi_trend(samples: list[float]) -> str:
+    """Return RSSI trend based on a rolling sample window."""
+    if len(samples) < 2:
+        return "unknown"
+
+    delta = samples[-1] - samples[0]
+    threshold = DEFAULT_RSSI_TREND_STABLE_THRESHOLD
+    if abs(delta) < threshold:
+        return "stable"
+    if delta > 0:
+        return "improving"
+    return "declining"
 
 
 def _normalize_shunt_energy_source(data: Dict[str, Any]) -> str:
@@ -501,6 +517,13 @@ HEALTH_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
         key=KEY_HEALTH_STATUS,
         name="Device Health",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=None,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_RSSI_TREND,
+        name="RSSI Trend",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=None,
@@ -1349,6 +1372,11 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
             value = _compute_health_status(self.coordinator, self.device)
             self._attr_native_value = value
             return value
+        if self.entity_description.key == KEY_RSSI_TREND:
+            samples = getattr(self.coordinator, "_rssi_samples", [])
+            trend = _compute_rssi_trend(list(samples))
+            self._attr_native_value = trend
+            return trend
 
         device = self.device
         data = None

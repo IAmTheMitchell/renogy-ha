@@ -518,3 +518,41 @@ def test_aggregate_health_sensor_rollup() -> None:
         device["name"] == "Renogy Healthy" and device["status"] == "healthy"
         for device in attrs["all_devices"]
     )
+
+
+def test_rssi_trend_computation() -> None:
+    """Ensure RSSI trend calculations are stable/improving/declining."""
+    sensor_module = _load_sensor_module()
+
+    assert sensor_module._compute_rssi_trend([]) == "unknown"
+    assert sensor_module._compute_rssi_trend([-70]) == "unknown"
+    assert sensor_module._compute_rssi_trend([-70, -69, -68]) == "improving"
+    assert sensor_module._compute_rssi_trend([-60, -62, -64]) == "declining"
+    assert sensor_module._compute_rssi_trend([-70, -69, -70]) == "stable"
+
+
+def test_rssi_trend_sensor_reads_coordinator_samples() -> None:
+    """Ensure RSSI trend sensor reads from coordinator samples."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator._rssi_samples = [-70.0, -68.0, -65.0]
+
+    description = next(
+        item
+        for item in sensor_module.HEALTH_SENSORS
+        if item.key == sensor_module.KEY_RSSI_TREND
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        None,
+        description,
+        "Health",
+        sensor_module.DeviceType.CONTROLLER.value,
+    )
+
+    assert entity.native_value == "improving"
