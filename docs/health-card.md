@@ -35,10 +35,10 @@ tap_action:
 
 styles:
   grid:
-    - grid-template-areas: '"n status" "summary summary" "failures failures"'
+    - grid-template-areas: '"n status" "summary summary" "devices devices"'
     - grid-template-columns: 1fr auto
     - grid-template-rows: min-content min-content min-content
-    - row-gap: 6px
+    - row-gap: 8px
   card:
     - padding: 16px 18px
     - border-radius: 14px
@@ -61,10 +61,10 @@ styles:
       - grid-area: summary
       - font-size: 13px
       - opacity: 0.85
-    failures:
-      - grid-area: failures
+    devices:
+      - grid-area: devices
       - font-size: 12px
-      - opacity: 0.75
+      - opacity: 0.85
 
 custom_fields:
   status: |
@@ -80,43 +80,17 @@ custom_fields:
       const a = entity?.attributes || {};
       return `Devices: ${a.total_devices ?? 0} · Warn: ${a.warn_devices ?? 0} · Critical: ${a.critical_devices ?? 0} · Offline: ${a.disconnected_devices ?? 0}`;
     ]]]
-  failures: |
-    [[[
-      const list = entity?.attributes?.failing_devices || [];
-      if (!list.length) return "All devices healthy";
-      return "Issues: " + list.map(d => `${d.name || d.address} (${d.status})`).join(", ");
-    ]]]
-```
-
-### Entities-Card Alternative
-
-No custom card required.
-
-```yaml
-type: entities
-title: Renogy Health
-entities:
-  - entity: sensor.renogy_health
-    name: Overall Health
-  - type: attribute
-    entity: sensor.renogy_health
-    attribute: failing_devices
-    name: Failing Devices
-  - type: attribute
-    entity: sensor.renogy_health
-    attribute: all_devices
-    name: All Devices
-```
-
-### Button-Card Optional Device List
-
-Add a per-device list (using `all_devices`) below the existing fields.
-
-```yaml
   devices: |
     [[[
       const list = entity?.attributes?.all_devices || [];
       if (!list.length) return "No devices found";
-      return list.map(d => `${d.name || d.address} (${d.status})`).join(" · ");
+      const dot = s => s === "critical" ? "🔴" : s === "warn" ? "🟡" : s === "healthy" ? "🟢" : "⚪";
+      return list
+        .map(d => `${dot(d.status)} ${d.name || d.address} (${d.status})`)
+        .join("<br>");
     ]]]
 ```
+
+### Notes
+
+- This card uses `all_devices` for a polished device list.
