@@ -68,6 +68,19 @@ def _install_module_stubs() -> None:
     class SensorEntity:
         """Stub SensorEntity class for testing."""
 
+        @property
+        def device_class(self) -> str | None:
+            """Return device class from description when available."""
+            description = getattr(self, "entity_description", None)
+            if description is not None:
+                return getattr(description, "device_class", None)
+            return None
+
+        @property
+        def name(self) -> str:
+            """Return the entity name when available."""
+            return getattr(self, "_attr_name", "Unknown")
+
         def async_write_ha_state(self) -> None:
             """Stub state write for testing."""
             return None
@@ -145,6 +158,24 @@ def _install_module_stubs() -> None:
 
     entity_platform_module.AddEntitiesCallback = AddEntitiesCallback
     sys.modules["homeassistant.helpers.entity_platform"] = entity_platform_module
+
+    restore_state_module = cast(
+        Any, types.ModuleType("homeassistant.helpers.restore_state")
+    )
+
+    class RestoreEntity:
+        """Stub RestoreEntity for testing."""
+
+        async def async_get_last_state(self) -> Any:
+            """Return no last state for tests."""
+            return None
+
+        async def async_added_to_hass(self) -> None:
+            """No-op for tests."""
+            return None
+
+    restore_state_module.RestoreEntity = RestoreEntity
+    sys.modules["homeassistant.helpers.restore_state"] = restore_state_module
 
     const_module = cast(Any, types.ModuleType("homeassistant.const"))
     const_module.CONF_ADDRESS = "address"
@@ -500,6 +531,48 @@ def test_shunt_temperature_1_sensor_falls_back_to_battery_temp_source() -> None:
     assert (
         entity.extra_state_attributes["temperature_1_source"] == "battery_temperature"
     )
+
+
+def test_energy_counter_reset_handling() -> None:
+    """Ensure energy counters apply offset when a reset is detected."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {
+        sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL: 1.0,
+    }
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+
+    assert entity.native_value == 1.0
+
+    entity._attr_native_value = None
+    device.parsed_data[sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL] = 0.2
+    adjusted = entity.native_value
+
+    assert adjusted == 1.2
+    assert entity.extra_state_attributes["energy_counter_reset_count"] == 1
 
 
 def test_inverter_sensor_mapping_uses_library_field_names() -> None:

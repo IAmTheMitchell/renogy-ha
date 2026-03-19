@@ -29,6 +29,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
@@ -153,6 +154,15 @@ KEY_LOAD_PERCENTAGE = "load_percentage"
 KEY_TEMPERATURE = "temperature"
 SHUNT_ESTIMATED_CAPACITY_KWH = 1.28
 AGGREGATE_HEALTH_SENSOR_KEY = "__aggregate_health_sensor__"
+ENERGY_RESET_EPSILON = 0.001
+ENERGY_COUNTER_KEYS = {
+    KEY_SHUNT_ENERGY_CHARGED_TOTAL,
+    KEY_SHUNT_ENERGY_DISCHARGED_TOTAL,
+    KEY_POWER_GENERATION_TOTAL,
+    KEY_TOTAL_POWER_GENERATION,
+    KEY_TOTAL_CHARGING_AH,
+    KEY_TOTAL_OPERATING_DAYS,
+}
 
 
 def _shunt_word_value(
@@ -218,6 +228,16 @@ def _compute_rssi_trend(samples: list[float]) -> str:
     if delta > 0:
         return "improving"
     return "declining"
+
+
+def _coerce_float(value: Any, *, default: float | None) -> float | None:
+    """Return a float value when possible, otherwise a default."""
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except TypeError, ValueError:
+        return default
 
 
 def _resolve_device_display_name(
@@ -1259,7 +1279,7 @@ def create_device_entities(
     return entities
 
 
-class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
+class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity, RestoreEntity):
     """Representation of a Renogy BLE sensor."""
 
     entity_description: RenogyBLESensorDescription
@@ -1280,6 +1300,11 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         self._category = category
         self._device_type = device_type
         self._attr_native_value = None
+        self._energy_offset = 0.0
+        self._energy_last_raw: float | None = None
+        self._energy_last_adjusted: float | None = None
+        self._energy_reset_count = 0
+        self._energy_last_reset: str | None = None
 
         # Generate a device model name that includes the device type
         device_model = f"Renogy {device_type.capitalize()}"
@@ -1328,6 +1353,32 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
             )
 
         self._last_updated = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore energy counter offsets on startup."""
+        await super().async_added_to_hass()
+        if self.entity_description.key not in ENERGY_COUNTER_KEYS:
+            return
+
+        last_state = await self.async_get_last_state()
+        if last_state is None:
+            return
+
+        attrs = last_state.attributes or {}
+        offset = _coerce_float(attrs.get("energy_counter_offset"), default=None)
+        self._energy_offset = offset if offset is not None else 0.0
+        self._energy_last_raw = _coerce_float(
+            attrs.get("energy_counter_raw"), default=None
+        )
+        self._energy_last_adjusted = _coerce_float(last_state.state, default=None)
+        reset_count = attrs.get("energy_counter_reset_count", 0)
+        try:
+            self._energy_reset_count = int(reset_count)
+        except TypeError, ValueError:
+            self._energy_reset_count = 0
+        last_reset = attrs.get("energy_counter_last_reset")
+        if isinstance(last_reset, str):
+            self._energy_last_reset = last_reset
 
     @property
     def device(self) -> Optional[RenogyBLEDevice]:
@@ -1449,7 +1500,12 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                             )
                             return None
 
-                # Cache the value
+                if (
+                    value is not None
+                    and self.entity_description.key in ENERGY_COUNTER_KEYS
+                ):
+                    value = self._apply_energy_reset_handling(value)
+
                 self._attr_native_value = value
                 return value
         except Exception as e:
@@ -1588,6 +1644,12 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 self.coordinator, "critical_rssi", DEFAULT_CRITICAL_RSSI
             )
 
+        if self.entity_description.key in ENERGY_COUNTER_KEYS:
+            attrs["energy_counter_raw"] = self._energy_last_raw
+            attrs["energy_counter_offset"] = round(float(self._energy_offset), 3)
+            attrs["energy_counter_reset_count"] = self._energy_reset_count
+            attrs["energy_counter_last_reset"] = self._energy_last_reset
+
         # Expose raw shunt payload details for troubleshooting.
         if (
             self._device_type == DeviceType.SHUNT300.value
@@ -1603,6 +1665,28 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 attrs["raw_words"] = raw_words
 
         return attrs
+
+    def _apply_energy_reset_handling(self, value: Any) -> Any:
+        """Apply monotonic reset handling for energy counters."""
+        raw_value = _coerce_float(value, default=None)
+        if raw_value is None:
+            return value
+
+        adjusted = raw_value + self._energy_offset
+
+        last_adjusted = self._energy_last_adjusted
+        if last_adjusted is not None and adjusted + ENERGY_RESET_EPSILON < (
+            last_adjusted
+        ):
+            offset_bump = self._energy_last_raw or 0.0
+            self._energy_offset += offset_bump
+            self._energy_reset_count += 1
+            self._energy_last_reset = datetime.now().isoformat()
+            adjusted = raw_value + self._energy_offset
+
+        self._energy_last_raw = raw_value
+        self._energy_last_adjusted = adjusted
+        return adjusted
 
 
 class RenogyAggregateHealthSensor(SensorEntity):
