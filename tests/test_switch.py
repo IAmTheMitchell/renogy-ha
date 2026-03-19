@@ -111,6 +111,7 @@ def _install_module_stubs() -> None:
     class Platform(str, Enum):
         """Stub Platform enum values for testing."""
 
+        BINARY_SENSOR = "binary_sensor"
         SENSOR = "sensor"
         NUMBER = "number"
         SELECT = "select"
