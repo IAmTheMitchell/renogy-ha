@@ -49,6 +49,26 @@ extra_styles: |
     70% { box-shadow: 0 0 0 12px rgba(122,17,17,0); }
     100% { box-shadow: 0 0 0 0 rgba(122,17,17,0); }
   }
+  .device-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .device-dot {
+    width: 12px;
+    text-align: center;
+  }
+  .device-name {
+    min-width: 170px;
+    text-align: right;
+    font-weight: 600;
+  }
+  .device-meta {
+    min-width: 150px;
+    text-align: right;
+    opacity: 0.8;
+  }
 
 styles:
   grid:
@@ -114,7 +134,13 @@ custom_fields:
       const dot = s => s === "critical" ? "🔴" : s === "warn" ? "🟡" : s === "healthy" ? "🟢" : "⚪";
       const fmtRssi = rssi => (typeof rssi === "number" ? `${rssi} dBm` : "n/a");
       return list
-        .map(d => `${dot(d.status)} ${d.name || d.address} (${d.status}, ${fmtRssi(d.rssi)})`)
+        .map(d => `
+          <div class="device-row">
+            <span class="device-dot">${dot(d.status)}</span>
+            <span class="device-name">${d.name || d.address}</span>
+            <span class="device-meta">${d.status}, ${fmtRssi(d.rssi)}</span>
+          </div>
+        `)
         .join("<br>");
     ]]]
 ```
