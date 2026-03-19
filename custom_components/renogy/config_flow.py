@@ -19,8 +19,10 @@ from homeassistant.const import CONF_ADDRESS, CONF_SCAN_INTERVAL
 
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_NON_SHUNT_CONNECTION_MODE,
     CONF_SHUNT_CONNECTION_MODE,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_NON_SHUNT_CONNECTION_MODE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
     DEVICE_TYPES,
@@ -28,6 +30,7 @@ from .const import (
     LOGGER,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
+    NON_SHUNT_CONNECTION_MODES,
     SHUNT_CONNECTION_MODES,
     SUPPORTED_DEVICE_TYPES,
     DeviceType,
@@ -58,6 +61,18 @@ def _build_shunt_options_schema(default_mode: str) -> vol.Schema:
                 CONF_SHUNT_CONNECTION_MODE,
                 default=default_mode,
             ): vol.In(SHUNT_CONNECTION_MODES)
+        }
+    )
+
+
+def _build_non_shunt_options_schema(default_mode: str) -> vol.Schema:
+    """Build the non-shunt connection mode schema."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_NON_SHUNT_CONNECTION_MODE,
+                default=default_mode,
+            ): vol.In(NON_SHUNT_CONNECTION_MODES)
         }
     )
 
@@ -247,17 +262,27 @@ class RenogyOptionsFlowHandler(OptionsFlow):
         """Manage integration options."""
         device_type = self._config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
 
-        if device_type != DeviceType.SHUNT300.value:
-            return self.async_create_entry(title="", data={})
+        if device_type == DeviceType.SHUNT300.value:
+            if user_input is not None:
+                return self.async_create_entry(title="", data=user_input)
+
+            current_mode = self._config_entry.options.get(
+                CONF_SHUNT_CONNECTION_MODE,
+                DEFAULT_SHUNT_CONNECTION_MODE,
+            )
+            return self.async_show_form(
+                step_id="init",
+                data_schema=_build_shunt_options_schema(current_mode),
+            )
 
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
         current_mode = self._config_entry.options.get(
-            CONF_SHUNT_CONNECTION_MODE,
-            DEFAULT_SHUNT_CONNECTION_MODE,
+            CONF_NON_SHUNT_CONNECTION_MODE,
+            DEFAULT_NON_SHUNT_CONNECTION_MODE,
         )
         return self.async_show_form(
             step_id="init",
-            data_schema=_build_shunt_options_schema(current_mode),
+            data_schema=_build_non_shunt_options_schema(current_mode),
         )

@@ -71,6 +71,9 @@ def _install_module_stubs() -> type:
         def async_stop(self) -> None:
             """Support unload tests."""
 
+        async def async_shutdown(self) -> None:
+            """Support unload tests."""
+
     class RenogyBLEDevice:
         """Stub BLE device class for testing."""
 
@@ -97,6 +100,16 @@ def test_shunt_connection_mode_defaults_to_sustained() -> None:
     entry.options = {}
 
     assert init_module._get_shunt_connection_mode(entry) == "sustained"
+
+
+def test_non_shunt_connection_mode_defaults_to_intermittent() -> None:
+    """Ensure non-shunt entries default to intermittent mode when unset."""
+    init_module, _ = _load_init_module()
+    entry = MagicMock()
+    entry.data = {init_module.CONF_DEVICE_TYPE: init_module.DeviceType.CONTROLLER.value}
+    entry.options = {}
+
+    assert init_module._get_non_shunt_connection_mode(entry) == "intermittent"
 
 
 def test_async_setup_entry_uses_configured_shunt_connection_mode() -> None:
@@ -126,6 +139,35 @@ def test_async_setup_entry_uses_configured_shunt_connection_mode() -> None:
     entry.add_update_listener.assert_called_once()
 
 
+def test_async_setup_entry_uses_configured_non_shunt_connection_mode() -> None:
+    """Ensure setup passes the selected non-shunt mode into the coordinator."""
+    init_module, coordinator_class = _load_init_module()
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    hass.async_create_task = lambda coro: asyncio.get_running_loop().create_task(coro)
+
+    entry = MagicMock()
+    entry.entry_id = "entry-1"
+    entry.data = {
+        "address": "AA:BB:CC:DD:EE:FF",
+        init_module.CONF_DEVICE_TYPE: init_module.DeviceType.CONTROLLER.value,
+        init_module.CONF_SCAN_INTERVAL: 30,
+    }
+    entry.options = {init_module.CONF_NON_SHUNT_CONNECTION_MODE: "persistent_session"}
+    entry.add_update_listener = MagicMock(return_value=lambda: None)
+    entry.async_on_unload = MagicMock()
+
+    result = asyncio.run(init_module.async_setup_entry(hass, entry))
+
+    assert result is True
+    assert coordinator_class.last_init is not None
+    assert (
+        coordinator_class.last_init["non_shunt_connection_mode"] == "persistent_session"
+    )
+    entry.add_update_listener.assert_called_once()
+
+
 def test_reload_listener_reloads_entry() -> None:
     """Ensure option updates trigger a config-entry reload."""
     init_module, _ = _load_init_module()
@@ -137,3 +179,51 @@ def test_reload_listener_reloads_entry() -> None:
     asyncio.run(init_module._async_reload_entry(hass, entry))
 
     hass.config_entries.async_reload.assert_awaited_once_with("entry-1")
+
+
+def test_async_unload_entry_schedules_shutdown() -> None:
+    """Ensure unload stops immediately and schedules shutdown in the background."""
+    init_module, _ = _load_init_module()
+    coordinator = MagicMock(async_shutdown=AsyncMock())
+    hass = MagicMock()
+    hass.data = {
+        init_module.DOMAIN: {
+            "entry-1": {
+                "coordinator": coordinator,
+                "devices": [],
+                "initialized_devices": set(),
+            }
+        }
+    }
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    hass.async_create_task = MagicMock()
+
+    entry = MagicMock()
+    entry.entry_id = "entry-1"
+
+    result = asyncio.run(init_module.async_unload_entry(hass, entry))
+
+    assert result is True
+    assert init_module.DOMAIN in hass.data
+    assert "entry-1" not in hass.data[init_module.DOMAIN]
+    coordinator.async_stop.assert_called_once_with()
+    coordinator.async_shutdown.assert_not_awaited()
+    hass.async_create_task.assert_called_once()
+    shutdown_coro = hass.async_create_task.call_args.args[0]
+    shutdown_coro.close()
+
+
+def test_async_shutdown_coordinator_times_out() -> None:
+    """Ensure coordinator shutdown timeouts are logged and do not raise."""
+    init_module, _ = _load_init_module()
+
+    async def never_finishes() -> None:
+        await asyncio.Future()
+
+    coordinator = MagicMock(async_shutdown=AsyncMock(side_effect=never_finishes))
+    init_module.LOGGER.warning = MagicMock()
+
+    asyncio.run(init_module._async_shutdown_coordinator(coordinator, "entry-1"))
+
+    coordinator.async_shutdown.assert_awaited_once()
+    init_module.LOGGER.warning.assert_called_once()

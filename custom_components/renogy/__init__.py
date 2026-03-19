@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import Protocol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
@@ -10,9 +13,11 @@ from homeassistant.helpers.device_registry import async_get as async_get_device_
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_NON_SHUNT_CONNECTION_MODE,
     CONF_SCAN_INTERVAL,
     CONF_SHUNT_CONNECTION_MODE,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_NON_SHUNT_CONNECTION_MODE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
     DOMAIN,
@@ -25,6 +30,13 @@ from .device_name import has_real_device_name
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
 
 
+class _CoordinatorShutdownProtocol(Protocol):
+    """Coordinator interface needed for deferred shutdown."""
+
+    async def async_shutdown(self) -> None:
+        """Release coordinator resources."""
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Renogy BLE from a config entry."""
     LOGGER.info("Setting up Renogy BLE integration with entry %s", entry.entry_id)
@@ -34,6 +46,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_address = entry.data.get(CONF_ADDRESS)
     device_type = entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
     shunt_connection_mode = _get_shunt_connection_mode(entry)
+    non_shunt_connection_mode = _get_non_shunt_connection_mode(entry)
 
     if not device_address:
         LOGGER.error("No device address provided in config entry")
@@ -41,11 +54,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     LOGGER.info(
         "Configuring Renogy BLE device %s as %s with scan interval %ss "
-        "(shunt mode: %s)",
+        "(shunt mode: %s, non-shunt mode: %s)",
         device_address,
         device_type,
         scan_interval,
         shunt_connection_mode,
+        non_shunt_connection_mode,
     )
 
     # Create a coordinator for this entry
@@ -56,6 +70,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         scan_interval=scan_interval,
         device_type=device_type,
         shunt_connection_mode=shunt_connection_mode,
+        non_shunt_connection_mode=non_shunt_connection_mode,
         device_data_callback=lambda device: _handle_device_update(hass, entry, device),
     )
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
@@ -97,6 +112,18 @@ def _get_shunt_connection_mode(entry: ConfigEntry) -> str:
     return entry.options.get(
         CONF_SHUNT_CONNECTION_MODE,
         DEFAULT_SHUNT_CONNECTION_MODE,
+    )
+
+
+def _get_non_shunt_connection_mode(entry: ConfigEntry) -> str:
+    """Return the configured non-shunt connection mode for an entry."""
+    device_type = entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
+    if device_type == DeviceType.SHUNT300.value:
+        return DEFAULT_NON_SHUNT_CONNECTION_MODE
+
+    return entry.options.get(
+        CONF_NON_SHUNT_CONNECTION_MODE,
+        DEFAULT_NON_SHUNT_CONNECTION_MODE,
     )
 
 
@@ -174,8 +201,28 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Stop the coordinator
         coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
         coordinator.async_stop()
+        hass.async_create_task(_async_shutdown_coordinator(coordinator, entry.entry_id))
 
         # Remove entry from hass.data
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
+
+
+async def _async_shutdown_coordinator(
+    coordinator: _CoordinatorShutdownProtocol, entry_id: str
+) -> None:
+    """Attempt coordinator shutdown without blocking entry unload."""
+    try:
+        await asyncio.wait_for(coordinator.async_shutdown(), timeout=5)
+    except TimeoutError:
+        LOGGER.warning(
+            "Timed out shutting down Renogy BLE coordinator for %s; "
+            "persistent session cleanup will continue in the background",
+            entry_id,
+        )
+    except Exception:
+        LOGGER.exception(
+            "Error shutting down Renogy BLE coordinator for %s",
+            entry_id,
+        )

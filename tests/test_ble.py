@@ -114,8 +114,10 @@ def _install_module_stubs() -> None:
     class RenogyBleClient:
         """Stub RenogyBleClient for testing."""
 
-        def __init__(self, scanner):
+        def __init__(self, scanner, transport_mode="per_operation"):
             self.scanner = scanner
+            self.transport_mode = transport_mode
+            self.close = AsyncMock()
 
         async def read_device(self, device):
             return MagicMock(success=True, error=None)
@@ -246,6 +248,186 @@ def test_intermittent_shunt_device_uses_library_shunt_client():
     )
 
     assert coordinator._ble_client.__class__.__name__ == "ShuntBleClient"
+
+
+def test_non_shunt_device_defaults_to_intermittent_client():
+    """Ensure non-shunt devices default to reconnect-per-refresh transport."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+
+    assert coordinator._ble_client.__class__.__name__ == "RenogyBleClient"
+    assert coordinator._ble_client.transport_mode == "per_operation"
+
+
+def test_non_shunt_persistent_mode_uses_library_persistent_transport():
+    """Ensure non-shunt persistent mode opts into the library session transport."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+
+    assert coordinator._ble_client.__class__.__name__ == "RenogyBleClient"
+    assert coordinator._ble_client.transport_mode == "persistent_session"
+
+
+def test_non_shunt_persistent_mode_does_not_rebuild_client_on_update():
+    """Ensure persistent non-shunt updates keep the same library client instance."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    original_client = coordinator._ble_client
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._update_device_from_service_info(service_info)
+
+    assert coordinator._ble_client is original_client
+
+
+def test_async_shutdown_closes_persistent_library_client():
+    """Ensure coordinator shutdown releases any persistent library session."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+
+    asyncio.run(coordinator.async_shutdown())
+
+    coordinator._ble_client.close.assert_awaited_once()
+
+
+def test_persistent_refresh_uses_cached_device_when_service_info_expires():
+    """Ensure persistent sessions still poll after HA drops advertisement cache."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=logger,
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._async_poll_device = AsyncMock(return_value={})
+    ble_module.bluetooth.async_last_service_info.return_value = None
+
+    asyncio.run(coordinator.async_request_refresh())
+
+    coordinator._async_poll_device.assert_awaited_once_with(None)
+    logger.error.assert_not_called()
+
+
+def test_refresh_without_service_info_still_fails_without_cached_device():
+    """Ensure missing service info still fails without persistent cached context."""
+    ble_module = _load_ble_module()
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=logger,
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    ble_module.bluetooth.async_last_service_info.return_value = None
+
+    asyncio.run(coordinator.async_request_refresh())
+
+    assert coordinator.last_update_success is False
+    logger.error.assert_called_once()
+
+
+def test_read_device_data_uses_cached_device_without_service_info():
+    """Ensure reads can reuse the cached BLE device for persistent sessions."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._ble_client.read_device = AsyncMock(
+        return_value=MagicMock(success=True, error=None)
+    )
+    coordinator.device.parsed_data = {"battery_voltage": 14.4}
+
+    success = asyncio.run(coordinator._read_device_data(None))
+
+    assert success is True
+    coordinator._ble_client.read_device.assert_awaited_once_with(coordinator.device)
+    assert coordinator.data == {"battery_voltage": 14.4}
+
+
+def test_persistent_load_write_uses_cached_device_when_service_info_expires():
+    """Ensure load writes can reuse persistent cached device context."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._ble_client.write_single_register = AsyncMock(
+        return_value=MagicMock(success=True, error=None)
+    )
+    ble_module.bluetooth.async_last_service_info.return_value = None
+
+    success = asyncio.run(coordinator.async_set_load_state(True))
+
+    assert success is True
+    coordinator._ble_client.write_single_register.assert_awaited_once_with(
+        coordinator.device,
+        0x010A,
+        1,
+    )
 
 
 def test_sustained_shunt_refresh_does_not_poll():
