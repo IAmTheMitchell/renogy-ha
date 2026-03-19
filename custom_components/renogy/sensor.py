@@ -183,8 +183,7 @@ def _compute_health_status(
 
     rssi = (
         device.rssi
-        if device
-        and isinstance(getattr(device, "rssi", None), (int, float))
+        if device and isinstance(getattr(device, "rssi", None), (int, float))
         else None
     )
 
