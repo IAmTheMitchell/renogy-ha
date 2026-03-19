@@ -6,6 +6,7 @@ import asyncio
 import importlib
 import logging
 import traceback
+from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from types import ModuleType
@@ -29,9 +30,12 @@ from renogy_ble import ble as renogy_ble_module
 from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
 from .const import (
+    DEFAULT_CRITICAL_RSSI,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_RSSI_TREND_WINDOW,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
+    DEFAULT_WARN_RSSI,
     DeviceType,
     ShuntConnectionMode,
 )
@@ -79,6 +83,7 @@ else:
 LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 SHUNT_RECONNECT_DELAY_SECONDS = 10
 SHUNT_FORCE_UPDATE_INTERVAL_SECONDS = 300
+SHUNT_AUTO_FALLBACK_FAILURES = 3
 
 
 class RenogyActiveBluetoothCoordinator(
@@ -95,6 +100,8 @@ class RenogyActiveBluetoothCoordinator(
         scan_interval: int = DEFAULT_SCAN_INTERVAL,
         device_type: str = DEFAULT_DEVICE_TYPE,
         shunt_connection_mode: str = DEFAULT_SHUNT_CONNECTION_MODE,
+        warn_rssi: int = DEFAULT_WARN_RSSI,
+        critical_rssi: int = DEFAULT_CRITICAL_RSSI,
         device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
         | None = None,
     ):
@@ -111,6 +118,8 @@ class RenogyActiveBluetoothCoordinator(
         self.device: RenogyBLEDevice | None = None
         self.scan_interval = scan_interval
         self.shunt_connection_mode = shunt_connection_mode
+        self.warn_rssi = warn_rssi
+        self.critical_rssi = critical_rssi
         self.device_type = device_type
         self.last_poll_time: datetime | None = None
         self.device_data_callback = device_data_callback
@@ -122,13 +131,18 @@ class RenogyActiveBluetoothCoordinator(
             shunt_connection_mode,
         )
 
-        self._ble_client = self._build_ble_client_for_type(device_type)
         self._shunt_listener_task: asyncio.Task[Any] | None = None
         self._last_sustained_shunt_push = 0.0
         self._last_sustained_shunt_data: dict[str, Any] = {}
+        self._shunt_listener_failures = 0
+        self._shunt_listener_last_success = 0.0
+        self._shunt_auto_fallback_active = False
+        self.device_alias = ""
         self._shunt_energy_client = (
             shunt_client_class() if shunt_client_class is not None else None
         )
+        self._rssi_samples = deque(maxlen=DEFAULT_RSSI_TREND_WINDOW)
+        self._ble_client = self._build_ble_client_for_type(device_type)
 
         # Add required properties for Home Assistant CoordinatorEntity compatibility
         self.last_update_success = True
@@ -161,18 +175,43 @@ class RenogyActiveBluetoothCoordinator(
     def _uses_sustained_shunt_listener(self, device_type: str | None = None) -> bool:
         """Return whether this coordinator should keep a sustained shunt listener."""
         resolved_type = device_type or self.device_type
+        if self._shunt_auto_fallback_active:
+            return False
         return (
             resolved_type == DeviceType.SHUNT300.value
-            and self.shunt_connection_mode == ShuntConnectionMode.SUSTAINED.value
+            and self.shunt_connection_mode
+            in {
+                ShuntConnectionMode.SUSTAINED.value,
+                ShuntConnectionMode.AUTO.value,
+            }
         )
 
     def _uses_intermittent_shunt_reads(self, device_type: str | None = None) -> bool:
         """Return whether this coordinator should use intermittent shunt reads."""
         resolved_type = device_type or self.device_type
+        if self._shunt_auto_fallback_active:
+            return resolved_type == DeviceType.SHUNT300.value
         return (
             resolved_type == DeviceType.SHUNT300.value
             and self.shunt_connection_mode == ShuntConnectionMode.INTERMITTENT.value
         )
+
+    def _handle_shunt_listener_failure(self, err: Exception) -> None:
+        """Track sustained shunt listener failures and auto-fallback when needed."""
+        self._shunt_listener_failures += 1
+        if (
+            self.shunt_connection_mode == ShuntConnectionMode.AUTO.value
+            and self._shunt_listener_failures >= SHUNT_AUTO_FALLBACK_FAILURES
+        ):
+            self._shunt_auto_fallback_active = True
+            self.logger.warning(
+                "Sustained shunt listener failed %s times for %s; "
+                "falling back to intermittent polling.",
+                self._shunt_listener_failures,
+                self.address,
+            )
+            if shunt_client_class is not None:
+                self._ble_client = cast(RenogyBleClient, shunt_client_class())
 
     @property
     def device_type(self) -> str:
@@ -367,6 +406,7 @@ class RenogyActiveBluetoothCoordinator(
                 and service_info.advertisement.rssi is not None
                 else service_info.device.rssi
             )
+            self._record_rssi(self.device.rssi)
 
             if self.device.device_type != self.device_type:
                 self.logger.debug(
@@ -399,6 +439,11 @@ class RenogyActiveBluetoothCoordinator(
             )
 
         return self.device
+
+    def _record_rssi(self, rssi: int | float | None) -> None:
+        """Store RSSI samples for trend analysis."""
+        if isinstance(rssi, (int, float)):
+            self._rssi_samples.append(float(rssi))
 
     @callback
     def _needs_poll(
@@ -474,6 +519,12 @@ class RenogyActiveBluetoothCoordinator(
             parsed_data["energy_charged_total"] = round(charged_kwh, 3)
             parsed_data["energy_discharged_total"] = round(discharged_kwh, 3)
         parsed_data["raw_payload"] = raw_payload.hex()
+        parsed_data["raw_words"] = [
+            int.from_bytes(raw_payload[i * 2 : (i + 1) * 2], "big", signed=False)
+            for i in range(len(raw_payload) // 2)
+        ]
+        self._shunt_listener_failures = 0
+        self._shunt_listener_last_success = now
 
         changed = any(
             parsed_data.get(key) != self._last_sustained_shunt_data.get(key)
@@ -515,6 +566,8 @@ class RenogyActiveBluetoothCoordinator(
     async def _shunt_notification_loop(self) -> None:
         """Maintain a sustained notification listener for Smart Shunt devices."""
         while True:
+            if self._shunt_auto_fallback_active:
+                return
             client: Any = None
             try:
                 service_info = bluetooth.async_last_service_info(
@@ -557,6 +610,7 @@ class RenogyActiveBluetoothCoordinator(
                 if self.device is not None:
                     self.device.update_availability(False, err)
                 self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
+                self._handle_shunt_listener_failure(err)
                 self.logger.debug(
                     "Smart Shunt listener error for %s: %s",
                     self.address,
@@ -572,6 +626,9 @@ class RenogyActiveBluetoothCoordinator(
                         await client.disconnect()
                     except Exception:
                         pass
+
+            if self._shunt_auto_fallback_active:
+                return
 
             await asyncio.sleep(SHUNT_RECONNECT_DELAY_SECONDS)
 
@@ -612,7 +669,15 @@ class RenogyActiveBluetoothCoordinator(
 
                 # Update coordinator data if successful
                 if success and device.parsed_data:
-                    self.data = dict(device.parsed_data)
+                    updated = dict(device.parsed_data)
+                    if device.device_type == DeviceType.INVERTER.value and isinstance(
+                        self.data, dict
+                    ):
+                        merged = dict(self.data)
+                        merged.update(updated)
+                        self.data = merged
+                    else:
+                        self.data = updated
                     self.logger.debug("Updated coordinator data: %s", self.data)
 
                 return success

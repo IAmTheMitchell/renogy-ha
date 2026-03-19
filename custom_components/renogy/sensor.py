@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -28,12 +29,16 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
+    DEFAULT_CRITICAL_RSSI,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_RSSI_TREND_STABLE_THRESHOLD,
+    DEFAULT_WARN_RSSI,
     DOMAIN,
     LOGGER,
     RENOGY_BT_PREFIX,
@@ -69,6 +74,16 @@ KEY_DEVICE_ID = "device_id"
 KEY_MODEL = "model"
 KEY_MAX_DISCHARGING_POWER_TODAY = "max_discharging_power_today"
 
+# Inverter-specific sensor keys
+KEY_AC_OUTPUT_VOLTAGE = "ac_output_voltage"
+KEY_AC_OUTPUT_CURRENT = "ac_output_current"
+KEY_AC_OUTPUT_FREQUENCY = "ac_output_frequency"
+KEY_INPUT_FREQUENCY = "input_frequency"
+KEY_LOAD_ACTIVE_POWER = "load_active_power"
+KEY_LOAD_APPARENT_POWER = "load_apparent_power"
+KEY_LOAD_PERCENTAGE = "load_percentage"
+KEY_TEMPERATURE = "temperature"
+
 # DCC-specific sensor keys (DC-DC Charger)
 KEY_BATTERY_SOC = "battery_soc"
 KEY_TOTAL_CHARGING_CURRENT = "total_charging_current"
@@ -103,12 +118,30 @@ KEY_SHUNT_POWER = "shunt_power"
 KEY_SHUNT_SOC = "shunt_soc"
 KEY_SHUNT_ENERGY_CHARGED_TOTAL = "energy_charged_total"
 KEY_SHUNT_ENERGY_DISCHARGED_TOTAL = "energy_discharged_total"
+KEY_SHUNT_ESTIMATED_ENERGY = "estimated_energy_kwh"
 KEY_SHUNT_STATUS = "shunt_status"
 KEY_SHUNT_VERBOSE = "verbose"
 KEY_SHUNT_STATUS_SOURCE = "status_source"
 KEY_SHUNT_ENERGY_SOURCE = "energy_source"
 KEY_SHUNT_DECODE_CONFIDENCE = "decode_confidence"
 KEY_SHUNT_READING_VERIFIED = "reading_verified"
+KEY_SHUNT_TEMPERATURE_1 = "temp_1"
+KEY_SHUNT_TEMPERATURE_2 = "temp_2"
+KEY_SHUNT_TEMPERATURE_3 = "temp_3"
+KEY_SHUNT_STARTER_VOLTAGE = "starter_battery_voltage"
+KEY_SHUNT_HIST_1 = "hist_1"
+KEY_SHUNT_HIST_2 = "hist_2"
+KEY_SHUNT_HIST_3 = "hist_3"
+KEY_SHUNT_HIST_4 = "hist_4"
+KEY_SHUNT_HIST_5 = "hist_5"
+KEY_SHUNT_HIST_6 = "hist_6"
+KEY_SHUNT_ADDITIONAL_VALUE = "additional_value"
+KEY_SHUNT_SEQUENCE = "sequence"
+
+# Device health sensor key
+KEY_HEALTH_STATUS = "health_status"
+KEY_RSSI_TREND = "rssi_trend"
+KEY_AGGREGATE_HEALTH_STATUS = "aggregate_health_status"
 
 # Inverter-specific sensor keys
 KEY_AC_OUTPUT_VOLTAGE = "ac_output_voltage"
@@ -117,7 +150,128 @@ KEY_AC_OUTPUT_FREQUENCY = "ac_output_frequency"
 KEY_INPUT_FREQUENCY = "input_frequency"
 KEY_LOAD_ACTIVE_POWER = "load_active_power"
 KEY_LOAD_APPARENT_POWER = "load_apparent_power"
+KEY_LOAD_PERCENTAGE = "load_percentage"
 KEY_TEMPERATURE = "temperature"
+SHUNT_ESTIMATED_CAPACITY_KWH = 1.28
+AGGREGATE_HEALTH_SENSOR_KEY = "__aggregate_health_sensor__"
+ENERGY_RESET_EPSILON = 0.001
+ENERGY_COUNTER_KEYS = {
+    KEY_SHUNT_ENERGY_CHARGED_TOTAL,
+    KEY_SHUNT_ENERGY_DISCHARGED_TOTAL,
+    KEY_POWER_GENERATION_TOTAL,
+    KEY_TOTAL_POWER_GENERATION,
+    KEY_TOTAL_CHARGING_AH,
+    KEY_TOTAL_OPERATING_DAYS,
+}
+
+
+def _shunt_word_value(
+    data: Dict[str, Any], index: int, scale: float = 1000.0
+) -> float | None:
+    """Return scaled value from shunt raw_words at index when available."""
+    raw_words = data.get("raw_words")
+    if not isinstance(raw_words, list) or index >= len(raw_words):
+        return None
+    return round(float(raw_words[index]) / scale, 3)
+
+
+def _compute_health_status(
+    coordinator: RenogyActiveBluetoothCoordinator,
+    device: RenogyBLEDevice | None,
+) -> str:
+    """Compute overall device health status."""
+    if not coordinator.last_update_success:
+        return "disconnected"
+
+    if device and hasattr(device, "is_available") and not device.is_available:
+        return "disconnected"
+
+    warn_rssi = getattr(coordinator, "warn_rssi", DEFAULT_WARN_RSSI)
+    critical_rssi = getattr(coordinator, "critical_rssi", DEFAULT_CRITICAL_RSSI)
+    if not isinstance(warn_rssi, (int, float)):
+        warn_rssi = DEFAULT_WARN_RSSI
+    if not isinstance(critical_rssi, (int, float)):
+        critical_rssi = DEFAULT_CRITICAL_RSSI
+
+    rssi = (
+        device.rssi
+        if device and isinstance(getattr(device, "rssi", None), (int, float))
+        else None
+    )
+
+    if rssi is not None:
+        if rssi <= critical_rssi:
+            return "critical"
+        if rssi <= warn_rssi:
+            return "warn"
+
+    auto_fallback = getattr(coordinator, "_shunt_auto_fallback_active", False)
+    if isinstance(auto_fallback, bool) and auto_fallback:
+        return "warn"
+
+    failures = getattr(coordinator, "_shunt_listener_failures", 0)
+    if isinstance(failures, int) and failures > 0:
+        return "warn"
+
+    return "healthy"
+
+
+def _compute_rssi_trend(samples: list[float]) -> str:
+    """Return RSSI trend based on a rolling sample window."""
+    if len(samples) < 2:
+        return "unknown"
+
+    delta = samples[-1] - samples[0]
+    threshold = DEFAULT_RSSI_TREND_STABLE_THRESHOLD
+    if abs(delta) < threshold:
+        return "stable"
+    if delta > 0:
+        return "improving"
+    return "declining"
+
+
+def _coerce_float(value: Any, *, default: float | None) -> float | None:
+    """Return a float value when possible, otherwise a default."""
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except TypeError, ValueError:
+        return default
+
+
+def _resolve_device_display_name(
+    *,
+    coordinator: RenogyActiveBluetoothCoordinator,
+    device: RenogyBLEDevice | None,
+    fallback: str,
+) -> str:
+    """Return the display name for a device, honoring any alias."""
+    alias = getattr(coordinator, "device_alias", "")
+    if isinstance(alias, str) and alias.strip():
+        return alias.strip()
+    if device and isinstance(device.name, str) and device.name.strip():
+        return device.name
+    return fallback
+
+
+def _normalize_shunt_energy_source(data: Dict[str, Any]) -> str:
+    """Normalize shunt energy source for display."""
+    energy_source = data.get(KEY_SHUNT_ENERGY_SOURCE)
+    if isinstance(energy_source, str):
+        normalized = energy_source.strip().lower()
+        if normalized in {"unknown", "n/a", "na", ""}:
+            energy_source = None
+
+    if energy_source is None:
+        if (
+            data.get(KEY_SHUNT_ENERGY_CHARGED_TOTAL) is not None
+            or data.get(KEY_SHUNT_ENERGY_DISCHARGED_TOTAL) is not None
+        ):
+            return "integrated"
+        return "unavailable"
+
+    return str(energy_source)
 
 
 @dataclass(frozen=True)
@@ -206,6 +360,208 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
             and data.get(KEY_SHUNT_CURRENT, 0) < -0.05
             else "idle"
         ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_1,
+        name="Shunt Temperature 1",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_TEMPERATURE_1]), 1)
+            if data.get(KEY_SHUNT_TEMPERATURE_1) is not None
+            else round(float(data["battery_temperature"]), 1)
+            if data.get("battery_temperature") is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_2,
+        name="Shunt Temperature 2",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_TEMPERATURE_2)
+            if data.get(KEY_SHUNT_TEMPERATURE_2) is not None
+            else _shunt_word_value(data, 38)
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE_3,
+        name="Shunt Temperature 3",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_TEMPERATURE_3)
+            if data.get(KEY_SHUNT_TEMPERATURE_3) is not None
+            else _shunt_word_value(data, 40)
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_STARTER_VOLTAGE,
+        name="Shunt Starter Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            round(float(data[KEY_SHUNT_STARTER_VOLTAGE]), 2)
+            if data.get(KEY_SHUNT_STARTER_VOLTAGE) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ESTIMATED_ENERGY,
+        name="Shunt Estimated Energy",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            round(
+                (float(data[KEY_SHUNT_SOC]) / 100.0) * SHUNT_ESTIMATED_CAPACITY_KWH, 3
+            )
+            if data.get(KEY_SHUNT_SOC) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_1,
+        name="Shunt Historical Value 1",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_1) or _shunt_word_value(data, 42),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_2,
+        name="Shunt Historical Value 2",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_2) or _shunt_word_value(data, 44),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_3,
+        name="Shunt Historical Value 3",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_3) or _shunt_word_value(data, 46),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_4,
+        name="Shunt Historical Value 4",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_4) or _shunt_word_value(data, 48),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_5,
+        name="Shunt Historical Value 5",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_5) or _shunt_word_value(data, 50),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_HIST_6,
+        name="Shunt Historical Value 6",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_HIST_6) or _shunt_word_value(data, 52),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ADDITIONAL_VALUE,
+        name="Shunt Additional Value",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_ADDITIONAL_VALUE)
+            if data.get(KEY_SHUNT_ADDITIONAL_VALUE) is not None
+            else _shunt_word_value(data, 53) or _shunt_word_value(data, 34)
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_SEQUENCE,
+        name="Shunt Packet Sequence",
+        device_class=None,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_SEQUENCE)
+            if data.get(KEY_SHUNT_SEQUENCE) is not None
+            else int(data["raw_words"][-1])
+            if isinstance(data.get("raw_words"), list) and data.get("raw_words")
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_VERBOSE,
+        name="Shunt Verbose Mode",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            "enabled"
+            if str(data.get(KEY_SHUNT_VERBOSE, "")).strip().lower()
+            in {"1", "true", "yes", "on"}
+            else "disabled"
+            if str(data.get(KEY_SHUNT_VERBOSE, "")).strip().lower()
+            in {"0", "false", "no", "off"}
+            else "unknown"
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_STATUS_SOURCE,
+        name="Shunt Status Source",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SHUNT_STATUS_SOURCE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_ENERGY_SOURCE,
+        name="Shunt Energy Source",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_normalize_shunt_energy_source,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_DECODE_CONFIDENCE,
+        name="Shunt Decode Confidence",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_DECODE_CONFIDENCE) or data.get("conf") or "unknown"
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_READING_VERIFIED,
+        name="Shunt Reading Verified",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: (
+            data.get(KEY_SHUNT_READING_VERIFIED)
+            if data.get(KEY_SHUNT_READING_VERIFIED) is not None
+            else data.get("verified")
+        ),
+    ),
+)
+
+HEALTH_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_HEALTH_STATUS,
+        name="Device Health",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=None,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_RSSI_TREND,
+        name="RSSI Trend",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=None,
     ),
 )
 
@@ -697,7 +1053,6 @@ DCC_ALL_SENSORS = (
     + DCC_STATISTICS_SENSORS
     + DCC_DIAGNOSTIC_SENSORS
 )
-
 # Inverter sensors
 INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
@@ -754,6 +1109,17 @@ INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         value_fn=lambda data: data.get(KEY_LOAD_APPARENT_POWER),
     ),
     RenogyBLESensorDescription(
+        key=KEY_LOAD_PERCENTAGE,
+        name="Load Percentage",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: (
+            round((data.get(KEY_LOAD_ACTIVE_POWER, 0) / 2000) * 100, 1)
+            if data.get(KEY_LOAD_ACTIVE_POWER) is not None
+            else None
+        ),
+    ),
+    RenogyBLESensorDescription(
         key=KEY_TEMPERATURE,
         name="Temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -776,7 +1142,6 @@ INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         value_fn=lambda data: data.get(KEY_MODEL),
     ),
 )
-
 # All sensors combined (for controller type)
 ALL_SENSORS = BATTERY_SENSORS + PV_SENSORS + LOAD_SENSORS + CONTROLLER_SENSORS
 
@@ -787,6 +1152,7 @@ SENSORS_BY_DEVICE_TYPE = {
         "PV": PV_SENSORS,
         "Load": LOAD_SENSORS,
         "Controller": CONTROLLER_SENSORS,
+        "Health": HEALTH_SENSORS,
     },
     DeviceType.DCC.value: {
         "Battery": DCC_BATTERY_SENSORS,
@@ -795,12 +1161,15 @@ SENSORS_BY_DEVICE_TYPE = {
         "Status": DCC_STATUS_SENSORS,
         "Statistics": DCC_STATISTICS_SENSORS,
         "Diagnostic": DCC_DIAGNOSTIC_SENSORS,
-    },
-    DeviceType.INVERTER.value: {
-        "Inverter": INVERTER_SENSORS,
+        "Health": HEALTH_SENSORS,
     },
     DeviceType.SHUNT300.value: {
         "Shunt": SHUNT300_SENSORS,
+        "Health": HEALTH_SENSORS,
+    },
+    DeviceType.INVERTER.value: {
+        "Inverter": INVERTER_SENSORS,
+        "Health": HEALTH_SENSORS,
     },
 }
 
@@ -843,6 +1212,25 @@ async def async_setup_entry(
         async_add_entities(device_entities)
     else:
         LOGGER.warning("No entities were created")
+
+    aggregate_sensor = _get_or_create_aggregate_sensor(hass, async_add_entities)
+    remove_aggregate_listener = aggregate_sensor.attach_entry(config_entry.entry_id)
+    config_entry.async_on_unload(remove_aggregate_listener)
+
+
+def _get_or_create_aggregate_sensor(
+    hass: HomeAssistant, async_add_entities: AddEntitiesCallback
+) -> "RenogyAggregateHealthSensor":
+    """Return the singleton aggregate health sensor for this integration."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    existing = domain_data.get(AGGREGATE_HEALTH_SENSOR_KEY)
+    if isinstance(existing, RenogyAggregateHealthSensor):
+        return existing
+
+    aggregate = RenogyAggregateHealthSensor(hass)
+    domain_data[AGGREGATE_HEALTH_SENSOR_KEY] = aggregate
+    async_add_entities([aggregate])
+    return aggregate
 
 
 def create_entities_helper(
@@ -891,7 +1279,7 @@ def create_device_entities(
     return entities
 
 
-class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
+class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity, RestoreEntity):
     """Representation of a Renogy BLE sensor."""
 
     entity_description: RenogyBLESensorDescription
@@ -912,6 +1300,11 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         self._category = category
         self._device_type = device_type
         self._attr_native_value = None
+        self._energy_offset = 0.0
+        self._energy_last_raw: float | None = None
+        self._energy_last_adjusted: float | None = None
+        self._energy_reset_count = 0
+        self._energy_last_reset: str | None = None
 
         # Generate a device model name that includes the device type
         device_model = f"Renogy {device_type.capitalize()}"
@@ -921,12 +1314,17 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         # Device-dependent properties
         if device:
             self._attr_unique_id = f"{device.address}_{description.key}"
-            self._attr_name = f"{device.name} {description.name}"
+            display_name = _resolve_device_display_name(
+                coordinator=coordinator,
+                device=device,
+                fallback=f"Renogy {device_type.capitalize()}",
+            )
+            self._attr_name = f"{display_name} {description.name}"
 
             # Properly set up device_info for the device registry
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, device.address)},
-                name=device.name,
+                name=display_name,
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {device.address}",
@@ -936,12 +1334,17 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         else:
             # If we don't have a device yet, use coordinator address for unique ID
             self._attr_unique_id = f"{coordinator.address}_{description.key}"
-            self._attr_name = f"Renogy {description.name}"
+            display_name = _resolve_device_display_name(
+                coordinator=coordinator,
+                device=None,
+                fallback=f"Renogy {device_type.capitalize()}",
+            )
+            self._attr_name = f"{display_name} {description.name}"
 
             # Set up basic device info based on coordinator
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, coordinator.address)},
-                name=f"Renogy {device_type.capitalize()}",
+                name=display_name,
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {coordinator.address}",
@@ -950,6 +1353,32 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
             )
 
         self._last_updated = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore energy counter offsets on startup."""
+        await super().async_added_to_hass()
+        if self.entity_description.key not in ENERGY_COUNTER_KEYS:
+            return
+
+        last_state = await self.async_get_last_state()
+        if last_state is None:
+            return
+
+        attrs = last_state.attributes or {}
+        offset = _coerce_float(attrs.get("energy_counter_offset"), default=None)
+        self._energy_offset = offset if offset is not None else 0.0
+        self._energy_last_raw = _coerce_float(
+            attrs.get("energy_counter_raw"), default=None
+        )
+        self._energy_last_adjusted = _coerce_float(last_state.state, default=None)
+        reset_count = attrs.get("energy_counter_reset_count", 0)
+        try:
+            self._energy_reset_count = int(reset_count)
+        except TypeError, ValueError:
+            self._energy_reset_count = 0
+        last_reset = attrs.get("energy_counter_last_reset")
+        if isinstance(last_reset, str):
+            self._energy_last_reset = last_reset
 
     @property
     def device(self) -> Optional[RenogyBLEDevice]:
@@ -971,12 +1400,17 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 f"{self._device.address}_{self.entity_description.key}"
             )
             # Also update our name
-            self._attr_name = f"{self._device.name} {self.entity_description.name}"
+            display_name = _resolve_device_display_name(
+                coordinator=self.coordinator,
+                device=self._device,
+                fallback=f"Renogy {self._device_type.capitalize()}",
+            )
+            self._attr_name = f"{display_name} {self.entity_description.name}"
 
             # And device_info
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, self._device.address)},
-                name=self._device.name,
+                name=display_name,
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {self._device.address}",
@@ -1014,6 +1448,16 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         # Use cached value if available
         if self._attr_native_value is not None:
             return self._attr_native_value
+
+        if self.entity_description.key == KEY_HEALTH_STATUS:
+            value = _compute_health_status(self.coordinator, self.device)
+            self._attr_native_value = value
+            return value
+        if self.entity_description.key == KEY_RSSI_TREND:
+            samples = getattr(self.coordinator, "_rssi_samples", [])
+            trend = _compute_rssi_trend(list(samples))
+            self._attr_native_value = trend
+            return trend
 
         device = self.device
         data = None
@@ -1056,7 +1500,12 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                             )
                             return None
 
-                # Cache the value
+                if (
+                    value is not None
+                    and self.entity_description.key in ENERGY_COUNTER_KEYS
+                ):
+                    value = self._apply_energy_reset_handling(value)
+
                 self._attr_native_value = value
                 return value
         except Exception as e:
@@ -1141,16 +1590,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                     )
                 attrs["status_source"] = status_source
 
-                energy_source = shunt_data.get(KEY_SHUNT_ENERGY_SOURCE)
-                if energy_source is None:
-                    if (
-                        shunt_data.get(KEY_SHUNT_ENERGY_CHARGED_TOTAL) is not None
-                        or shunt_data.get(KEY_SHUNT_ENERGY_DISCHARGED_TOTAL) is not None
-                    ):
-                        energy_source = "integrated"
-                    else:
-                        energy_source = "unavailable"
-                attrs["energy_source"] = energy_source
+                attrs["energy_source"] = _normalize_shunt_energy_source(shunt_data)
 
                 decode_confidence = shunt_data.get(KEY_SHUNT_DECODE_CONFIDENCE)
                 if decode_confidence is None:
@@ -1163,6 +1603,52 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                     reading_verified = shunt_data.get("verified")
                 if reading_verified is not None:
                     attrs["reading_verified"] = reading_verified
+
+                if self.entity_description.key == KEY_SHUNT_TEMPERATURE_1:
+                    temp_source = "unknown"
+                    if shunt_data.get(KEY_SHUNT_TEMPERATURE_1) is not None:
+                        temp_source = "shunt_temperature_1"
+                    elif shunt_data.get(KEY_BATTERY_TEMPERATURE) is not None:
+                        temp_source = "battery_temperature"
+                    attrs["temperature_1_source"] = temp_source
+
+                coordinator = self.coordinator
+                connection_mode = getattr(coordinator, "shunt_connection_mode", None)
+                attrs["shunt_connection_mode"] = (
+                    connection_mode if isinstance(connection_mode, str) else "unknown"
+                )
+                listener_task = getattr(coordinator, "_shunt_listener_task", None)
+                attrs["shunt_listener_active"] = isinstance(listener_task, asyncio.Task)
+                failures = getattr(coordinator, "_shunt_listener_failures", 0)
+                attrs["shunt_listener_failures"] = (
+                    failures if isinstance(failures, int) else 0
+                )
+                last_success = getattr(
+                    coordinator, "_shunt_listener_last_success", None
+                )
+                if last_success:
+                    attrs["shunt_listener_last_success"] = last_success
+                auto_fallback = getattr(
+                    coordinator, "_shunt_auto_fallback_active", False
+                )
+                attrs["shunt_auto_fallback_active"] = (
+                    auto_fallback if isinstance(auto_fallback, bool) else False
+                )
+
+        if self.entity_description.key == KEY_HEALTH_STATUS:
+            attrs["last_update_success"] = self.coordinator.last_update_success
+            attrs["warn_rssi"] = getattr(
+                self.coordinator, "warn_rssi", DEFAULT_WARN_RSSI
+            )
+            attrs["critical_rssi"] = getattr(
+                self.coordinator, "critical_rssi", DEFAULT_CRITICAL_RSSI
+            )
+
+        if self.entity_description.key in ENERGY_COUNTER_KEYS:
+            attrs["energy_counter_raw"] = self._energy_last_raw
+            attrs["energy_counter_offset"] = round(float(self._energy_offset), 3)
+            attrs["energy_counter_reset_count"] = self._energy_reset_count
+            attrs["energy_counter_last_reset"] = self._energy_last_reset
 
         # Expose raw shunt payload details for troubleshooting.
         if (
@@ -1179,3 +1665,159 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 attrs["raw_words"] = raw_words
 
         return attrs
+
+    def _apply_energy_reset_handling(self, value: Any) -> Any:
+        """Apply monotonic reset handling for energy counters."""
+        raw_value = _coerce_float(value, default=None)
+        if raw_value is None:
+            return value
+
+        adjusted = raw_value + self._energy_offset
+
+        last_adjusted = self._energy_last_adjusted
+        if last_adjusted is not None and adjusted + ENERGY_RESET_EPSILON < (
+            last_adjusted
+        ):
+            offset_bump = self._energy_last_raw or 0.0
+            self._energy_offset += offset_bump
+            self._energy_reset_count += 1
+            self._energy_last_reset = datetime.now().isoformat()
+            adjusted = raw_value + self._energy_offset
+
+        self._energy_last_raw = raw_value
+        self._energy_last_adjusted = adjusted
+        return adjusted
+
+
+class RenogyAggregateHealthSensor(SensorEntity):
+    """Aggregate health view across all Renogy devices."""
+
+    _attr_name = "Renogy Health"
+    _attr_unique_id = "renogy_health_aggregate"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the aggregate health sensor."""
+        self.hass = hass
+        self._entry_listeners: dict[str, Callable[[], None]] = {}
+        self._attr_native_value = "unknown"
+        self._attr_extra_state_attributes: dict[str, Any] = {}
+        self._last_updated: datetime | None = None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "aggregate_health")},
+            name="Renogy Health",
+            manufacturer=ATTR_MANUFACTURER,
+            model="Aggregate",
+        )
+
+    def attach_entry(self, entry_id: str) -> Callable[[], None]:
+        """Attach a config entry to this aggregate sensor."""
+        if entry_id in self._entry_listeners:
+            return lambda: None
+
+        entry_data = self.hass.data.get(DOMAIN, {}).get(entry_id)
+        coordinator = (
+            entry_data.get("coordinator") if isinstance(entry_data, dict) else None
+        )
+        if coordinator is None:
+            return lambda: None
+
+        remove_listener = coordinator.async_add_listener(self._handle_update)
+        self._entry_listeners[entry_id] = remove_listener
+        self._handle_update()
+
+        def _remove() -> None:
+            remove_listener()
+            self._entry_listeners.pop(entry_id, None)
+            self._handle_update()
+
+        return _remove
+
+    def _handle_update(self) -> None:
+        """Recompute aggregate state from all known devices."""
+        self._last_updated = datetime.now()
+        aggregate_status, attributes = self._compute_aggregate_status_and_attrs()
+        self._attr_native_value = aggregate_status
+        self._attr_extra_state_attributes = attributes
+        self.async_write_ha_state()
+
+    def _compute_aggregate_status_and_attrs(self) -> tuple[str, dict[str, Any]]:
+        """Return aggregate status and attributes."""
+        failing_devices: list[dict[str, Any]] = []
+        all_devices: list[dict[str, Any]] = []
+        status_counts = {
+            "healthy": 0,
+            "warn": 0,
+            "critical": 0,
+            "disconnected": 0,
+        }
+        total_devices = 0
+
+        for entry_id, entry_data in self.hass.data.get(DOMAIN, {}).items():
+            if entry_id == AGGREGATE_HEALTH_SENSOR_KEY:
+                continue
+            if not isinstance(entry_data, dict) or "coordinator" not in entry_data:
+                continue
+
+            coordinator = entry_data["coordinator"]
+            device = coordinator.device
+            if device is None:
+                devices = entry_data.get("devices", [])
+                if isinstance(devices, list) and devices:
+                    device = devices[0]
+
+            status = _compute_health_status(coordinator, device)
+            total_devices += 1
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+            device_summary = {
+                "name": getattr(device, "name", None)
+                or getattr(coordinator, "address", "unknown"),
+                "address": getattr(coordinator, "address", None),
+                "status": status,
+                "device_type": getattr(device, "device_type", None),
+                "rssi": getattr(device, "rssi", None),
+            }
+            all_devices.append(device_summary)
+
+            if status != "healthy":
+                failing_devices.append(device_summary)
+
+        if total_devices == 0:
+            aggregate_status = "unknown"
+        elif (
+            status_counts.get("critical", 0) > 0
+            or status_counts.get("disconnected", 0) > 0
+        ):
+            aggregate_status = "critical"
+        elif status_counts.get("warn", 0) > 0:
+            aggregate_status = "warn"
+        elif status_counts.get("healthy", 0) == total_devices:
+            aggregate_status = "healthy"
+        else:
+            aggregate_status = "unknown"
+
+        attributes: dict[str, Any] = {
+            "last_updated": self._last_updated.isoformat()
+            if self._last_updated
+            else None,
+            "total_devices": total_devices,
+            "healthy_devices": status_counts.get("healthy", 0),
+            "warn_devices": status_counts.get("warn", 0),
+            "critical_devices": status_counts.get("critical", 0),
+            "disconnected_devices": status_counts.get("disconnected", 0),
+            "failing_devices": failing_devices,
+            "all_devices": all_devices,
+        }
+
+        return aggregate_status, attributes
+
+    @property
+    def native_value(self) -> Any:
+        """Return the aggregate health status."""
+        return self._attr_native_value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return aggregate health metadata."""
+        return dict(self._attr_extra_state_attributes)

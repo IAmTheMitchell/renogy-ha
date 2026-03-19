@@ -18,11 +18,16 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_ADDRESS, CONF_SCAN_INTERVAL
 
 from .const import (
+    CONF_CRITICAL_RSSI,
+    CONF_DEVICE_ALIAS,
     CONF_DEVICE_TYPE,
     CONF_SHUNT_CONNECTION_MODE,
+    CONF_WARN_RSSI,
+    DEFAULT_CRITICAL_RSSI,
     DEFAULT_DEVICE_TYPE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
+    DEFAULT_WARN_RSSI,
     DEVICE_TYPES,
     DOMAIN,
     LOGGER,
@@ -31,6 +36,7 @@ from .const import (
     SHUNT_CONNECTION_MODES,
     SUPPORTED_DEVICE_TYPES,
     DeviceType,
+    ShuntConnectionMode,
 )
 from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name
 
@@ -50,16 +56,40 @@ SCAN_INTERVAL_SCHEMA = {
 CONFIG_SCHEMA = vol.Schema({**DEVICE_TYPE_SCHEMA, **SCAN_INTERVAL_SCHEMA})
 
 
-def _build_shunt_options_schema(default_mode: str) -> vol.Schema:
-    """Build the Smart Shunt options schema."""
-    return vol.Schema(
-        {
+def _build_options_schema(
+    *,
+    device_type: str,
+    default_mode: str,
+    warn_rssi: int,
+    critical_rssi: int,
+    alias: str,
+) -> vol.Schema:
+    """Build the options schema."""
+    fields: dict[Any, Any] = {
+        vol.Optional(CONF_DEVICE_ALIAS, default=alias): vol.All(
+            vol.Coerce(str),
+            vol.Length(max=64),
+        ),
+        vol.Required(CONF_WARN_RSSI, default=warn_rssi): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=-120, max=-30),
+        ),
+        vol.Required(CONF_CRITICAL_RSSI, default=critical_rssi): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=-120, max=-30),
+        ),
+    }
+
+    if device_type == DeviceType.SHUNT300.value:
+        fields = {
             vol.Required(
                 CONF_SHUNT_CONNECTION_MODE,
                 default=default_mode,
-            ): vol.In(SHUNT_CONNECTION_MODES)
+            ): vol.In(SHUNT_CONNECTION_MODES),
+            **fields,
         }
-    )
+
+    return vol.Schema(fields)
 
 
 class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -247,9 +277,6 @@ class RenogyOptionsFlowHandler(OptionsFlow):
         """Manage integration options."""
         device_type = self._config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
 
-        if device_type != DeviceType.SHUNT300.value:
-            return self.async_create_entry(title="", data={})
-
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
@@ -257,7 +284,23 @@ class RenogyOptionsFlowHandler(OptionsFlow):
             CONF_SHUNT_CONNECTION_MODE,
             DEFAULT_SHUNT_CONNECTION_MODE,
         )
+        warn_rssi = self._config_entry.options.get(CONF_WARN_RSSI, DEFAULT_WARN_RSSI)
+        critical_rssi = self._config_entry.options.get(
+            CONF_CRITICAL_RSSI, DEFAULT_CRITICAL_RSSI
+        )
+        alias = self._config_entry.options.get(CONF_DEVICE_ALIAS, "")
         return self.async_show_form(
             step_id="init",
-            data_schema=_build_shunt_options_schema(current_mode),
+            data_schema=_build_options_schema(
+                device_type=device_type,
+                default_mode=current_mode,
+                warn_rssi=warn_rssi,
+                critical_rssi=critical_rssi,
+                alias=alias,
+            ),
+            description_placeholders={
+                "sustained": ShuntConnectionMode.SUSTAINED.value,
+                "intermittent": ShuntConnectionMode.INTERMITTENT.value,
+                "auto": ShuntConnectionMode.AUTO.value,
+            },
         )

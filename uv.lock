@@ -1410,19 +1410,15 @@ wheels = [
 [[package]]
 name = "renogy-ble"
 version = "2.1.1"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/rs-mini-rgb/renogy-ble.git?rev=e89b4d8#e89b4d8c4972735d63d254408144545ed8f735c4" }
 dependencies = [
     { name = "bleak" },
     { name = "bleak-retry-connector" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/26/d0fed2d6c5f63185c8b070e030d2a3416bd7f93734abbb8f41acac8f33f7/renogy_ble-2.1.1.tar.gz", hash = "sha256:2c0b2facb134c16b506540885f726aa28b1f3164977bfb3296c502cc4425500a", size = 52166, upload-time = "2026-03-15T23:33:32.188Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cc/be/400102d1968a461716b8ece45e5c23fc7a974360d1cddb2111ff9631269a/renogy_ble-2.1.1-py3-none-any.whl", hash = "sha256:64b70a5b50ad09bacc9023e89d22fe96142bf073c768e1743f69d338f043e936", size = 22634, upload-time = "2026-03-15T23:33:33.122Z" },
-]
 
 [[package]]
 name = "renogy-ha"
-version = "0.5.0"
+version = "0.6.0"
 source = { virtual = "." }
 dependencies = [
     { name = "homeassistant" },
@@ -1440,7 +1436,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "homeassistant", specifier = ">=2026.3.0" },
-    { name = "renogy-ble", specifier = ">=2.1.1" },
+    { name = "renogy-ble", git = "https://github.com/rs-mini-rgb/renogy-ble.git?rev=e89b4d8" },
 ]
 
 [package.metadata.requires-dev]

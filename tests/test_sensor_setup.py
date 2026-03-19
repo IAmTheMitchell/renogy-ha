@@ -68,6 +68,23 @@ def _install_module_stubs() -> None:
     class SensorEntity:
         """Stub SensorEntity class for testing."""
 
+        @property
+        def device_class(self) -> str | None:
+            """Return device class from description when available."""
+            description = getattr(self, "entity_description", None)
+            if description is not None:
+                return getattr(description, "device_class", None)
+            return None
+
+        @property
+        def name(self) -> str:
+            """Return the entity name when available."""
+            return getattr(self, "_attr_name", "Unknown")
+
+        def async_write_ha_state(self) -> None:
+            """Stub state write for testing."""
+            return None
+
     @dataclass(frozen=True)
     class SensorEntityDescription:
         """Stub SensorEntityDescription for testing."""
@@ -86,6 +103,9 @@ def _install_module_stubs() -> None:
         VOLTAGE = "voltage"
         CURRENT = "current"
         POWER = "power"
+        APPARENT_POWER = "apparent_power"
+        FREQUENCY = "frequency"
+        POWER_FACTOR = "power_factor"
         TEMPERATURE = "temperature"
         BATTERY = "battery"
         ENERGY = "energy"
@@ -138,6 +158,24 @@ def _install_module_stubs() -> None:
 
     entity_platform_module.AddEntitiesCallback = AddEntitiesCallback
     sys.modules["homeassistant.helpers.entity_platform"] = entity_platform_module
+
+    restore_state_module = cast(
+        Any, types.ModuleType("homeassistant.helpers.restore_state")
+    )
+
+    class RestoreEntity:
+        """Stub RestoreEntity for testing."""
+
+        async def async_get_last_state(self) -> Any:
+            """Return no last state for tests."""
+            return None
+
+        async def async_added_to_hass(self) -> None:
+            """No-op for tests."""
+            return None
+
+    restore_state_module.RestoreEntity = RestoreEntity
+    sys.modules["homeassistant.helpers.restore_state"] = restore_state_module
 
     const_module = cast(Any, types.ModuleType("homeassistant.const"))
     const_module.CONF_ADDRESS = "address"
@@ -218,6 +256,12 @@ def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
     coordinator.device = device
     coordinator.address = device.address
     coordinator.async_request_refresh = AsyncMock()
+    coordinator.last_update_success = True
+    coordinator.warn_rssi = -80
+    coordinator.critical_rssi = -90
+
+    device.is_available = True
+    device.rssi = None
 
     hass = MagicMock()
     hass.data = {sensor_module.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
@@ -239,7 +283,13 @@ def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
             )
 
     coordinator.async_request_refresh.assert_not_awaited()
-    async_add_entities.assert_not_called()
+    async_add_entities.assert_called_once()
+    aggregate_entities = async_add_entities.call_args.args[0]
+    assert len(aggregate_entities) == 1
+    assert isinstance(
+        aggregate_entities[0],
+        sensor_module.RenogyAggregateHealthSensor,
+    )
 
 
 def test_sensor_setup_does_not_wait_for_unknown_device_name() -> None:
@@ -250,6 +300,9 @@ def test_sensor_setup_does_not_wait_for_unknown_device_name() -> None:
     coordinator.device = None
     coordinator.address = "AA:BB:CC:DD:EE:FF"
     coordinator.async_request_refresh = AsyncMock()
+    coordinator.last_update_success = True
+    coordinator.warn_rssi = -80
+    coordinator.critical_rssi = -90
 
     hass = MagicMock()
     hass.data = {sensor_module.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
@@ -276,7 +329,7 @@ def test_sensor_setup_does_not_wait_for_unknown_device_name() -> None:
     create_coordinator_entities.assert_called_once_with(
         coordinator, sensor_module.DeviceType.CONTROLLER.value
     )
-    async_add_entities.assert_called_once_with(["entity"])
+    async_add_entities.assert_any_call(["entity"])
 
 
 def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:
@@ -299,6 +352,20 @@ def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:
         assert (
             description.state_class == sensor_module.SensorStateClass.TOTAL_INCREASING
         )
+
+
+def test_shunt_estimated_energy_has_no_state_class() -> None:
+    """Ensure shunt estimated energy does not use an invalid state class."""
+    sensor_module = _load_sensor_module()
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_ESTIMATED_ENERGY
+    )
+
+    assert description.device_class == sensor_module.SensorDeviceClass.ENERGY
+    assert description.state_class is None
 
 
 def test_shunt_status_sensor_exposes_troubleshooting_attributes() -> None:
@@ -349,6 +416,10 @@ def test_shunt_status_sensor_exposes_troubleshooting_attributes() -> None:
     assert attrs["reading_verified"] is True
     assert attrs["raw_payload"] == "deadbeef"
     assert attrs["raw_words"] == [1, 2, 3]
+    assert attrs["shunt_connection_mode"] == "unknown"
+    assert attrs["shunt_listener_active"] is False
+    assert attrs["shunt_listener_failures"] == 0
+    assert attrs["shunt_auto_fallback_active"] is False
 
 
 def test_shunt_status_sensor_preserves_zero_decode_confidence() -> None:
@@ -387,6 +458,123 @@ def test_shunt_status_sensor_preserves_zero_decode_confidence() -> None:
     assert entity.extra_state_attributes["decode_confidence"] == 0
 
 
+def test_shunt_temperature_1_sensor_exposes_source() -> None:
+    """Ensure shunt temperature sensor reports the underlying data source."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {
+        sensor_module.KEY_SHUNT_TEMPERATURE_1: 22.5,
+        sensor_module.KEY_BATTERY_TEMPERATURE: 18.0,
+    }
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_TEMPERATURE_1
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+
+    assert (
+        entity.extra_state_attributes["temperature_1_source"] == "shunt_temperature_1"
+    )
+
+
+def test_shunt_temperature_1_sensor_falls_back_to_battery_temp_source() -> None:
+    """Ensure shunt temperature sensor reports battery temperature fallback."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {
+        sensor_module.KEY_BATTERY_TEMPERATURE: 18.0,
+    }
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_TEMPERATURE_1
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+
+    assert (
+        entity.extra_state_attributes["temperature_1_source"] == "battery_temperature"
+    )
+
+
+def test_energy_counter_reset_handling() -> None:
+    """Ensure energy counters apply offset when a reset is detected."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {
+        sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL: 1.0,
+    }
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+
+    assert entity.native_value == 1.0
+
+    entity._attr_native_value = None
+    device.parsed_data[sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL] = 0.2
+    adjusted = entity.native_value
+
+    assert adjusted == 1.2
+    assert entity.extra_state_attributes["energy_counter_reset_count"] == 1
+
+
 def test_inverter_sensor_mapping_uses_library_field_names() -> None:
     """Ensure inverter entities map directly to renogy-ble parsed field names."""
     sensor_module = _load_sensor_module()
@@ -417,3 +605,133 @@ def test_inverter_sensor_mapping_uses_library_field_names() -> None:
     assert (
         descriptions[sensor_module.KEY_MODEL].value_fn(sample_data) == "RIV1220PU-126"
     )
+
+
+def test_aggregate_health_sensor_rollup() -> None:
+    """Ensure aggregate health rolls up device status and lists failures."""
+    sensor_module = _load_sensor_module()
+
+    hass = MagicMock()
+    hass.data = {sensor_module.DOMAIN: {}}
+
+    coordinator_healthy = MagicMock()
+    coordinator_healthy.address = "AA:BB:CC:DD:EE:01"
+    coordinator_healthy.last_update_success = True
+    coordinator_healthy.warn_rssi = -80
+    coordinator_healthy.critical_rssi = -90
+    device_healthy = MagicMock()
+    device_healthy.name = "Renogy Healthy"
+    device_healthy.address = coordinator_healthy.address
+    device_healthy.device_type = sensor_module.DeviceType.CONTROLLER.value
+    device_healthy.is_available = True
+    device_healthy.rssi = -60
+    coordinator_healthy.device = device_healthy
+
+    coordinator_critical = MagicMock()
+    coordinator_critical.address = "AA:BB:CC:DD:EE:02"
+    coordinator_critical.last_update_success = True
+    coordinator_critical.warn_rssi = -80
+    coordinator_critical.critical_rssi = -90
+    device_critical = MagicMock()
+    device_critical.name = "Renogy Critical"
+    device_critical.address = coordinator_critical.address
+    device_critical.device_type = sensor_module.DeviceType.SHUNT300.value
+    device_critical.is_available = True
+    device_critical.rssi = -95
+    coordinator_critical.device = device_critical
+
+    hass.data[sensor_module.DOMAIN]["entry-1"] = {
+        "coordinator": coordinator_healthy,
+        "devices": [device_healthy],
+    }
+    hass.data[sensor_module.DOMAIN]["entry-2"] = {
+        "coordinator": coordinator_critical,
+        "devices": [device_critical],
+    }
+
+    entity = sensor_module.RenogyAggregateHealthSensor(hass)
+    entity._handle_update()
+
+    assert entity.native_value == "critical"
+    attrs = entity.extra_state_attributes
+    assert attrs["total_devices"] == 2
+    assert attrs["critical_devices"] == 1
+    assert attrs["healthy_devices"] == 1
+    assert len(attrs["all_devices"]) == 2
+    assert any(
+        failing["name"] == "Renogy Critical" and failing["status"] == "critical"
+        for failing in attrs["failing_devices"]
+    )
+    assert any(
+        device["name"] == "Renogy Healthy" and device["status"] == "healthy"
+        for device in attrs["all_devices"]
+    )
+
+
+def test_rssi_trend_computation() -> None:
+    """Ensure RSSI trend calculations are stable/improving/declining."""
+    sensor_module = _load_sensor_module()
+
+    assert sensor_module._compute_rssi_trend([]) == "unknown"
+    assert sensor_module._compute_rssi_trend([-70]) == "unknown"
+    assert sensor_module._compute_rssi_trend([-70, -69, -68]) == "improving"
+    assert sensor_module._compute_rssi_trend([-60, -62, -64]) == "declining"
+    assert sensor_module._compute_rssi_trend([-70, -69, -70]) == "stable"
+
+
+def test_rssi_trend_sensor_reads_coordinator_samples() -> None:
+    """Ensure RSSI trend sensor reads from coordinator samples."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator._rssi_samples = [-70.0, -68.0, -65.0]
+
+    description = next(
+        item
+        for item in sensor_module.HEALTH_SENSORS
+        if item.key == sensor_module.KEY_RSSI_TREND
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        None,
+        description,
+        "Health",
+        sensor_module.DeviceType.CONTROLLER.value,
+    )
+
+    assert entity.native_value == "improving"
+
+
+def test_sensor_uses_device_alias_for_display_name() -> None:
+    """Ensure alias overrides BLE name for entity and device info."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device_alias = "Basement Rig"
+
+    device = MagicMock()
+    device.address = coordinator.address
+    device.name = "RTMShunt300A1B2"
+    device.parsed_data = {}
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_VOLTAGE
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+
+    assert entity._attr_name.startswith("Basement Rig")
+    assert entity._attr_device_info.get("name") == "Basement Rig"

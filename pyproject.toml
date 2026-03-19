@@ -1,6 +1,6 @@
 [project]
 name = "renogy-ha"
-version = "0.5.0"
+version = "0.6.0"
 description = "Home Assisstant integration for Renogy devices"
 readme = "README.md"
 requires-python = ">=3.14.2"
@@ -33,3 +33,6 @@ select = ["I", "E", "F"]  # I = isort, E = pycodestyle, F = pyflakes
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.uv.sources]
+renogy-ble = { git = "https://github.com/rs-mini-rgb/renogy-ble.git", rev = "e89b4d8" }
