@@ -33,6 +33,23 @@ show_state: false
 tap_action:
   action: more-info
 
+extra_styles: |
+  @keyframes pulseHealthy {
+    0% { box-shadow: 0 0 0 0 rgba(17,107,47,0.45); }
+    70% { box-shadow: 0 0 0 12px rgba(17,107,47,0); }
+    100% { box-shadow: 0 0 0 0 rgba(17,107,47,0); }
+  }
+  @keyframes pulseWarn {
+    0% { box-shadow: 0 0 0 0 rgba(122,90,17,0.45); }
+    70% { box-shadow: 0 0 0 12px rgba(122,90,17,0); }
+    100% { box-shadow: 0 0 0 0 rgba(122,90,17,0); }
+  }
+  @keyframes pulseCritical {
+    0% { box-shadow: 0 0 0 0 rgba(122,17,17,0.5); }
+    70% { box-shadow: 0 0 0 12px rgba(122,17,17,0); }
+    100% { box-shadow: 0 0 0 0 rgba(122,17,17,0); }
+  }
+
 styles:
   grid:
     - grid-template-areas: '"n status" "summary summary" "devices devices"'
@@ -44,6 +61,14 @@ styles:
     - border-radius: 14px
     - background: "linear-gradient(135deg, #141414 0%, #1e1e1e 100%)"
     - color: "#f3f3f3"
+    - animation: >
+        [[[
+          const s = entity?.state;
+          if (s === "critical") return "pulseCritical 2s infinite";
+          if (s === "warn") return "pulseWarn 2.5s infinite";
+          if (s === "healthy") return "pulseHealthy 3s infinite";
+          return "none";
+        ]]]
   name:
     - font-size: 18px
     - font-weight: 700
@@ -64,7 +89,9 @@ styles:
     devices:
       - grid-area: devices
       - font-size: 12px
-      - opacity: 0.85
+      - opacity: 0.9
+      - text-align: right
+      - justify-self: end
 
 custom_fields:
   status: |
@@ -85,8 +112,9 @@ custom_fields:
       const list = entity?.attributes?.all_devices || [];
       if (!list.length) return "No devices found";
       const dot = s => s === "critical" ? "🔴" : s === "warn" ? "🟡" : s === "healthy" ? "🟢" : "⚪";
+      const fmtRssi = rssi => (typeof rssi === "number" ? `${rssi} dBm` : "n/a");
       return list
-        .map(d => `${dot(d.status)} ${d.name || d.address} (${d.status})`)
+        .map(d => `${dot(d.status)} ${d.name || d.address} (${d.status}, ${fmtRssi(d.rssi)})`)
         .join("<br>");
     ]]]
 ```
