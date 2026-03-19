@@ -220,6 +220,21 @@ def _compute_rssi_trend(samples: list[float]) -> str:
     return "declining"
 
 
+def _resolve_device_display_name(
+    *,
+    coordinator: RenogyActiveBluetoothCoordinator,
+    device: RenogyBLEDevice | None,
+    fallback: str,
+) -> str:
+    """Return the display name for a device, honoring any alias."""
+    alias = getattr(coordinator, "device_alias", "")
+    if isinstance(alias, str) and alias.strip():
+        return alias.strip()
+    if device and isinstance(device.name, str) and device.name.strip():
+        return device.name
+    return fallback
+
+
 def _normalize_shunt_energy_source(data: Dict[str, Any]) -> str:
     """Normalize shunt energy source for display."""
     energy_source = data.get(KEY_SHUNT_ENERGY_SOURCE)
@@ -1274,12 +1289,17 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         # Device-dependent properties
         if device:
             self._attr_unique_id = f"{device.address}_{description.key}"
-            self._attr_name = f"{device.name} {description.name}"
+            display_name = _resolve_device_display_name(
+                coordinator=coordinator,
+                device=device,
+                fallback=f"Renogy {device_type.capitalize()}",
+            )
+            self._attr_name = f"{display_name} {description.name}"
 
             # Properly set up device_info for the device registry
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, device.address)},
-                name=device.name,
+                name=display_name,
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {device.address}",
@@ -1289,12 +1309,17 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         else:
             # If we don't have a device yet, use coordinator address for unique ID
             self._attr_unique_id = f"{coordinator.address}_{description.key}"
-            self._attr_name = f"Renogy {description.name}"
+            display_name = _resolve_device_display_name(
+                coordinator=coordinator,
+                device=None,
+                fallback=f"Renogy {device_type.capitalize()}",
+            )
+            self._attr_name = f"{display_name} {description.name}"
 
             # Set up basic device info based on coordinator
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, coordinator.address)},
-                name=f"Renogy {device_type.capitalize()}",
+                name=display_name,
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {coordinator.address}",
@@ -1324,12 +1349,17 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 f"{self._device.address}_{self.entity_description.key}"
             )
             # Also update our name
-            self._attr_name = f"{self._device.name} {self.entity_description.name}"
+            display_name = _resolve_device_display_name(
+                coordinator=self.coordinator,
+                device=self._device,
+                fallback=f"Renogy {self._device_type.capitalize()}",
+            )
+            self._attr_name = f"{display_name} {self.entity_description.name}"
 
             # And device_info
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, self._device.address)},
-                name=self._device.name,
+                name=display_name,
                 manufacturer=ATTR_MANUFACTURER,
                 model=device_model,
                 hw_version=f"BLE Address: {self._device.address}",

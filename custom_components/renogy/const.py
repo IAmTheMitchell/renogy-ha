@@ -22,6 +22,7 @@ CONF_DEVICE_TYPE = "device_type"  # New constant for device type
 CONF_SHUNT_CONNECTION_MODE = "shunt_connection_mode"
 CONF_WARN_RSSI = "warn_rssi"
 CONF_CRITICAL_RSSI = "critical_rssi"
+CONF_DEVICE_ALIAS = "device_alias"
 
 # Device info
 ATTR_MANUFACTURER = "Renogy"

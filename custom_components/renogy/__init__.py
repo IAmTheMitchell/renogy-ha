@@ -10,6 +10,7 @@ from homeassistant.helpers.device_registry import async_get as async_get_device_
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     CONF_CRITICAL_RSSI,
+    CONF_DEVICE_ALIAS,
     CONF_DEVICE_TYPE,
     CONF_SCAN_INTERVAL,
     CONF_SHUNT_CONNECTION_MODE,
@@ -40,6 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     shunt_connection_mode = _get_shunt_connection_mode(entry)
     warn_rssi = entry.options.get(CONF_WARN_RSSI, DEFAULT_WARN_RSSI)
     critical_rssi = entry.options.get(CONF_CRITICAL_RSSI, DEFAULT_CRITICAL_RSSI)
+    device_alias = entry.options.get(CONF_DEVICE_ALIAS, "")
 
     if not device_address:
         LOGGER.error("No device address provided in config entry")
@@ -66,6 +68,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         critical_rssi=critical_rssi,
         device_data_callback=lambda device: _handle_device_update(hass, entry, device),
     )
+    coordinator.device_alias = (
+        device_alias.strip() if isinstance(device_alias, str) else ""
+    )
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 
     # Store coordinator and devices in hass.data
@@ -74,6 +79,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
         "devices": [],  # Will be populated as devices are discovered
         "initialized_devices": set(),  # Track which devices have entities
+        "device_alias": device_alias.strip()
+        if isinstance(device_alias, str) and device_alias.strip()
+        else "",
     }
 
     # Forward entry setup to sensor platform
@@ -158,12 +166,18 @@ async def update_device_registry(
         device_entry = device_registry.async_get_device({(DOMAIN, device.address)})
 
         if device_entry:
+            alias = entry.options.get(CONF_DEVICE_ALIAS, "")
+            display_name = (
+                alias.strip()
+                if isinstance(alias, str) and alias.strip()
+                else device.name
+            )
             # Update the device name
             LOGGER.debug(
-                "Updating device registry entry with real name: %s", device.name
+                "Updating device registry entry with real name: %s", display_name
             )
             device_registry.async_update_device(
-                device_entry.id, name=device.name, model=model
+                device_entry.id, name=display_name, model=model
             )
         else:
             LOGGER.debug("Device %s not found in registry for update", device.address)

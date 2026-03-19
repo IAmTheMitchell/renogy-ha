@@ -19,6 +19,7 @@ from homeassistant.const import CONF_ADDRESS, CONF_SCAN_INTERVAL
 
 from .const import (
     CONF_CRITICAL_RSSI,
+    CONF_DEVICE_ALIAS,
     CONF_DEVICE_TYPE,
     CONF_SHUNT_CONNECTION_MODE,
     CONF_WARN_RSSI,
@@ -61,9 +62,14 @@ def _build_options_schema(
     default_mode: str,
     warn_rssi: int,
     critical_rssi: int,
+    alias: str,
 ) -> vol.Schema:
     """Build the options schema."""
     fields: dict[Any, Any] = {
+        vol.Optional(CONF_DEVICE_ALIAS, default=alias): vol.All(
+            vol.Coerce(str),
+            vol.Length(max=64),
+        ),
         vol.Required(CONF_WARN_RSSI, default=warn_rssi): vol.All(
             vol.Coerce(int),
             vol.Range(min=-120, max=-30),
@@ -282,6 +288,7 @@ class RenogyOptionsFlowHandler(OptionsFlow):
         critical_rssi = self._config_entry.options.get(
             CONF_CRITICAL_RSSI, DEFAULT_CRITICAL_RSSI
         )
+        alias = self._config_entry.options.get(CONF_DEVICE_ALIAS, "")
         return self.async_show_form(
             step_id="init",
             data_schema=_build_options_schema(
@@ -289,6 +296,7 @@ class RenogyOptionsFlowHandler(OptionsFlow):
                 default_mode=current_mode,
                 warn_rssi=warn_rssi,
                 critical_rssi=critical_rssi,
+                alias=alias,
             ),
             description_placeholders={
                 "sustained": ShuntConnectionMode.SUSTAINED.value,

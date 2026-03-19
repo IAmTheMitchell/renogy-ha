@@ -137,6 +137,7 @@ class RenogyActiveBluetoothCoordinator(
         self._shunt_listener_failures = 0
         self._shunt_listener_last_success = 0.0
         self._shunt_auto_fallback_active = False
+        self.device_alias = ""
         self._shunt_energy_client = (
             shunt_client_class() if shunt_client_class is not None else None
         )

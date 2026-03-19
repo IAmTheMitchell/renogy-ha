@@ -556,3 +556,34 @@ def test_rssi_trend_sensor_reads_coordinator_samples() -> None:
     )
 
     assert entity.native_value == "improving"
+
+
+def test_sensor_uses_device_alias_for_display_name() -> None:
+    """Ensure alias overrides BLE name for entity and device info."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device_alias = "Basement Rig"
+
+    device = MagicMock()
+    device.address = coordinator.address
+    device.name = "RTMShunt300A1B2"
+    device.parsed_data = {}
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_VOLTAGE
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+
+    assert entity._attr_name.startswith("Basement Rig")
+    assert entity._attr_device_info.get("name") == "Basement Rig"
