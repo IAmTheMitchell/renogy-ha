@@ -14,6 +14,8 @@ It summarizes all Renogy devices and lists failing devices in attributes.
 
 - `failing_devices`: List of dictionaries with `name`, `address`, `status`,
   `device_type`, and `rssi`.
+- `all_devices`: List of dictionaries for every Renogy device with `name`,
+  `address`, `status`, `device_type`, and `rssi`.
 - `total_devices`, `healthy_devices`, `warn_devices`, `critical_devices`,
   `disconnected_devices`
 
@@ -100,4 +102,21 @@ entities:
     entity: sensor.renogy_health
     attribute: failing_devices
     name: Failing Devices
+  - type: attribute
+    entity: sensor.renogy_health
+    attribute: all_devices
+    name: All Devices
+```
+
+### Button-Card Optional Device List
+
+Add a per-device list (using `all_devices`) below the existing fields.
+
+```yaml
+  devices: |
+    [[[
+      const list = entity?.attributes?.all_devices || [];
+      if (!list.length) return "No devices found";
+      return list.map(d => `${d.name || d.address} (${d.status})`).join(" · ");
+    ]]]
 ```

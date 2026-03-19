@@ -509,7 +509,12 @@ def test_aggregate_health_sensor_rollup() -> None:
     assert attrs["total_devices"] == 2
     assert attrs["critical_devices"] == 1
     assert attrs["healthy_devices"] == 1
+    assert len(attrs["all_devices"]) == 2
     assert any(
         failing["name"] == "Renogy Critical" and failing["status"] == "critical"
         for failing in attrs["failing_devices"]
+    )
+    assert any(
+        device["name"] == "Renogy Healthy" and device["status"] == "healthy"
+        for device in attrs["all_devices"]
     )

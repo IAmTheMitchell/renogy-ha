@@ -1594,6 +1594,7 @@ class RenogyAggregateHealthSensor(SensorEntity):
     def _compute_aggregate_status_and_attrs(self) -> tuple[str, dict[str, Any]]:
         """Return aggregate status and attributes."""
         failing_devices: list[dict[str, Any]] = []
+        all_devices: list[dict[str, Any]] = []
         status_counts = {
             "healthy": 0,
             "warn": 0,
@@ -1619,17 +1620,18 @@ class RenogyAggregateHealthSensor(SensorEntity):
             total_devices += 1
             status_counts[status] = status_counts.get(status, 0) + 1
 
+            device_summary = {
+                "name": getattr(device, "name", None)
+                or getattr(coordinator, "address", "unknown"),
+                "address": getattr(coordinator, "address", None),
+                "status": status,
+                "device_type": getattr(device, "device_type", None),
+                "rssi": getattr(device, "rssi", None),
+            }
+            all_devices.append(device_summary)
+
             if status != "healthy":
-                failing_devices.append(
-                    {
-                        "name": getattr(device, "name", None)
-                        or getattr(coordinator, "address", "unknown"),
-                        "address": getattr(coordinator, "address", None),
-                        "status": status,
-                        "device_type": getattr(device, "device_type", None),
-                        "rssi": getattr(device, "rssi", None),
-                    }
-                )
+                failing_devices.append(device_summary)
 
         if total_devices == 0:
             aggregate_status = "unknown"
@@ -1655,6 +1657,7 @@ class RenogyAggregateHealthSensor(SensorEntity):
             "critical_devices": status_counts.get("critical", 0),
             "disconnected_devices": status_counts.get("disconnected", 0),
             "failing_devices": failing_devices,
+            "all_devices": all_devices,
         }
 
         return aggregate_status, attributes
