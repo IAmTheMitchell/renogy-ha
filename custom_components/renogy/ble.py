@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import time
 import traceback
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
@@ -81,6 +82,7 @@ else:
 LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 SHUNT_RECONNECT_DELAY_SECONDS = 10
 SHUNT_FORCE_UPDATE_INTERVAL_SECONDS = 300
+SHUNT_DISCONNECT_TIMEOUT_SECONDS = 5.0
 
 
 class RenogyActiveBluetoothCoordinator(
@@ -540,22 +542,22 @@ class RenogyActiveBluetoothCoordinator(
 
         return should_poll
 
-    def _process_sustained_shunt_notification(self, data: bytes) -> None:
+    def _process_sustained_shunt_notification(self, data: bytes) -> bool:
         """Parse and publish one sustained Smart Shunt notification payload."""
         if (
             shunt_find_valid_payload_window is None
             or shunt_expected_payload_length is None
         ):
-            return
+            return False
 
         maybe_payload = shunt_find_valid_payload_window(
             data, shunt_expected_payload_length
         )
         if maybe_payload is None:
-            return
+            return False
 
         raw_payload, parsed_data = maybe_payload
-        now = self.hass.loop.time()
+        now = time.monotonic()
         if self._shunt_energy_client is not None:
             charged_kwh, discharged_kwh = (
                 self._shunt_energy_client._integrate_energy_totals(
@@ -585,7 +587,7 @@ class RenogyActiveBluetoothCoordinator(
         # Keep the recovery path alive after a transient listener failure even
         # when the first restored payload matches the previous values.
         if not changed and not stale and self.last_update_success:
-            return
+            return True
 
         if self.device is not None:
             existing_data = (
@@ -604,11 +606,27 @@ class RenogyActiveBluetoothCoordinator(
         self._last_sustained_shunt_data = dict(parsed_data)
         self._last_sustained_shunt_push = now
         self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
+        return True
+
+    async def _async_disconnect_shunt_client(self, client: Any) -> None:
+        """Attempt to disconnect a shunt listener client without hanging."""
+        disconnect = getattr(client, "disconnect", None)
+        if not callable(disconnect):
+            return
+
+        try:
+            await asyncio.wait_for(
+                disconnect(), timeout=SHUNT_DISCONNECT_TIMEOUT_SECONDS
+            )
+        except Exception:
+            pass
 
     async def _shunt_notification_loop(self) -> None:
         """Maintain a sustained notification listener for Smart Shunt devices."""
         while True:
             client: Any = None
+            got_live_data = False
+            disconnect_attempted = False
             try:
                 service_info = bluetooth.async_last_service_info(
                     self.hass, self.address
@@ -633,18 +651,23 @@ class RenogyActiveBluetoothCoordinator(
                 def notification_handler(
                     _sender: BleakGATTCharacteristic | int | str, data: bytearray
                 ) -> None:
-                    self._process_sustained_shunt_notification(bytes(data))
+                    nonlocal got_live_data
+                    try:
+                        if self._process_sustained_shunt_notification(bytes(data)):
+                            got_live_data = True
+                    except Exception as err:  # noqa: BLE001
+                        self.logger.warning(
+                            "Smart Shunt notification handling failed for %s: %s",
+                            self.address,
+                            err,
+                            exc_info=True,
+                        )
 
                 await client.start_notify(shunt_notify_char_uuid, notification_handler)
                 while getattr(client, "is_connected", True):
                     await asyncio.sleep(5)
             except asyncio.CancelledError:
-                if client is not None:
-                    try:
-                        await client.disconnect()
-                    except Exception:
-                        pass
-                raise
+                return
             except Exception as err:
                 self.last_update_success = False
                 if self.device is not None:
@@ -655,16 +678,22 @@ class RenogyActiveBluetoothCoordinator(
                     self.address,
                     err,
                 )
-            finally:
                 if client is not None:
-                    try:
-                        await client.stop_notify(shunt_notify_char_uuid)
-                    except Exception:
-                        pass
-                    try:
-                        await client.disconnect()
-                    except Exception:
-                        pass
+                    await self._async_disconnect_shunt_client(client)
+                    disconnect_attempted = True
+
+            if (
+                client is not None
+                and not disconnect_attempted
+                and getattr(client, "is_connected", False)
+            ):
+                await self._async_disconnect_shunt_client(client)
+
+            if client is not None and not got_live_data:
+                self.logger.debug(
+                    "Smart Shunt listener for %s disconnected before a live payload",
+                    self.address,
+                )
 
             await asyncio.sleep(SHUNT_RECONNECT_DELAY_SECONDS)
 
