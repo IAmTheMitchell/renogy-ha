@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import time
 import traceback
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
@@ -13,7 +14,7 @@ from typing import Any, cast
 
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
-from bleak_retry_connector import establish_connection
+from bleak_retry_connector import clear_cache, establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothChange,
@@ -23,6 +24,7 @@ from homeassistant.components.bluetooth import (
 from homeassistant.components.bluetooth.active_update_coordinator import (
     ActiveBluetoothDataUpdateCoordinator,
 )
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble import ble as renogy_ble_module
@@ -81,6 +83,8 @@ else:
 LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 SHUNT_RECONNECT_DELAY_SECONDS = 10
 SHUNT_FORCE_UPDATE_INTERVAL_SECONDS = 300
+SHUNT_DISCONNECT_TIMEOUT_SECONDS = 5.0
+SHUNT_STARTUP_READY_TIMEOUT_SECONDS = 30.0
 
 
 class RenogyActiveBluetoothCoordinator(
@@ -130,6 +134,7 @@ class RenogyActiveBluetoothCoordinator(
 
         self._ble_client = self._build_ble_client_for_type(device_type)
         self._shunt_listener_task: asyncio.Task[Any] | None = None
+        self._shunt_startup_gate_complete = False
         self._last_sustained_shunt_push = 0.0
         self._last_sustained_shunt_data: dict[str, Any] = {}
         self._shunt_energy_client = (
@@ -540,22 +545,22 @@ class RenogyActiveBluetoothCoordinator(
 
         return should_poll
 
-    def _process_sustained_shunt_notification(self, data: bytes) -> None:
+    def _process_sustained_shunt_notification(self, data: bytes) -> bool:
         """Parse and publish one sustained Smart Shunt notification payload."""
         if (
             shunt_find_valid_payload_window is None
             or shunt_expected_payload_length is None
         ):
-            return
+            return False
 
         maybe_payload = shunt_find_valid_payload_window(
             data, shunt_expected_payload_length
         )
         if maybe_payload is None:
-            return
+            return False
 
         raw_payload, parsed_data = maybe_payload
-        now = self.hass.loop.time()
+        now = time.monotonic()
         if self._shunt_energy_client is not None:
             charged_kwh, discharged_kwh = (
                 self._shunt_energy_client._integrate_energy_totals(
@@ -585,7 +590,7 @@ class RenogyActiveBluetoothCoordinator(
         # Keep the recovery path alive after a transient listener failure even
         # when the first restored payload matches the previous values.
         if not changed and not stale and self.last_update_success:
-            return
+            return True
 
         if self.device is not None:
             existing_data = (
@@ -604,12 +609,175 @@ class RenogyActiveBluetoothCoordinator(
         self._last_sustained_shunt_data = dict(parsed_data)
         self._last_sustained_shunt_push = now
         self.hass.loop.call_soon_threadsafe(self.async_update_listeners)
+        return True
+
+    async def _async_disconnect_shunt_client(self, client: Any) -> None:
+        """Attempt to disconnect a shunt listener client without hanging."""
+        disconnect = getattr(client, "disconnect", None)
+        if not callable(disconnect):
+            return
+
+        try:
+            await asyncio.wait_for(
+                disconnect(), timeout=SHUNT_DISCONNECT_TIMEOUT_SECONDS
+            )
+        except Exception:
+            pass
+
+    def _schedule_shunt_disconnect(self, client: Any) -> None:
+        """Schedule shunt disconnect cleanup without blocking task cancellation."""
+        create_task = getattr(self.hass, "async_create_background_task", None)
+        if callable(create_task):
+            create_task(
+                self._async_disconnect_shunt_client(client),
+                name=f"renogy_shunt_disconnect_{self.address}",
+            )
+            return
+
+        self.hass.async_create_task(self._async_disconnect_shunt_client(client))
+
+    def _has_connectable_scanner(self) -> bool:
+        """Return whether Home Assistant has a connectable scanner available."""
+        async_scanner_count = getattr(bluetooth, "async_scanner_count", None)
+        if not callable(async_scanner_count):
+            return True
+
+        return async_scanner_count(self.hass, connectable=True) > 0
+
+    def _is_fresh_startup_service_info(
+        self,
+        service_info: BluetoothServiceInfoBleak | None,
+        startup_monotonic: float,
+    ) -> bool:
+        """Return whether service info was seen after startup completed."""
+        if service_info is None:
+            return False
+
+        seen_time = getattr(service_info, "time", None)
+        if seen_time is None:
+            return True
+
+        return seen_time >= startup_monotonic
+
+    async def _async_wait_for_shunt_startup_ready(self) -> None:
+        """Delay the first sustained shunt connect until HA bluetooth is ready."""
+        if self._shunt_startup_gate_complete:
+            return
+
+        if getattr(self.hass, "state", None) == CoreState.running:
+            self._shunt_startup_gate_complete = True
+            return
+
+        startup_monotonic = time.monotonic()
+        ready_event = asyncio.Event()
+
+        @callback
+        def _async_is_ready(
+            service_info: BluetoothServiceInfoBleak | None = None,
+        ) -> bool:
+            if getattr(self.hass, "state", None) != CoreState.running:
+                return False
+
+            if not self._has_connectable_scanner():
+                return False
+
+            latest_service_info = service_info or bluetooth.async_last_service_info(
+                self.hass,
+                self.address,
+            )
+            return self._is_fresh_startup_service_info(
+                latest_service_info,
+                startup_monotonic,
+            )
+
+        @callback
+        def _async_started(_event: Any) -> None:
+            if _async_is_ready():
+                ready_event.set()
+
+        @callback
+        def _async_bluetooth_event(
+            service_info: BluetoothServiceInfoBleak,
+            change: BluetoothChange,
+        ) -> None:
+            if change == BluetoothChange.ADVERTISEMENT and _async_is_ready(
+                service_info
+            ):
+                ready_event.set()
+
+        unsub_started = None
+        if hasattr(self.hass, "bus") and hasattr(self.hass.bus, "async_listen_once"):
+            unsub_started = self.hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STARTED,
+                _async_started,
+            )
+
+        unsub_bluetooth = bluetooth.async_register_callback(
+            self.hass,
+            _async_bluetooth_event,
+            {"address": self.address, "connectable": True},
+            BluetoothScanningMode.ACTIVE,
+        )
+
+        try:
+            if not _async_is_ready():
+                try:
+                    await asyncio.wait_for(
+                        ready_event.wait(),
+                        timeout=SHUNT_STARTUP_READY_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    self.logger.debug(
+                        "Timed out waiting for Smart Shunt startup readiness on %s; "
+                        "continuing with reconnect",
+                        self.address,
+                    )
+        finally:
+            if callable(unsub_started):
+                unsub_started()
+            unsub_bluetooth()
+            self._shunt_startup_gate_complete = True
+
+    async def _async_prepare_shunt_reconnect(self, existing_device: Any) -> Any | None:
+        """Clear BlueZ device state before a sustained shunt reconnect."""
+        try:
+            cache_cleared = await clear_cache(self.address)
+        except Exception as err:  # noqa: BLE001
+            self.logger.debug(
+                "Failed to clear Smart Shunt BlueZ state for %s before reconnect: %s",
+                self.address,
+                err,
+            )
+            return existing_device
+
+        if not cache_cleared:
+            return existing_device
+
+        self.logger.debug(
+            "Cleared Smart Shunt BlueZ state for %s before reconnect",
+            self.address,
+        )
+
+        refreshed_device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
+        if refreshed_device is None:
+            self.logger.debug(
+                "Smart Shunt %s has not been rediscovered after clearing BlueZ state",
+                self.address,
+            )
+            return None
+
+        return refreshed_device
 
     async def _shunt_notification_loop(self) -> None:
         """Maintain a sustained notification listener for Smart Shunt devices."""
         while True:
             client: Any = None
+            got_live_data = False
+            disconnect_attempted = False
             try:
+                await self._async_wait_for_shunt_startup_ready()
                 service_info = bluetooth.async_last_service_info(
                     self.hass, self.address
                 )
@@ -623,9 +791,19 @@ class RenogyActiveBluetoothCoordinator(
                     continue
 
                 self._update_device_from_service_info(service_info)
+                connect_device = await self._async_prepare_shunt_reconnect(
+                    service_info.device
+                )
+                if connect_device is None:
+                    await asyncio.sleep(SHUNT_RECONNECT_DELAY_SECONDS)
+                    continue
+
+                if self.device is not None:
+                    self.device.ble_device = connect_device
+
                 client = await establish_connection(
                     BleakClient,
-                    service_info.device,
+                    connect_device,
                     self.device.name if self.device is not None else self.address,
                     max_attempts=3,
                 )
@@ -633,18 +811,25 @@ class RenogyActiveBluetoothCoordinator(
                 def notification_handler(
                     _sender: BleakGATTCharacteristic | int | str, data: bytearray
                 ) -> None:
-                    self._process_sustained_shunt_notification(bytes(data))
+                    nonlocal got_live_data
+                    try:
+                        if self._process_sustained_shunt_notification(bytes(data)):
+                            got_live_data = True
+                    except Exception as err:  # noqa: BLE001
+                        self.logger.warning(
+                            "Smart Shunt notification handling failed for %s: %s",
+                            self.address,
+                            err,
+                            exc_info=True,
+                        )
 
                 await client.start_notify(shunt_notify_char_uuid, notification_handler)
                 while getattr(client, "is_connected", True):
                     await asyncio.sleep(5)
             except asyncio.CancelledError:
-                if client is not None:
-                    try:
-                        await client.disconnect()
-                    except Exception:
-                        pass
-                raise
+                if client is not None and getattr(client, "is_connected", False):
+                    self._schedule_shunt_disconnect(client)
+                return
             except Exception as err:
                 self.last_update_success = False
                 if self.device is not None:
@@ -655,16 +840,22 @@ class RenogyActiveBluetoothCoordinator(
                     self.address,
                     err,
                 )
-            finally:
                 if client is not None:
-                    try:
-                        await client.stop_notify(shunt_notify_char_uuid)
-                    except Exception:
-                        pass
-                    try:
-                        await client.disconnect()
-                    except Exception:
-                        pass
+                    await self._async_disconnect_shunt_client(client)
+                    disconnect_attempted = True
+
+            if (
+                client is not None
+                and not disconnect_attempted
+                and getattr(client, "is_connected", False)
+            ):
+                await self._async_disconnect_shunt_client(client)
+
+            if client is not None and not got_live_data:
+                self.logger.debug(
+                    "Smart Shunt listener for %s disconnected before a live payload",
+                    self.address,
+                )
 
             await asyncio.sleep(SHUNT_RECONNECT_DELAY_SECONDS)
 
