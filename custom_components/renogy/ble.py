@@ -621,6 +621,18 @@ class RenogyActiveBluetoothCoordinator(
         except Exception:
             pass
 
+    def _schedule_shunt_disconnect(self, client: Any) -> None:
+        """Schedule shunt disconnect cleanup without blocking task cancellation."""
+        create_task = getattr(self.hass, "async_create_background_task", None)
+        if callable(create_task):
+            create_task(
+                self._async_disconnect_shunt_client(client),
+                name=f"renogy_shunt_disconnect_{self.address}",
+            )
+            return
+
+        self.hass.async_create_task(self._async_disconnect_shunt_client(client))
+
     async def _shunt_notification_loop(self) -> None:
         """Maintain a sustained notification listener for Smart Shunt devices."""
         while True:
@@ -667,6 +679,8 @@ class RenogyActiveBluetoothCoordinator(
                 while getattr(client, "is_connected", True):
                     await asyncio.sleep(5)
             except asyncio.CancelledError:
+                if client is not None and getattr(client, "is_connected", False):
+                    self._schedule_shunt_disconnect(client)
                 return
             except Exception as err:
                 self.last_update_success = False

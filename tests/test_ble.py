@@ -523,10 +523,19 @@ def test_sustained_shunt_notification_recovers_from_duplicate_payload_after_erro
 
 
 def test_sustained_shunt_listener_cancellation_skips_disconnect():
-    """Ensure listener cancellation does not await disconnect on shutdown."""
+    """Ensure listener cancellation schedules disconnect cleanup on shutdown."""
     ble_module = _load_ble_module()
     hass = MagicMock()
     logger = MagicMock()
+    disconnect_tasks = []
+
+    def _create_background_task(coro, *, name=None):
+        del name
+        task = asyncio.create_task(coro)
+        disconnect_tasks.append(task)
+        return task
+
+    hass.async_create_background_task = _create_background_task
     coordinator = ble_module.RenogyActiveBluetoothCoordinator(
         hass=hass,
         logger=logger,
@@ -556,7 +565,8 @@ def test_sustained_shunt_listener_cancellation_skips_disconnect():
     finally:
         ble_module.asyncio.sleep = original_sleep
 
-    client.disconnect.assert_not_awaited()
+    assert len(disconnect_tasks) == 1
+    client.disconnect.assert_awaited_once()
 
 
 def test_sustained_shunt_notification_handler_logs_and_recovers():
