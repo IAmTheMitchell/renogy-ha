@@ -738,7 +738,7 @@ class RenogyActiveBluetoothCoordinator(
             unsub_bluetooth()
             self._shunt_startup_gate_complete = True
 
-    async def _async_prepare_shunt_reconnect(self) -> None:
+    async def _async_prepare_shunt_reconnect(self, existing_device: Any) -> Any | None:
         """Clear BlueZ device state before a sustained shunt reconnect."""
         try:
             cache_cleared = await clear_cache(self.address)
@@ -748,13 +748,27 @@ class RenogyActiveBluetoothCoordinator(
                 self.address,
                 err,
             )
-            return
+            return existing_device
 
-        if cache_cleared:
+        if not cache_cleared:
+            return existing_device
+
+        self.logger.debug(
+            "Cleared Smart Shunt BlueZ state for %s before reconnect",
+            self.address,
+        )
+
+        refreshed_device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
+        if refreshed_device is None:
             self.logger.debug(
-                "Cleared Smart Shunt BlueZ state for %s before reconnect",
+                "Smart Shunt %s has not been rediscovered after clearing BlueZ state",
                 self.address,
             )
+            return None
+
+        return refreshed_device
 
     async def _shunt_notification_loop(self) -> None:
         """Maintain a sustained notification listener for Smart Shunt devices."""
@@ -777,10 +791,19 @@ class RenogyActiveBluetoothCoordinator(
                     continue
 
                 self._update_device_from_service_info(service_info)
-                await self._async_prepare_shunt_reconnect()
+                connect_device = await self._async_prepare_shunt_reconnect(
+                    service_info.device
+                )
+                if connect_device is None:
+                    await asyncio.sleep(SHUNT_RECONNECT_DELAY_SECONDS)
+                    continue
+
+                if self.device is not None:
+                    self.device.ble_device = connect_device
+
                 client = await establish_connection(
                     BleakClient,
-                    service_info.device,
+                    connect_device,
                     self.device.name if self.device is not None else self.address,
                     max_attempts=3,
                 )
