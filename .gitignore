@@ -188,3 +188,4 @@ repomix-output.xml
 .dolt/
 *.db
 .beads/issues.jsonl
+.beads/interactions.jsonl
