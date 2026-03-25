@@ -41,6 +41,7 @@ def _install_module_stubs() -> None:
     bleak_characteristic_module.BleakGATTCharacteristic = object
     sys.modules["bleak.backends.characteristic"] = bleak_characteristic_module
     retry_connector_module = cast(Any, types.ModuleType("bleak_retry_connector"))
+    retry_connector_module.clear_cache = AsyncMock(return_value=False)
     retry_connector_module.establish_connection = AsyncMock(return_value=BleakClient())
     sys.modules["bleak_retry_connector"] = retry_connector_module
 
@@ -67,6 +68,7 @@ def _install_module_stubs() -> None:
     bluetooth_module.BluetoothScanningMode = ha_bluetooth.BluetoothScanningMode
     bluetooth_module.BluetoothServiceInfoBleak = ha_bluetooth.BluetoothServiceInfoBleak
     bluetooth_module.async_get_scanner = MagicMock(return_value=MagicMock())
+    bluetooth_module.async_scanner_count = MagicMock(return_value=1)
     bluetooth_module.async_last_service_info = MagicMock()
     bluetooth_module.async_ble_device_from_address = MagicMock()
     bluetooth_module.async_register_callback = MagicMock()
@@ -95,6 +97,7 @@ def _install_module_stubs() -> None:
     sys.modules["homeassistant.helpers.device_registry"] = device_registry_module
     const_module = cast(Any, types.ModuleType("homeassistant.const"))
     const_module.CONF_ADDRESS = "address"
+    const_module.EVENT_HOMEASSISTANT_STARTED = "homeassistant_started"
 
     class Platform(str, Enum):
         """Stub Platform enum for testing."""
@@ -526,6 +529,7 @@ def test_sustained_shunt_listener_cancellation_skips_disconnect():
     """Ensure listener cancellation schedules disconnect cleanup on shutdown."""
     ble_module = _load_ble_module()
     hass = MagicMock()
+    hass.state = ble_module.CoreState.running
     logger = MagicMock()
     disconnect_tasks = []
 
@@ -573,6 +577,7 @@ def test_sustained_shunt_notification_handler_logs_and_recovers():
     """Ensure callback exceptions are logged instead of escaping the notify handler."""
     ble_module = _load_ble_module()
     hass = MagicMock()
+    hass.state = ble_module.CoreState.running
     logger = MagicMock()
     coordinator = ble_module.RenogyActiveBluetoothCoordinator(
         hass=hass,
@@ -619,6 +624,7 @@ def test_sustained_shunt_listener_error_notifies_entities():
     """Ensure sustained listener errors notify listeners about availability changes."""
     ble_module = _load_ble_module()
     hass = MagicMock()
+    hass.state = ble_module.CoreState.running
     hass.loop.call_soon_threadsafe = lambda callback: callback()
     logger = MagicMock()
     coordinator = ble_module.RenogyActiveBluetoothCoordinator(
@@ -659,6 +665,124 @@ def test_sustained_shunt_listener_error_notifies_entities():
     )
     assert listener.call_count == 1
     assert client.disconnect.await_count == 1
+
+
+def test_sustained_shunt_listener_waits_for_started_scanner_and_fresh_advertisement():
+    """Ensure the first sustained shunt connect waits for startup readiness."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    hass.state = "starting"
+    started_callbacks = []
+
+    def _listen_once(_event, callback):
+        started_callbacks.append(callback)
+
+        def _unsub() -> None:
+            return None
+
+        return _unsub
+
+    hass.bus.async_listen_once = _listen_once
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+        shunt_connection_mode="sustained",
+    )
+    stale_service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RTMShunt300A1B2",
+        rssi=-60,
+    )
+    stale_service_info.time = 90.0
+    fresh_service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RTMShunt300A1B2",
+        rssi=-60,
+    )
+    fresh_service_info.time = 105.0
+    ble_module.bluetooth.async_last_service_info.return_value = stale_service_info
+    ble_module.bluetooth.async_scanner_count.return_value = 0
+
+    async def _run_wait() -> None:
+        with patch.object(ble_module.time, "monotonic", return_value=100.0):
+            wait_task = asyncio.create_task(
+                coordinator._async_wait_for_shunt_startup_ready()
+            )
+            await asyncio.sleep(0)
+            assert not wait_task.done()
+
+            hass.state = ble_module.CoreState.running
+            started_callbacks[0](None)
+            await asyncio.sleep(0)
+            assert not wait_task.done()
+
+            ble_module.bluetooth.async_scanner_count.return_value = 1
+            bluetooth_callback = ble_module.bluetooth.async_register_callback.call_args[
+                0
+            ][1]
+            bluetooth_callback(
+                fresh_service_info,
+                ble_module.BluetoothChange.ADVERTISEMENT,
+            )
+            await wait_task
+
+    asyncio.run(_run_wait())
+
+    assert coordinator._shunt_startup_gate_complete is True
+
+
+def test_sustained_shunt_listener_clears_bluez_state_before_reconnect():
+    """Ensure sustained shunt reconnect clears BlueZ state before connecting."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    hass.state = ble_module.CoreState.running
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+        shunt_connection_mode="sustained",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RTMShunt300A1B2",
+        rssi=-60,
+    )
+    ble_module.bluetooth.async_last_service_info.return_value = service_info
+    client = MagicMock()
+    client.is_connected = False
+    client.start_notify = AsyncMock()
+    client.disconnect = AsyncMock()
+
+    call_order: list[str] = []
+
+    async def _clear_cache(_address: str) -> bool:
+        call_order.append("clear_cache")
+        return True
+
+    async def _establish_connection(*_args, **_kwargs):
+        call_order.append("establish_connection")
+        return client
+
+    ble_module.clear_cache = AsyncMock(side_effect=_clear_cache)
+    ble_module.establish_connection = AsyncMock(side_effect=_establish_connection)
+    original_sleep = ble_module.asyncio.sleep
+    ble_module.asyncio.sleep = AsyncMock(side_effect=asyncio.CancelledError())
+
+    try:
+        try:
+            asyncio.run(coordinator._shunt_notification_loop())
+        except asyncio.CancelledError:
+            pass
+    finally:
+        ble_module.asyncio.sleep = original_sleep
+
+    assert call_order[:2] == ["clear_cache", "establish_connection"]
+    ble_module.clear_cache.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
 
 
 def test_shunt_poll_keeps_last_good_data_when_library_read_fails():
