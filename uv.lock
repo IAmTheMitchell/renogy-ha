@@ -1440,7 +1440,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "homeassistant", specifier = ">=2026.3.0" },
-    { name = "renogy-ble", specifier = ">=2.2.2" },
+    { name = "renogy-ble", specifier = "==2.2.2" },
 ]
 
 [package.metadata.requires-dev]
