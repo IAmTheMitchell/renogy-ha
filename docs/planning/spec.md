@@ -1,20 +1,26 @@
-# Renogy Rover BLE Integration Specification for Home Assistant
+# Renogy BLE Integration Specification for Home Assistant
 
 ## Overview
 
-This document outlines the detailed requirements, architecture, data handling, error management strategies, and testing plan for a Home Assistant integration supporting Renogy Rover charge controllers via Bluetooth (BLE), specifically with BT-1 and BT-2 modules. The integration leverages the existing `renogy-ble` Python parsing library.
+This document outlines the detailed requirements, architecture, data handling,
+error management strategies, and testing plan for a Home Assistant integration
+supporting Renogy BLE devices. The integration leverages the existing
+`renogy-ble` Python library for BLE communication and parsing.
 
 ---
 
 ## 1. Functional Requirements
 
 ### 1.1 Supported Devices
-- Initially support **Renogy Rover charge controllers** (BT-1 and BT-2 modules)
-- Expandable to support other models later
+- Supports **Renogy charge controllers** using BT-1 and BT-2 modules
+- Supports **Renogy DC-DC chargers**
+- Supports **Renogy inverters** advertising `RNGRIU*`
+- Supports **Renogy Smart Shunt 300** devices advertising `RTMShunt300*`
 
 ### 1.2 Sensor Exposure
 
-All sensors from the provided `REGISTER_MAP` will be exposed clearly as Home Assistant entities:
+Supported telemetry from `renogy-ble` will be exposed clearly as Home Assistant
+entities for each supported device type:
 
 ### Battery Sensors
 - Battery Voltage (`V`, scaled ×0.1)
@@ -52,6 +58,26 @@ All sensors from the provided `REGISTER_MAP` will be exposed clearly as Home Ass
 - Power Generation Today (`Wh`, daily cumulative)
 - Power Generation Total (`kWh`, cumulative)
 
+### Inverter Sensors
+- Battery Voltage (`V`)
+- AC Output Voltage (`V`)
+- AC Output Current (`A`)
+- AC Output Frequency (`Hz`)
+- Input Frequency (`Hz`)
+- Load Active Power (`W`)
+- Load Apparent Power (`VA`)
+- Temperature (`°C`)
+- Device ID (text)
+- Model (text)
+
+### Smart Shunt Sensors
+- Shunt Voltage (`V`)
+- Shunt Current (`A`)
+- Shunt Power (`W`)
+- Shunt State of Charge (`%`)
+- Shunt Charge Status (text)
+- Shunt Energy (derived totals)
+
 ## Architecture
 
 ### BLE Communication
@@ -59,9 +85,9 @@ All sensors from the provided `REGISTER_MAP` will be exposed clearly as Home Ass
 - Polling interval default: **60 seconds**, user-configurable between **10–600 seconds**.
 
 ### Device Discovery and Setup
-- Home Assistant automatically discovers Renogy Rover devices within BLE range.
+- Home Assistant automatically discovers supported Renogy BLE devices within BLE range.
 - Discovered devices appear in the Home Assistant UI for easy setup.
-- Device names default to their unique Bluetooth identifiers (e.g., `BT-TH-7724620D`).
+- Device names default to their Bluetooth identifiers (for example `BT-TH-7724620D`, `RNGRIU123456`, or `RTMShunt300A1B2`).
 - Device metadata (manufacturer, model, firmware version, serial/device ID) stored as device-level attributes in Home Assistant.
 
 ### Entity Organization
@@ -70,6 +96,8 @@ Sensors automatically grouped logically in Home Assistant:
 - **Solar Panel (PV)**
 - **Load**
 - **Controller Info**
+- **Inverter**
+- **Shunt**
 
 ## Data Handling
 
@@ -109,7 +137,7 @@ Sensors automatically grouped logically in Home Assistant:
 - Minimal README-style documentation for initial release:
   - Brief integration description
   - Setup and installation instructions via HACS
-  - Required hardware clearly stated (Renogy Rover devices with BT-1/BT-2, Bluetooth adapter)
+  - Required hardware clearly stated for controller, DCC, inverter, and shunt devices
 
 ## Licensing
 - Integration code licensed under **Apache License 2.0**, matching existing parsing library.
@@ -122,4 +150,3 @@ Sensors automatically grouped logically in Home Assistant:
 ---
 
 This specification provides all the necessary information and guidelines to begin immediate implementation of the Renogy Rover BLE integration for Home Assistant.
-
