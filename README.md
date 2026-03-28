@@ -21,11 +21,11 @@ Tested:
 - Renogy Wanderer
 - Renogy DC-DC Charger
 - Renogy Smart Shunt 300
+- Renogy inverters advertising `RNGRIU*`
 
 Should work, but untested:
 
 - Renogy Adventurer
-- Renogy inverters advertising `RNGRIU*`
 
 ## Features
 
