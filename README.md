@@ -7,8 +7,9 @@
 
 This custom Home Assistant integration provides monitoring capabilities for
 Renogy devices over Bluetooth Low Energy (BLE). Charge controllers and DCC
-chargers use BT-1 or BT-2 modules; Smart Shunt 300 devices advertise directly
-over BLE as `RTMShunt300*`.
+chargers use BT-1 or BT-2 modules; Renogy inverters advertise directly over BLE
+as `RNGRIU*`; Smart Shunt 300 devices advertise directly over BLE as
+`RTMShunt300*`.
 
 > **Disclaimer:** This integration is experimental software. Use caution when controlling electrical loads, and ensure any connected equipment is properly rated and protected.
 
@@ -20,6 +21,7 @@ Tested:
 - Renogy Wanderer
 - Renogy DC-DC Charger
 - Renogy Smart Shunt 300
+- Renogy inverters advertising `RNGRIU*`
 
 Should work, but untested:
 
@@ -28,10 +30,12 @@ Should work, but untested:
 ## Features
 
 - Automatic discovery of Renogy BLE devices
+- Automatic discovery of Renogy inverter devices advertising `RNGRIU*`
 - Automatic discovery of Smart Shunt 300 devices advertising `RTMShunt300*`
 - Monitor battery status (voltage, current, temperature, charge state)
 - Monitor solar panel (PV) performance metrics
 - Monitor load status and statistics
+- Monitor inverter AC output, frequency, load power, temperature, and diagnostic metadata
 - Monitor Smart Shunt voltage, current, power, state of charge, and derived energy
 - Turn the DC load output on/off (supported controllers only)
 - Monitor controller information
@@ -52,6 +56,7 @@ _Includes Amazon affiliate links which provide a small commission to support thi
 
 - Compatible Renogy device (see above)
   - Charge controllers and DCC chargers require a [BT-1](https://amzn.to/4pq4csm) or [BT-2](https://amzn.to/4iTNSO8) Bluetooth module.
+  - Renogy inverters advertise directly over BLE as `RNGRIU*`.
   - Smart Shunt 300 devices use their built-in BLE radio and do not require a BT-1 or BT-2 dongle.
   - Make sure to purchase the correct module for your device. Different devices use different ports.
 - Bluetooth radio for Home Assistant
@@ -112,6 +117,19 @@ The integration provides the following sensor groups:
 - Power Consumption
 - Daily Usage
 
+### Inverter Sensors
+
+- Battery Voltage
+- AC Output Voltage
+- AC Output Current
+- AC Output Frequency
+- Input Frequency
+- Load Active Power
+- Load Apparent Power
+- Temperature
+- Device ID
+- Model
+
 ### DC Load Control
 
 Some Renogy charge controllers expose a controllable DC load output. This integration creates a `switch` entity that can turn the DC load on or off.
@@ -152,10 +170,11 @@ It can be extremely helpful to enable debug logging when troubleshooting issues.
 
 1. Verify the device is supported by this integration
 2. For controllers or DCC chargers, confirm a BT-1 or BT-2 module is installed
-3. For Smart Shunt 300 devices, confirm the BLE name starts with `RTMShunt300`
-4. Check that Bluetooth is enabled on your Home Assistant host
-5. Ensure the device is within range (typically 10m/33ft)
-6. Restart the Bluetooth adapter
+3. For inverter devices, confirm the BLE name starts with `RNGRIU`
+4. For Smart Shunt 300 devices, confirm the BLE name starts with `RTMShunt300`
+5. Check that Bluetooth is enabled on your Home Assistant host
+6. Ensure the device is within range (typically 10m/33ft)
+7. Restart the Bluetooth adapter
 
 ### Connection Issues
 
