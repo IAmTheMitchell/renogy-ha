@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .const import (
     DEFAULT_DEVICE_TYPE,
+    RENOGY_BATTERY_PRO_PREFIXES,
     RENOGY_BT_PREFIX,
     RENOGY_INVERTER_PREFIX,
     DeviceType,
@@ -12,17 +13,18 @@ from .const import (
 UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
 SHUNT300_BT_PREFIX = "RTMShunt300"
 
-DEVICE_NAME_PREFIX_BY_TYPE: dict[str, str] = {
-    DeviceType.CONTROLLER.value: RENOGY_BT_PREFIX,
-    DeviceType.BATTERY.value: RENOGY_BT_PREFIX,
-    DeviceType.INVERTER.value: RENOGY_INVERTER_PREFIX,
-    DeviceType.DCC.value: RENOGY_BT_PREFIX,
-    DeviceType.SHUNT300.value: SHUNT300_BT_PREFIX,
+DEVICE_NAME_PREFIXES_BY_TYPE: dict[str, tuple[str, ...]] = {
+    DeviceType.CONTROLLER.value: (RENOGY_BT_PREFIX,),
+    DeviceType.BATTERY.value: (RENOGY_BT_PREFIX, *RENOGY_BATTERY_PRO_PREFIXES),
+    DeviceType.INVERTER.value: (RENOGY_INVERTER_PREFIX,),
+    DeviceType.DCC.value: (RENOGY_BT_PREFIX,),
+    DeviceType.SHUNT300.value: (SHUNT300_BT_PREFIX,),
 }
 
 SUPPORTED_BLE_NAME_PREFIXES: tuple[str, ...] = (
     RENOGY_BT_PREFIX,
     RENOGY_INVERTER_PREFIX,
+    *RENOGY_BATTERY_PRO_PREFIXES,
     SHUNT300_BT_PREFIX,
 )
 
@@ -34,16 +36,16 @@ def has_real_device_name(device_name: str | None) -> bool:
     return bool(device_name) and not device_name.startswith(UNKNOWN_DEVICE_NAME_PREFIX)
 
 
-def expected_prefix_for_device_type(device_type: str) -> str:
-    """Return the expected BLE name prefix for a device type."""
-    return DEVICE_NAME_PREFIX_BY_TYPE.get(device_type, RENOGY_BT_PREFIX)
+def expected_prefixes_for_device_type(device_type: str) -> tuple[str, ...]:
+    """Return the expected BLE name prefixes for a device type."""
+    return DEVICE_NAME_PREFIXES_BY_TYPE.get(device_type, (RENOGY_BT_PREFIX,))
 
 
 def is_device_name_ready(device_name: str | None, device_type: str) -> bool:
     """Return True when a name is present and matches the expected prefix."""
     if not isinstance(device_name, str) or not has_real_device_name(device_name):
         return False
-    return device_name.startswith(expected_prefix_for_device_type(device_type))
+    return device_name.startswith(expected_prefixes_for_device_type(device_type))
 
 
 def is_supported_renogy_ble_name(device_name: str | None) -> bool:
@@ -61,6 +63,8 @@ def detect_device_type_from_ble_name(
         return default_device_type
     if device_name.startswith(RENOGY_INVERTER_PREFIX):
         return DeviceType.INVERTER.value
+    if device_name.startswith(RENOGY_BATTERY_PRO_PREFIXES):
+        return DeviceType.BATTERY.value
     if device_name.startswith(SHUNT300_BT_PREFIX):
         return DeviceType.SHUNT300.value
     return default_device_type

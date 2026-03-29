@@ -6,6 +6,12 @@
       "local_name": "BT-TH-*"
     },
     {
+      "local_name": "RNGRBP*"
+    },
+    {
+      "local_name": "RNGC*"
+    },
+    {
       "local_name": "RTMShunt300*"
     },
     {

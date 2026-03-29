@@ -118,6 +118,16 @@ KEY_INPUT_FREQUENCY = "input_frequency"
 KEY_LOAD_ACTIVE_POWER = "load_active_power"
 KEY_LOAD_APPARENT_POWER = "load_apparent_power"
 KEY_TEMPERATURE = "temperature"
+KEY_BATTERY_CAPACITY = "battery_capacity"
+KEY_BATTERY_REMAINING_CAPACITY = "battery_remaining_capacity"
+KEY_BATTERY_POWER = "battery_power"
+KEY_BATTERY_CYCLE_COUNT = "battery_cycle_count"
+KEY_CELL_COUNT = "cell_count"
+KEY_CELL_VOLTAGE_MIN = "cell_voltage_min"
+KEY_CELL_VOLTAGE_MAX = "cell_voltage_max"
+KEY_CELL_VOLTAGE_DELTA = "cell_voltage_delta"
+KEY_BATTERY_PROBLEM_CODE = "battery_problem_code"
+KEY_SW_VERSION = "sw_version"
 
 
 @dataclass(frozen=True)
@@ -777,6 +787,120 @@ INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     ),
 )
 
+RENOGY_BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_VOLTAGE,
+        name="Battery Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_CURRENT,
+        name="Battery Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_POWER,
+        name="Battery Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_POWER),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_PERCENTAGE,
+        name="Battery Percentage",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_PERCENTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_TEMPERATURE,
+        name="Battery Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_TEMPERATURE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_REMAINING_CAPACITY,
+        name="Remaining Capacity",
+        native_unit_of_measurement="Ah",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_REMAINING_CAPACITY),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_CAPACITY,
+        name="Nominal Capacity",
+        native_unit_of_measurement="Ah",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_CAPACITY),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_CYCLE_COUNT,
+        name="Cycle Count",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=lambda data: data.get(KEY_BATTERY_CYCLE_COUNT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CELL_COUNT,
+        name="Cell Count",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_CELL_COUNT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CELL_VOLTAGE_MIN,
+        name="Minimum Cell Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_CELL_VOLTAGE_MIN),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CELL_VOLTAGE_MAX,
+        name="Maximum Cell Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_CELL_VOLTAGE_MAX),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CELL_VOLTAGE_DELTA,
+        name="Cell Voltage Delta",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_CELL_VOLTAGE_DELTA),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_PROBLEM_CODE,
+        name="Problem Code",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_BATTERY_PROBLEM_CODE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_MODEL,
+        name="Model",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_MODEL),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SW_VERSION,
+        name="Software Version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.get(KEY_SW_VERSION),
+    ),
+)
+
 # All sensors combined (for controller type)
 ALL_SENSORS = BATTERY_SENSORS + PV_SENSORS + LOAD_SENSORS + CONTROLLER_SENSORS
 
@@ -795,6 +919,9 @@ SENSORS_BY_DEVICE_TYPE = {
         "Status": DCC_STATUS_SENSORS,
         "Statistics": DCC_STATISTICS_SENSORS,
         "Diagnostic": DCC_DIAGNOSTIC_SENSORS,
+    },
+    DeviceType.BATTERY.value: {
+        "Battery": RENOGY_BATTERY_SENSORS,
     },
     DeviceType.INVERTER.value: {
         "Inverter": INVERTER_SENSORS,
