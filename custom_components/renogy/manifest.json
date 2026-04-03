@@ -6,6 +6,15 @@
       "local_name": "BT-TH-*"
     },
     {
+      "manufacturer_id": 57676
+    },
+    {
+      "local_name": "RNGRBP*"
+    },
+    {
+      "local_name": "RNGC*"
+    },
+    {
       "local_name": "RTMShunt300*"
     },
     {
@@ -23,7 +32,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/IAmTheMitchell/renogy-ha/issues",
   "requirements": [
-    "renogy-ble==2.2.2"
+    "renogy-ble==2.3.0"
   ],
   "version": "0.6.0"
 }

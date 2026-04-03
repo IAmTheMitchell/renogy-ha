@@ -128,12 +128,19 @@ def _install_module_stubs() -> None:
     class RenogyBLEDevice:
         """Stub RenogyBLEDevice for testing."""
 
-        def __init__(self, ble_device, advertisement_rssi, device_type=None):
+        def __init__(
+            self,
+            ble_device,
+            advertisement_rssi,
+            device_type=None,
+            manufacturer_data=None,
+        ):
             self.ble_device = ble_device
             self.address = ble_device.address
             self.name = ble_device.name or "Unknown Renogy Device"
             self.rssi = advertisement_rssi
             self.device_type = device_type
+            self.manufacturer_data = manufacturer_data or {}
             self.parsed_data = {}
             self.update_availability = MagicMock()
 
@@ -236,6 +243,62 @@ def test_sustained_shunt_device_defaults_to_generic_client():
     )
 
     assert coordinator._ble_client.__class__.__name__ == "RenogyBleClient"
+
+
+def test_update_device_detects_battery_from_manufacturer_data_only():
+    """Battery manufacturer data should override missing battery name prefixes."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-123456",
+        rssi=-60,
+    )
+    service_info.advertisement.manufacturer_data = {0xE14C: b"\x01"}
+
+    device = coordinator._update_device_from_service_info(service_info)
+
+    assert coordinator.device_type == "battery"
+    assert device.device_type == "battery"
+    assert device.manufacturer_data == {0xE14C: b"\x01"}
+
+
+def test_update_device_preserves_cached_manufacturer_data() -> None:
+    """Later advertisements should not erase cached manufacturer data."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    initial_service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name=None,
+        rssi=-60,
+    )
+    initial_service_info.advertisement.manufacturer_data = {0xE14C: b"\x01"}
+    coordinator._update_device_from_service_info(initial_service_info)
+
+    later_service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name=None,
+        rssi=-55,
+    )
+    later_service_info.advertisement.manufacturer_data = {}
+
+    device = coordinator._update_device_from_service_info(later_service_info)
+
+    assert coordinator.device_type == "battery"
+    assert device.device_type == "battery"
+    assert device.manufacturer_data == {0xE14C: b"\x01"}
 
 
 def test_intermittent_shunt_device_uses_library_shunt_client():

@@ -417,3 +417,39 @@ def test_inverter_sensor_mapping_uses_library_field_names() -> None:
     assert (
         descriptions[sensor_module.KEY_MODEL].value_fn(sample_data) == "RIV1220PU-126"
     )
+
+
+def test_battery_sensor_mapping_uses_library_field_names() -> None:
+    """Ensure battery entities map directly to renogy-ble battery data keys."""
+    sensor_module = _load_sensor_module()
+
+    descriptions = {
+        description.key: description
+        for description in sensor_module.RENOGY_BATTERY_SENSORS
+    }
+    sample_data = {
+        sensor_module.KEY_BATTERY_VOLTAGE: 51.2,
+        sensor_module.KEY_BATTERY_CURRENT: 12.34,
+        sensor_module.KEY_BATTERY_POWER: 631.8,
+        sensor_module.KEY_BATTERY_PERCENTAGE: 50.0,
+        sensor_module.KEY_BATTERY_TEMPERATURE: 22.0,
+        sensor_module.KEY_BATTERY_REMAINING_CAPACITY: 50.0,
+        sensor_module.KEY_BATTERY_CAPACITY: 100,
+        sensor_module.KEY_BATTERY_CYCLE_COUNT: 42,
+        sensor_module.KEY_CELL_COUNT: 4,
+        sensor_module.KEY_CELL_VOLTAGE_MIN: 32.9,
+        sensor_module.KEY_CELL_VOLTAGE_MAX: 33.2,
+        sensor_module.KEY_CELL_VOLTAGE_DELTA: 0.3,
+        sensor_module.KEY_BATTERY_PROBLEM_CODE: 16,
+        sensor_module.KEY_MODEL: "Renogy BT Battery Pro",
+        sensor_module.KEY_SW_VERSION: "2.10",
+    }
+
+    assert descriptions[sensor_module.KEY_BATTERY_VOLTAGE].value_fn(sample_data) == 51.2
+    assert descriptions[sensor_module.KEY_BATTERY_POWER].value_fn(sample_data) == 631.8
+    assert descriptions[sensor_module.KEY_BATTERY_CAPACITY].value_fn(sample_data) == 100
+    assert descriptions[sensor_module.KEY_CELL_COUNT].value_fn(sample_data) == 4
+    assert (
+        descriptions[sensor_module.KEY_CELL_VOLTAGE_DELTA].value_fn(sample_data) == 0.3
+    )
+    assert descriptions[sensor_module.KEY_SW_VERSION].value_fn(sample_data) == "2.10"

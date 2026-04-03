@@ -15,6 +15,7 @@ MAX_SCAN_INTERVAL = 600  # seconds
 # Renogy BT-1 and BT-2 module identifiers - devices advertise with these prefixes
 RENOGY_BT_PREFIX = "BT-TH-"
 RENOGY_INVERTER_PREFIX = "RNGRIU"
+RENOGY_BATTERY_PRO_PREFIXES = ("RNGRBP", "RNGC")
 
 # Configuration parameters
 CONF_SCAN_INTERVAL = "scan_interval"
@@ -64,6 +65,7 @@ DEFAULT_NON_SHUNT_CONNECTION_MODE = NonShuntConnectionMode.INTERMITTENT.value
 # List of fully supported device types
 SUPPORTED_DEVICE_TYPES = [
     DeviceType.CONTROLLER.value,
+    DeviceType.BATTERY.value,
     DeviceType.DCC.value,
     DeviceType.INVERTER.value,
     DeviceType.SHUNT300.value,

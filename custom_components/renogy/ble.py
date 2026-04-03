@@ -398,8 +398,14 @@ class RenogyActiveBluetoothCoordinator(
         self, service_info: BluetoothServiceInfoBleak
     ) -> RenogyBLEDevice:
         """Ensure the device instance is updated from Bluetooth service info."""
+        manufacturer_data = getattr(service_info.advertisement, "manufacturer_data", {})
+        if not manufacturer_data and self.device is not None:
+            # Some follow-up advertisements omit manufacturer data entirely.
+            manufacturer_data = self.device.manufacturer_data
         detected_type = detect_device_type_from_ble_name(
-            service_info.name, self.device_type
+            service_info.name,
+            self.device_type,
+            manufacturer_data=manufacturer_data,
         )
         if self.device_type != detected_type:
             self.logger.debug(
@@ -419,10 +425,12 @@ class RenogyActiveBluetoothCoordinator(
                 service_info.device,
                 service_info.advertisement.rssi,
                 device_type=detected_type,
+                manufacturer_data=manufacturer_data,
             )
         else:
             old_name = self.device.name
             self.device.ble_device = service_info.device
+            self.device.manufacturer_data = dict(manufacturer_data)
             if has_real_device_name(service_info.name):
                 cleaned_name = clean_device_name(service_info.name)
                 if old_name != cleaned_name:
