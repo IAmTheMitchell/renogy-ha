@@ -95,7 +95,9 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def _is_renogy_device(self, discovery_info: BluetoothServiceInfoBleak) -> bool:
         """Check if a BLE device advertises a supported Renogy name."""
-        manufacturer_data = getattr(discovery_info.advertisement, "manufacturer_data", {})
+        manufacturer_data = getattr(
+            discovery_info.advertisement, "manufacturer_data", {}
+        )
         return is_supported_renogy_ble_name(
             discovery_info.name,
             manufacturer_data=manufacturer_data,
@@ -121,7 +123,9 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Store the discovered device for later
         self._discovered_device = discovery_info
-        manufacturer_data = getattr(discovery_info.advertisement, "manufacturer_data", {})
+        manufacturer_data = getattr(
+            discovery_info.advertisement, "manufacturer_data", {}
+        )
         self._default_device_type = detect_device_type_from_ble_name(
             discovery_info.name,
             DEFAULT_DEVICE_TYPE,

@@ -57,14 +57,10 @@ def is_supported_renogy_ble_name(
     manufacturer_data: dict[int, bytes] | None = None,
 ) -> bool:
     """Return True for BLE advertisements from supported Renogy devices."""
-    return (
-        detect_device_type_from_ble_name(
-            device_name,
-            manufacturer_data=manufacturer_data,
-        )
-        != DEFAULT_DEVICE_TYPE
-        or _is_supported_default_type_name(device_name)
-    )
+    return detect_device_type_from_ble_name(
+        device_name,
+        manufacturer_data=manufacturer_data,
+    ) != DEFAULT_DEVICE_TYPE or _is_supported_default_type_name(device_name)
 
 
 def detect_device_type_from_ble_name(
