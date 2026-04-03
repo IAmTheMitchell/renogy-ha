@@ -67,6 +67,16 @@ def _display_name_for_discovery(discovery_info: BluetoothServiceInfoBleak) -> st
     return UNKNOWN_DEVICE_NAME
 
 
+def _detect_device_type_for_discovery(discovery_info: BluetoothServiceInfoBleak) -> str:
+    """Detect the device type for a bluetooth discovery record."""
+    manufacturer_data = getattr(discovery_info.advertisement, "manufacturer_data", {})
+    return detect_device_type_from_ble_name(
+        discovery_info.name,
+        DEFAULT_DEVICE_TYPE,
+        manufacturer_data=manufacturer_data,
+    )
+
+
 def _build_shunt_options_schema(default_mode: str) -> vol.Schema:
     """Build the Smart Shunt options schema."""
     return vol.Schema(
@@ -138,14 +148,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Store the discovered device for later
         self._discovered_device = discovery_info
-        manufacturer_data = getattr(
-            discovery_info.advertisement, "manufacturer_data", {}
-        )
-        self._default_device_type = detect_device_type_from_ble_name(
-            discovery_info.name,
-            DEFAULT_DEVICE_TYPE,
-            manufacturer_data=manufacturer_data,
-        )
+        self._default_device_type = _detect_device_type_for_discovery(discovery_info)
 
         # Set title to user-readable name
         self.context["title_placeholders"] = {
@@ -190,6 +193,12 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Manual device selection
                 address = user_input[CONF_ADDRESS]
                 discovery_info = self._discovered_devices[address]
+                detected_type = _detect_device_type_for_discovery(discovery_info)
+
+                # Preserve an explicit user override, but fix the unchanged default
+                # when discovery data identifies a non-controller device.
+                if user_input.get(CONF_DEVICE_TYPE) == DEFAULT_DEVICE_TYPE:
+                    user_input[CONF_DEVICE_TYPE] = detected_type
 
                 await self.async_set_unique_id(address, raise_on_progress=False)
                 self._abort_if_unique_id_configured()

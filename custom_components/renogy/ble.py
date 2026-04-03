@@ -399,6 +399,9 @@ class RenogyActiveBluetoothCoordinator(
     ) -> RenogyBLEDevice:
         """Ensure the device instance is updated from Bluetooth service info."""
         manufacturer_data = getattr(service_info.advertisement, "manufacturer_data", {})
+        if not manufacturer_data and self.device is not None:
+            # Some follow-up advertisements omit manufacturer data entirely.
+            manufacturer_data = self.device.manufacturer_data
         detected_type = detect_device_type_from_ble_name(
             service_info.name,
             self.device_type,

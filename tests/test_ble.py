@@ -269,6 +269,38 @@ def test_update_device_detects_battery_from_manufacturer_data_only():
     assert device.manufacturer_data == {0xE14C: b"\x01"}
 
 
+def test_update_device_preserves_cached_manufacturer_data() -> None:
+    """Later advertisements should not erase cached manufacturer data."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    initial_service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name=None,
+        rssi=-60,
+    )
+    initial_service_info.advertisement.manufacturer_data = {0xE14C: b"\x01"}
+    coordinator._update_device_from_service_info(initial_service_info)
+
+    later_service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name=None,
+        rssi=-55,
+    )
+    later_service_info.advertisement.manufacturer_data = {}
+
+    device = coordinator._update_device_from_service_info(later_service_info)
+
+    assert coordinator.device_type == "battery"
+    assert device.device_type == "battery"
+    assert device.manufacturer_data == {0xE14C: b"\x01"}
+
+
 def test_intermittent_shunt_device_uses_library_shunt_client():
     """Ensure intermittent SHUNT300 mode keeps using the library shunt client."""
     ble_module = _load_ble_module()

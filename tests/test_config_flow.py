@@ -199,3 +199,71 @@ def test_bluetooth_entry_uses_fallback_title_for_nameless_device() -> None:
             "address": "AA:BB:CC:DD:EE:FF",
         },
     }
+
+
+def test_manual_entry_detects_battery_when_default_type_is_unchanged() -> None:
+    """Manual selection should auto-correct the unchanged controller default."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow = config_flow_module.RenogyConfigFlow()
+    flow._discovered_devices = {
+        "AA:BB:CC:DD:EE:FF": config_flow_module.BluetoothServiceInfoBleak(
+            address="AA:BB:CC:DD:EE:FF",
+            name=None,
+            manufacturer_data={0xE14C: b"\x01"},
+        )
+    }
+
+    entry_result = asyncio.run(
+        flow.async_step_user(
+            {
+                "address": "AA:BB:CC:DD:EE:FF",
+                const_module.CONF_DEVICE_TYPE: const_module.DEFAULT_DEVICE_TYPE,
+                const_module.CONF_SCAN_INTERVAL: const_module.DEFAULT_SCAN_INTERVAL,
+            }
+        )
+    )
+
+    assert entry_result == {
+        "type": "create_entry",
+        "title": config_flow_module.UNKNOWN_DEVICE_NAME,
+        "data": {
+            "address": "AA:BB:CC:DD:EE:FF",
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.BATTERY.value,
+            const_module.CONF_SCAN_INTERVAL: const_module.DEFAULT_SCAN_INTERVAL,
+        },
+    }
+
+
+def test_manual_entry_keeps_explicit_device_type_override() -> None:
+    """Manual selection should preserve an explicit non-default override."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow = config_flow_module.RenogyConfigFlow()
+    flow._discovered_devices = {
+        "AA:BB:CC:DD:EE:FF": config_flow_module.BluetoothServiceInfoBleak(
+            address="AA:BB:CC:DD:EE:FF",
+            name=None,
+            manufacturer_data={0xE14C: b"\x01"},
+        )
+    }
+
+    entry_result = asyncio.run(
+        flow.async_step_user(
+            {
+                "address": "AA:BB:CC:DD:EE:FF",
+                const_module.CONF_DEVICE_TYPE: const_module.DeviceType.DCC.value,
+                const_module.CONF_SCAN_INTERVAL: const_module.DEFAULT_SCAN_INTERVAL,
+            }
+        )
+    )
+
+    assert entry_result == {
+        "type": "create_entry",
+        "title": config_flow_module.UNKNOWN_DEVICE_NAME,
+        "data": {
+            "address": "AA:BB:CC:DD:EE:FF",
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.DCC.value,
+            const_module.CONF_SCAN_INTERVAL: const_module.DEFAULT_SCAN_INTERVAL,
+        },
+    }
