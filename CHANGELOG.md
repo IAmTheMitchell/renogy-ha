@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.7.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.6.0...v0.7.0) (2026-04-03)
+
+
+### Features
+
+* support Renogy battery devices ([#121](https://github.com/IAmTheMitchell/renogy-ha/issues/121)) ([59ce938](https://github.com/IAmTheMitchell/renogy-ha/commit/59ce9384bb280ec46ba2b988148c494e87b5d358))
+
 ## [0.6.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.5.0...v0.6.0) (2026-03-26)
 
 
