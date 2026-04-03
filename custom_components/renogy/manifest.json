@@ -6,6 +6,9 @@
       "local_name": "BT-TH-*"
     },
     {
+      "manufacturer_id": 57676
+    },
+    {
       "local_name": "RNGRBP*"
     },
     {
