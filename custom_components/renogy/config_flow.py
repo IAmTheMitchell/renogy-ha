@@ -35,7 +35,13 @@ from .const import (
     SUPPORTED_DEVICE_TYPES,
     DeviceType,
 )
-from .device_name import detect_device_type_from_ble_name, is_supported_renogy_ble_name
+from .device_name import (
+    detect_device_type_from_ble_name,
+    has_real_device_name,
+    is_supported_renogy_ble_name,
+)
+
+UNKNOWN_DEVICE_NAME = "Unknown Renogy Device"
 
 # Common schema fields for device configuration
 DEVICE_TYPE_SCHEMA = {
@@ -51,6 +57,14 @@ SCAN_INTERVAL_SCHEMA = {
 
 # Base configuration schema without device selection
 CONFIG_SCHEMA = vol.Schema({**DEVICE_TYPE_SCHEMA, **SCAN_INTERVAL_SCHEMA})
+
+
+def _display_name_for_discovery(discovery_info: BluetoothServiceInfoBleak) -> str:
+    """Return a stable display name for a discovered BLE device."""
+    if has_real_device_name(discovery_info.name):
+        return discovery_info.name
+
+    return UNKNOWN_DEVICE_NAME
 
 
 def _build_shunt_options_schema(default_mode: str) -> vol.Schema:
@@ -116,6 +130,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
             discovery_info.name,
             discovery_info.address,
         )
+        discovery_name = _display_name_for_discovery(discovery_info)
 
         # Set unique ID and check if already configured
         await self.async_set_unique_id(discovery_info.address)
@@ -134,7 +149,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Set title to user-readable name
         self.context["title_placeholders"] = {
-            "name": discovery_info.name,
+            "name": discovery_name,
             "address": discovery_info.address,
         }
 
@@ -168,7 +183,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
 
                 # Create a config entry
                 return self.async_create_entry(
-                    title=self._discovered_device.name,
+                    title=_display_name_for_discovery(self._discovered_device),
                     data=user_input,
                 )
             elif CONF_ADDRESS in user_input:
@@ -180,7 +195,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=discovery_info.name,
+                    title=_display_name_for_discovery(discovery_info),
                     data=user_input,
                 )
 
@@ -199,7 +214,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                 step_id="user",
                 data_schema=discovered_schema,
                 description_placeholders={
-                    "device_name": self._discovered_device.name,
+                    "device_name": _display_name_for_discovery(self._discovered_device),
                     "default_interval": str(DEFAULT_SCAN_INTERVAL),
                 },
                 errors=errors,
@@ -216,7 +231,7 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
             {
                 vol.Required(CONF_ADDRESS): vol.In(
                     {
-                        address: f"{info.name} ({address})"
+                        address: (f"{_display_name_for_discovery(info)} ({address})")
                         for address, info in self._discovered_devices.items()
                     }
                 ),
