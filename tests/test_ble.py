@@ -550,6 +550,40 @@ def test_sustained_shunt_notification_ignores_duplicate_payloads():
     assert listener.call_count == 1
 
 
+def test_sustained_shunt_notification_populates_raw_words():
+    """Ensure sustained shunt updates expose raw_words for diagnostics."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    hass.loop.call_soon_threadsafe = lambda callback: callback()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+        shunt_connection_mode="sustained",
+    )
+    coordinator.device = MagicMock(parsed_data={})
+
+    payload = (
+        b"\x12\x34\xab\xcd",
+        {
+            "shunt_voltage": 13.2,
+            "shunt_current": 1.5,
+            "shunt_power": 19.8,
+            "shunt_soc": 85.0,
+        },
+    )
+    ble_module.shunt_find_valid_payload_window = MagicMock(return_value=payload)
+
+    with patch.object(ble_module.time, "monotonic", return_value=100.0):
+        assert coordinator._process_sustained_shunt_notification(b"payload") is True
+
+    assert coordinator.data["raw_payload"] == "1234abcd"
+    assert coordinator.data["raw_words"] == [0x1234, 0xABCD]
+    assert coordinator.device.parsed_data["raw_words"] == [0x1234, 0xABCD]
+
+
 def test_sustained_shunt_notification_recovers_from_duplicate_payload_after_error():
     """Ensure duplicate payloads still restore availability after listener errors."""
     ble_module = _load_ble_module()
