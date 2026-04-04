@@ -68,6 +68,24 @@ def _install_module_stubs() -> None:
     class SensorEntity:
         """Stub SensorEntity class for testing."""
 
+        @property
+        def device_class(self) -> Any:
+            """Return the described device class."""
+            return getattr(self.entity_description, "device_class", None)
+
+        @property
+        def name(self) -> Any:
+            """Return the entity name."""
+            return getattr(self, "_attr_name", None)
+
+        async def async_added_to_hass(self) -> None:
+            """No-op hook for tests."""
+            return None
+
+        def async_write_ha_state(self) -> None:
+            """No-op state write for tests."""
+            return None
+
     @dataclass(frozen=True)
     class SensorEntityDescription:
         """Stub SensorEntityDescription for testing."""
@@ -138,6 +156,36 @@ def _install_module_stubs() -> None:
 
     entity_platform_module.AddEntitiesCallback = AddEntitiesCallback
     sys.modules["homeassistant.helpers.entity_platform"] = entity_platform_module
+
+    restore_state_module = cast(
+        Any, types.ModuleType("homeassistant.helpers.restore_state")
+    )
+
+    class ExtraStoredData:
+        """Stub restore extra data base class for testing."""
+
+        def as_dict(self) -> dict[str, Any]:
+            """Return serializable restore data."""
+            return {}
+
+    class RestoreEntity:
+        """Stub RestoreEntity for testing."""
+
+        async def async_added_to_hass(self) -> None:
+            """No-op for tests."""
+            return None
+
+        async def async_get_last_state(self) -> Any:
+            """Return the configured last state for tests."""
+            return getattr(self, "_mock_last_state", None)
+
+        async def async_get_last_extra_data(self) -> Any:
+            """Return the configured extra restore data for tests."""
+            return getattr(self, "_mock_last_extra_data", None)
+
+    restore_state_module.ExtraStoredData = ExtraStoredData
+    restore_state_module.RestoreEntity = RestoreEntity
+    sys.modules["homeassistant.helpers.restore_state"] = restore_state_module
 
     const_module = cast(Any, types.ModuleType("homeassistant.const"))
     const_module.CONF_ADDRESS = "address"
@@ -385,6 +433,97 @@ def test_shunt_status_sensor_preserves_zero_decode_confidence() -> None:
     )
 
     assert entity.extra_state_attributes["decode_confidence"] == 0
+
+
+def test_shunt_energy_counter_reset_handling() -> None:
+    """Ensure shunt energy totals stay monotonic after an integration reset."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {
+        sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL: 1.0,
+    }
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+
+    assert entity.native_value == 1.0
+
+    entity._attr_native_value = None
+    device.parsed_data[sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL] = 0.2
+
+    assert entity.native_value == 1.2
+    assert entity.extra_restore_state_data.as_dict()["offset"] == 1.0
+    assert entity.extra_restore_state_data.as_dict()["reset_count"] == 1
+
+
+def test_shunt_energy_counter_restores_offset_after_restart() -> None:
+    """Ensure restored totals resume from the last adjusted value after restart."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {}
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+    entity._mock_last_state = types.SimpleNamespace(state="1.2")
+    entity._mock_last_extra_data = sensor_module.ShuntEnergyRestoreData(
+        offset=1.0,
+        last_raw=0.2,
+        last_adjusted=1.2,
+        reset_count=1,
+        last_reset="2026-04-04T00:00:00",
+    )
+
+    asyncio.run(entity.async_added_to_hass())
+
+    assert entity.native_value == 1.2
+
+    entity._attr_native_value = None
+    device.parsed_data[sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL] = 0.3
+
+    assert entity.native_value == 1.3
+    assert entity.extra_restore_state_data.as_dict()["offset"] == 1.0
 
 
 def test_inverter_sensor_mapping_uses_library_field_names() -> None:

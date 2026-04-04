@@ -28,6 +28,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
@@ -109,6 +110,11 @@ KEY_SHUNT_STATUS_SOURCE = "status_source"
 KEY_SHUNT_ENERGY_SOURCE = "energy_source"
 KEY_SHUNT_DECODE_CONFIDENCE = "decode_confidence"
 KEY_SHUNT_READING_VERIFIED = "reading_verified"
+ENERGY_RESET_EPSILON = 0.001
+ENERGY_COUNTER_KEYS = {
+    KEY_SHUNT_ENERGY_CHARGED_TOTAL,
+    KEY_SHUNT_ENERGY_DISCHARGED_TOTAL,
+}
 
 # Inverter-specific sensor keys
 KEY_AC_OUTPUT_VOLTAGE = "ac_output_voltage"
@@ -136,6 +142,35 @@ class RenogyBLESensorDescription(SensorEntityDescription):
 
     # Function to extract value from the device's parsed data
     value_fn: Optional[Callable[[Dict[str, Any]], Any]] = None
+
+
+@dataclass(frozen=True)
+class ShuntEnergyRestoreData(ExtraStoredData):
+    """Persist HA-side monotonic offset state for synthetic shunt totals."""
+
+    offset: float
+    last_raw: float | None
+    last_adjusted: float | None
+    reset_count: int
+    last_reset: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return JSON-serializable restore metadata."""
+        return {
+            "offset": self.offset,
+            "last_raw": self.last_raw,
+            "last_adjusted": self.last_adjusted,
+            "reset_count": self.reset_count,
+            "last_reset": self.last_reset,
+        }
+
+
+def _coerce_float(value: Any, *, default: float | None) -> float | None:
+    """Return a float when possible, otherwise the provided default."""
+    try:
+        return float(value)
+    except TypeError, ValueError:
+        return default
 
 
 # SHUNT300 sensor entity descriptions (expand as needed)
@@ -1018,7 +1053,7 @@ def create_device_entities(
     return entities
 
 
-class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
+class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEntity):
     """Representation of a Renogy BLE sensor."""
 
     entity_description: RenogyBLESensorDescription
@@ -1039,6 +1074,11 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         self._category = category
         self._device_type = device_type
         self._attr_native_value = None
+        self._energy_offset = 0.0
+        self._energy_last_raw: float | None = None
+        self._energy_last_adjusted: float | None = None
+        self._energy_reset_count = 0
+        self._energy_last_reset: str | None = None
 
         # Generate a device model name that includes the device type
         device_model = f"Renogy {device_type.capitalize()}"
@@ -1077,6 +1117,38 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
             )
 
         self._last_updated = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore monotonic state for synthetic shunt energy totals."""
+        await super().async_added_to_hass()
+        if self.entity_description.key not in ENERGY_COUNTER_KEYS:
+            return
+
+        last_state = await self.async_get_last_state()
+        last_extra_data = await self.async_get_last_extra_data()
+        if last_state is not None:
+            self._energy_last_adjusted = _coerce_float(last_state.state, default=None)
+            self._attr_native_value = self._energy_last_adjusted
+
+        if last_extra_data is None:
+            return
+
+        extra_data = last_extra_data.as_dict()
+        offset = _coerce_float(extra_data.get("offset"), default=0.0)
+        self._energy_offset = 0.0 if offset is None else offset
+        self._energy_last_raw = _coerce_float(extra_data.get("last_raw"), default=None)
+        self._energy_last_adjusted = _coerce_float(
+            extra_data.get("last_adjusted"), default=self._energy_last_adjusted
+        )
+        self._attr_native_value = self._energy_last_adjusted
+        reset_count = extra_data.get("reset_count", 0)
+        try:
+            self._energy_reset_count = int(reset_count)
+        except TypeError, ValueError:
+            self._energy_reset_count = 0
+        last_reset = extra_data.get("last_reset")
+        if isinstance(last_reset, str):
+            self._energy_last_reset = last_reset
 
     @property
     def device(self) -> Optional[RenogyBLEDevice]:
@@ -1157,6 +1229,11 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         try:
             if self.entity_description.value_fn:
                 value = self.entity_description.value_fn(data)
+                if (
+                    value is not None
+                    and self.entity_description.key in ENERGY_COUNTER_KEYS
+                ):
+                    value = self._apply_energy_reset_handling(value)
                 # Basic type validation based on device_class
                 if value is not None:
                     if self.device_class in [
@@ -1189,6 +1266,20 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         except Exception as e:
             LOGGER.warning("Error getting native value for %s: %s", self.name, e)
         return None
+
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData | None:
+        """Return restore metadata for the synthetic shunt energy totals."""
+        if self.entity_description.key not in ENERGY_COUNTER_KEYS:
+            return None
+
+        return ShuntEnergyRestoreData(
+            offset=self._energy_offset,
+            last_raw=self._energy_last_raw,
+            last_adjusted=self._energy_last_adjusted,
+            reset_count=self._energy_reset_count,
+            last_reset=self._energy_last_reset,
+        )
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -1306,3 +1397,21 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
                 attrs["raw_words"] = raw_words
 
         return attrs
+
+    def _apply_energy_reset_handling(self, value: Any) -> float:
+        """Preserve monotonic totals when the in-memory integration resets."""
+        raw_value = _coerce_float(value, default=0.0)
+        adjusted = raw_value + self._energy_offset
+
+        if (
+            self._energy_last_adjusted is not None
+            and adjusted + ENERGY_RESET_EPSILON < self._energy_last_adjusted
+        ):
+            self._energy_offset += self._energy_last_raw or 0.0
+            self._energy_reset_count += 1
+            self._energy_last_reset = datetime.now().isoformat()
+            adjusted = raw_value + self._energy_offset
+
+        self._energy_last_raw = raw_value
+        self._energy_last_adjusted = adjusted
+        return round(adjusted, 3)
