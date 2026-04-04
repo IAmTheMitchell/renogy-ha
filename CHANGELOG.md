@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## [0.7.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.6.0...v0.7.0) (2026-04-04)
+
+
+### Features
+
+* support Renogy battery devices ([#121](https://github.com/IAmTheMitchell/renogy-ha/issues/121)) ([59ce938](https://github.com/IAmTheMitchell/renogy-ha/commit/59ce9384bb280ec46ba2b988148c494e87b5d358))
+
+
+### Bug Fixes
+
+* add raw_words to sustained shunt updates ([#123](https://github.com/IAmTheMitchell/renogy-ha/issues/123)) ([dd46ea7](https://github.com/IAmTheMitchell/renogy-ha/commit/dd46ea75eaf791a891faf9252b817a66e3ed25cd))
+
 ## [0.6.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.5.0...v0.6.0) (2026-03-26)
 
 
