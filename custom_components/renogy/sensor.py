@@ -1401,13 +1401,19 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
     def _apply_energy_reset_handling(self, value: Any) -> float:
         """Preserve monotonic totals when the in-memory integration resets."""
         raw_value = _coerce_float(value, default=0.0)
+        if raw_value is None:
+            raw_value = 0.0
+
         adjusted = raw_value + self._energy_offset
 
         if (
             self._energy_last_adjusted is not None
             and adjusted + ENERGY_RESET_EPSILON < self._energy_last_adjusted
         ):
-            self._energy_offset += self._energy_last_raw or 0.0
+            last_raw = (
+                self._energy_last_raw if self._energy_last_raw is not None else 0.0
+            )
+            self._energy_offset += last_raw
             self._energy_reset_count += 1
             self._energy_last_reset = datetime.now().isoformat()
             adjusted = raw_value + self._energy_offset

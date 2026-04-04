@@ -71,7 +71,8 @@ def _install_module_stubs() -> None:
         @property
         def device_class(self) -> Any:
             """Return the described device class."""
-            return getattr(self.entity_description, "device_class", None)
+            description = getattr(self, "entity_description", None)
+            return getattr(description, "device_class", None)
 
         @property
         def name(self) -> Any:
