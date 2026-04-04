@@ -580,6 +580,10 @@ class RenogyActiveBluetoothCoordinator(
             parsed_data["energy_charged_total"] = round(charged_kwh, 3)
             parsed_data["energy_discharged_total"] = round(discharged_kwh, 3)
         parsed_data["raw_payload"] = raw_payload.hex()
+        parsed_data["raw_words"] = [
+            int.from_bytes(raw_payload[i : i + 2], "big", signed=False)
+            for i in range(0, len(raw_payload), 2)
+        ]
 
         changed = any(
             parsed_data.get(key) != self._last_sustained_shunt_data.get(key)
