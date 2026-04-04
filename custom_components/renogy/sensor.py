@@ -1079,6 +1079,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
         self._energy_last_adjusted: float | None = None
         self._energy_reset_count = 0
         self._energy_last_reset: str | None = None
+        self._energy_restore_without_metadata = False
 
         # Generate a device model name that includes the device type
         device_model = f"Renogy {device_type.capitalize()}"
@@ -1131,6 +1132,9 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
             self._attr_native_value = self._energy_last_adjusted
 
         if last_extra_data is None:
+            self._energy_restore_without_metadata = (
+                self._energy_last_adjusted is not None
+            )
             return
 
         extra_data = last_extra_data.as_dict()
@@ -1403,6 +1407,16 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
         raw_value = _coerce_float(value, default=0.0)
         if raw_value is None:
             raw_value = 0.0
+
+        if (
+            self._energy_restore_without_metadata
+            and self._energy_last_adjusted is not None
+            and self._energy_last_raw is None
+        ):
+            # Older versions restored only the adjusted total, so reconstruct the
+            # best available offset from the first post-upgrade raw sample.
+            self._energy_offset = max(self._energy_last_adjusted - raw_value, 0.0)
+            self._energy_restore_without_metadata = False
 
         adjusted = raw_value + self._energy_offset
 

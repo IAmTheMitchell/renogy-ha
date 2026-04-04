@@ -527,6 +527,54 @@ def test_shunt_energy_counter_restores_offset_after_restart() -> None:
     assert entity.extra_restore_state_data.as_dict()["offset"] == 1.0
 
 
+def test_shunt_energy_counter_restores_without_extra_metadata() -> None:
+    """Ensure upgrades from older restore data do not move the total backward."""
+    sensor_module = _load_sensor_module()
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.last_update_success = True
+    coordinator.data = {}
+
+    device = MagicMock()
+    device.address = "AA:BB:CC:DD:EE:FF"
+    device.name = "RTMShunt300A1B2"
+    device.rssi = None
+    device.parsed_data = {
+        sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL: 0.3,
+    }
+
+    description = next(
+        item
+        for item in sensor_module.SHUNT300_SENSORS
+        if item.key == sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL
+    )
+
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        device,
+        description,
+        "Shunt",
+        sensor_module.DeviceType.SHUNT300.value,
+    )
+    entity._mock_last_state = types.SimpleNamespace(state="1.2")
+
+    asyncio.run(entity.async_added_to_hass())
+
+    assert entity.native_value == 1.2
+
+    entity._attr_native_value = None
+
+    assert entity.native_value == 1.2
+    assert round(entity.extra_restore_state_data.as_dict()["offset"], 3) == 0.9
+
+    entity._attr_native_value = None
+    device.parsed_data[sensor_module.KEY_SHUNT_ENERGY_CHARGED_TOTAL] = 0.4
+
+    assert entity.native_value == 1.3
+
+
 def test_inverter_sensor_mapping_uses_library_field_names() -> None:
     """Ensure inverter entities map directly to renogy-ble parsed field names."""
     sensor_module = _load_sensor_module()
