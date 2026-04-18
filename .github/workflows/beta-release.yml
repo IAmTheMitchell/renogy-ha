@@ -45,7 +45,7 @@ jobs:
 
       - name: Find next beta tag
         id: beta
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         with:
@@ -89,7 +89,7 @@ jobs:
 
       - name: Create beta release
         if: steps.beta.outputs.exists != 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           BETA_TAG: ${{ steps.beta.outputs.tag }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
