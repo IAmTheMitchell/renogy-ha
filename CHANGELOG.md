@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## [0.7.1](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.7.0...v0.7.1) (2026-04-25)
+
+
+### Bug Fixes
+
+* defer renogy ble import until setup ([#141](https://github.com/IAmTheMitchell/renogy-ha/issues/141)) ([2fe5997](https://github.com/IAmTheMitchell/renogy-ha/commit/2fe5997ade93aaf0d3cb20fcb702376e7fa4bdad))
+* **deps:** update renogy-ble from 2.3.0 to 2.3.1 ([2e4a764](https://github.com/IAmTheMitchell/renogy-ha/commit/2e4a764af2ee12a382f514547564f09e3a55dbbb))
+
 ## [0.7.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.6.0...v0.7.0) (2026-04-13)
 
 
