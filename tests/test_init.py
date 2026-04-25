@@ -11,7 +11,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 
-def _install_module_stubs() -> type:
+def _install_module_stubs(*, install_ble: bool = True) -> type | None:
     """Install minimal module stubs to import the integration module."""
     homeassistant_module = cast(Any, types.ModuleType("homeassistant"))
     sys.modules["homeassistant"] = homeassistant_module
@@ -50,6 +50,10 @@ def _install_module_stubs() -> type:
     )
     device_registry_module.async_get = MagicMock()
     sys.modules["homeassistant.helpers.device_registry"] = device_registry_module
+
+    if not install_ble:
+        sys.modules.pop("custom_components.renogy.ble", None)
+        return None
 
     ble_module = cast(Any, types.ModuleType("custom_components.renogy.ble"))
 
@@ -90,6 +94,17 @@ def _load_init_module():
     sys.modules.pop("custom_components.renogy", None)
     module = importlib.import_module("custom_components.renogy")
     return module, coordinator_class
+
+
+def test_init_module_imports_without_ble_dependency() -> None:
+    """Ensure component import does not require manifest requirements yet."""
+    _install_module_stubs(install_ble=False)
+    sys.modules.pop("custom_components.renogy.__init__", None)
+    sys.modules.pop("custom_components.renogy", None)
+
+    module = importlib.import_module("custom_components.renogy")
+
+    assert module.DOMAIN == "renogy"
 
 
 def test_shunt_connection_mode_defaults_to_sustained() -> None:
