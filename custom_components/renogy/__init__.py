@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
 
-from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     CONF_DEVICE_TYPE,
     CONF_NON_SHUNT_CONNECTION_MODE,
@@ -26,6 +25,9 @@ from .const import (
 )
 from .device_name import has_real_device_name
 
+if TYPE_CHECKING:
+    from .ble import RenogyBLEDevice
+
 # List of platforms this integration supports
 PLATFORMS = [Platform.SENSOR, Platform.NUMBER, Platform.SELECT, Platform.SWITCH]
 
@@ -39,6 +41,8 @@ class _CoordinatorShutdownProtocol(Protocol):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Renogy BLE from a config entry."""
+    from .ble import RenogyActiveBluetoothCoordinator
+
     LOGGER.info("Setting up Renogy BLE integration with entry %s", entry.entry_id)
 
     # Get configuration from entry
