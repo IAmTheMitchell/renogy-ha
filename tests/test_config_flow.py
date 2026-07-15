@@ -66,6 +66,8 @@ def _load_config_flow_module() -> Any:
     class ConfigFlow:
         """Stub ConfigFlow with the methods used by this integration."""
 
+        _reconfigure_entry: Any = None
+
         def __init_subclass__(cls, *, domain: str | None = None, **kwargs: Any) -> None:
             """Accept Home Assistant's domain keyword during subclassing."""
             super().__init_subclass__(**kwargs)
@@ -117,6 +119,25 @@ def _load_config_flow_module() -> Any:
                 "type": "abort",
                 "reason": reason,
                 "description_placeholders": description_placeholders or {},
+            }
+
+        def _get_reconfigure_entry(self) -> Any:
+            """Return the entry under reconfiguration."""
+            return self._reconfigure_entry
+
+        def async_update_reload_and_abort(
+            self,
+            entry: Any,
+            *,
+            data_updates: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            """Apply data updates and abort like Home Assistant does."""
+            entry.data = {**entry.data, **(data_updates or {})}
+            self.last_data_updates = data_updates
+            return {
+                "type": "abort",
+                "reason": "reconfigure_successful",
+                "data_updates": data_updates,
             }
 
     class OptionsFlow:
@@ -267,3 +288,176 @@ def test_manual_entry_keeps_explicit_device_type_override() -> None:
             const_module.CONF_SCAN_INTERVAL: const_module.DEFAULT_SCAN_INTERVAL,
         },
     }
+
+
+def _make_reconfigure_flow(
+    config_flow_module: Any,
+    const_module: Any,
+    *,
+    data: dict[str, Any],
+    coordinator_model: str | None = None,
+) -> tuple[Any, Any]:
+    """Build a flow + entry pair prepared for reconfiguration."""
+    # A plain namespace stands in for ConfigEntry: the flow only reads
+    # entry_id, title, and data, and the stub update helper reassigns data.
+    entry = types.SimpleNamespace(
+        entry_id="test-entry-id",
+        title="BT-TH-A58A8FD4",
+        data=data,
+    )
+
+    flow = config_flow_module.RenogyConfigFlow()
+    flow._reconfigure_entry = entry
+
+    coordinator_data = {"model": coordinator_model} if coordinator_model else None
+    coordinator = types.SimpleNamespace(data=coordinator_data)
+    flow.hass = types.SimpleNamespace(
+        data={const_module.DOMAIN: {entry.entry_id: {"coordinator": coordinator}}}
+    )
+    return flow, entry
+
+
+def _schema_default(schema: Any, field: str) -> Any:
+    """Return the default value of a voluptuous schema field."""
+    for key in schema.schema:
+        if str(key.schema) == field:
+            return key.default()
+    raise AssertionError(f"Field {field} not found in schema")
+
+
+def test_reconfigure_form_defaults_to_current_entry_values() -> None:
+    """The reconfigure form should preselect the stored type and interval."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow, _entry = _make_reconfigure_flow(
+        config_flow_module,
+        const_module,
+        data={
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.CONTROLLER.value,
+            "scan_interval": 120,
+        },
+    )
+
+    form_result = asyncio.run(flow.async_step_reconfigure())
+
+    assert form_result["type"] == "form"
+    assert form_result["step_id"] == "reconfigure"
+    assert form_result["description_placeholders"] == {
+        "device_name": "BT-TH-A58A8FD4",
+        "current_device_type": const_module.DeviceType.CONTROLLER.value,
+    }
+    schema = form_result["data_schema"]
+    assert (
+        _schema_default(schema, const_module.CONF_DEVICE_TYPE)
+        == const_module.DeviceType.CONTROLLER.value
+    )
+    assert _schema_default(schema, "scan_interval") == 120
+
+
+def test_reconfigure_form_suggests_dcc_from_reported_model() -> None:
+    """A DCC model reported by the coordinator should preselect the DCC type."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow, _entry = _make_reconfigure_flow(
+        config_flow_module,
+        const_module,
+        data={
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.CONTROLLER.value,
+        },
+        coordinator_model="RBC50D1S-G6",
+    )
+
+    form_result = asyncio.run(flow.async_step_reconfigure())
+
+    assert form_result["type"] == "form"
+    assert (
+        _schema_default(form_result["data_schema"], const_module.CONF_DEVICE_TYPE)
+        == const_module.DeviceType.DCC.value
+    )
+    # The description still names the currently configured type.
+    assert form_result["description_placeholders"]["current_device_type"] == (
+        const_module.DeviceType.CONTROLLER.value
+    )
+
+
+def test_reconfigure_updates_device_type_and_reloads() -> None:
+    """Submitting the reconfigure form should update entry data in place."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow, entry = _make_reconfigure_flow(
+        config_flow_module,
+        const_module,
+        data={
+            "address": "CC:45:A5:8A:8F:D4",
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.CONTROLLER.value,
+            "scan_interval": 60,
+        },
+    )
+
+    result = asyncio.run(
+        flow.async_step_reconfigure(
+            {
+                const_module.CONF_DEVICE_TYPE: const_module.DeviceType.DCC.value,
+                "scan_interval": 60,
+            }
+        )
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data == {
+        "address": "CC:45:A5:8A:8F:D4",
+        const_module.CONF_DEVICE_TYPE: const_module.DeviceType.DCC.value,
+        "scan_interval": 60,
+    }
+
+
+def test_reconfigure_rejects_unsupported_device_type() -> None:
+    """Unsupported device types should abort with a descriptive reason."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow, entry = _make_reconfigure_flow(
+        config_flow_module,
+        const_module,
+        data={
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.CONTROLLER.value,
+        },
+    )
+
+    result = asyncio.run(
+        flow.async_step_reconfigure(
+            {
+                const_module.CONF_DEVICE_TYPE: "hub",
+                "scan_interval": 60,
+            }
+        )
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "unsupported_device_type"
+    assert result["description_placeholders"] == {"device_type": "hub"}
+    assert entry.data[const_module.CONF_DEVICE_TYPE] == (
+        const_module.DeviceType.CONTROLLER.value
+    )
+
+
+def test_reconfigure_form_handles_missing_coordinator() -> None:
+    """A not-yet-loaded entry should fall back to the stored device type."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow, _entry = _make_reconfigure_flow(
+        config_flow_module,
+        const_module,
+        data={
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.DCC.value,
+        },
+    )
+    flow.hass = types.SimpleNamespace(data={})
+
+    form_result = asyncio.run(flow.async_step_reconfigure())
+
+    assert form_result["type"] == "form"
+    assert (
+        _schema_default(form_result["data_schema"], const_module.CONF_DEVICE_TYPE)
+        == const_module.DeviceType.DCC.value
+    )

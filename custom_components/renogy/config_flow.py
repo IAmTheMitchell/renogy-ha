@@ -37,6 +37,7 @@ from .const import (
 )
 from .device_name import (
     detect_device_type_from_ble_name,
+    detect_device_type_from_model,
     has_real_device_name,
     is_supported_renogy_ble_name,
 )
@@ -258,6 +259,71 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
             },
             errors=errors,
         )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Allow changing the device type and scan interval in place.
+
+        This is the supported way to fix an entry that was set up with the
+        wrong device type (e.g. a DC-DC charger behind a BT-TH module that
+        defaulted to 'controller'), without deleting the entry.
+        """
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            device_type = user_input[CONF_DEVICE_TYPE]
+            if device_type not in SUPPORTED_DEVICE_TYPES:
+                LOGGER.warning("Unsupported device type selected: %s", device_type)
+                return self.async_abort(
+                    reason="unsupported_device_type",
+                    description_placeholders={"device_type": device_type},
+                )
+
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates={
+                    CONF_DEVICE_TYPE: device_type,
+                    CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+                },
+            )
+
+        current_type = entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
+        suggested_type = (
+            self._detect_device_type_from_coordinator(entry) or current_type
+        )
+        current_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+
+        reconfigure_schema = vol.Schema(
+            {
+                vol.Required(CONF_DEVICE_TYPE, default=suggested_type): vol.In(
+                    DEVICE_TYPES
+                ),
+                vol.Optional(CONF_SCAN_INTERVAL, default=current_interval): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=reconfigure_schema,
+            description_placeholders={
+                "device_name": entry.title,
+                "current_device_type": current_type,
+            },
+        )
+
+    def _detect_device_type_from_coordinator(self, entry: ConfigEntry) -> str | None:
+        """Detect the device type from the model the coordinator last read."""
+        try:
+            entry_data = self.hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+            coordinator = entry_data.get("coordinator")
+            model = (coordinator.data or {}).get("model") if coordinator else None
+        except AttributeError:
+            return None
+        return detect_device_type_from_model(model)
 
     async def _async_discover_devices(self) -> None:
         """Discover Bluetooth devices."""

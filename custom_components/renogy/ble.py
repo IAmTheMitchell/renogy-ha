@@ -39,7 +39,11 @@ from .const import (
     NonShuntConnectionMode,
     ShuntConnectionMode,
 )
-from .device_name import detect_device_type_from_ble_name, has_real_device_name
+from .device_name import (
+    detect_device_type_from_ble_name,
+    detect_device_type_from_model,
+    has_real_device_name,
+)
 
 # Check if write_register is available in the library.
 try:
@@ -151,6 +155,9 @@ class RenogyActiveBluetoothCoordinator(
         # Add connection lock to prevent multiple concurrent connections
         self._connection_lock = asyncio.Lock()
         self._connection_in_progress = False
+
+        # Warn only once when the reported model contradicts the configured type
+        self._model_mismatch_warned = False
 
     def _build_ble_client_for_type(self, device_type: str) -> RenogyBleClient:
         """Build a BLE client suitable for the configured device type."""
@@ -923,10 +930,37 @@ class RenogyActiveBluetoothCoordinator(
                 if success and device.parsed_data:
                     self.data = dict(device.parsed_data)
                     self.logger.debug("Updated coordinator data: %s", self.data)
+                    self._warn_if_model_mismatch()
 
                 return success
             finally:
                 self._connection_in_progress = False
+
+    def _warn_if_model_mismatch(self) -> None:
+        """Warn once when the reported model implies a different device type.
+
+        A BT-TH module advertises the same BLE name regardless of the device
+        behind it, so entries can end up configured as the default type even
+        though the model register identifies e.g. a DC-DC charger.
+        """
+        if self._model_mismatch_warned or not self.data:
+            return
+
+        model = self.data.get("model")
+        detected_type = detect_device_type_from_model(model)
+        if detected_type is None or detected_type == self.device_type:
+            return
+
+        self._model_mismatch_warned = True
+        self.logger.warning(
+            "Device %s reports model %s, which is a '%s' device, but this "
+            "entry is configured as '%s'. Reconfigure the integration entry "
+            "to switch the device type and unlock the correct entities.",
+            self.address,
+            model,
+            detected_type,
+            self.device_type,
+        )
 
     async def async_set_load_state(self, state: bool) -> bool:
         """Set the DC load on/off."""

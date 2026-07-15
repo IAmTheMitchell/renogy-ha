@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from .const import (
     DEFAULT_DEVICE_TYPE,
     RENOGY_BATTERY_PRO_PREFIXES,
@@ -11,6 +13,11 @@ from .const import (
 )
 
 UNKNOWN_DEVICE_NAME_PREFIX = "Unknown"
+
+# DC-DC charger model families: DCC30S/DCC50S and their successors
+# RBC20D1U/RBC30D1S/RBC50D1S(-G6) etc. The "D" after the amperage marks
+# the DC input variant (AC chargers use a different letter).
+DCC_MODEL_PATTERN = re.compile(r"^(DCC|RBC\d+D)", re.IGNORECASE)
 SHUNT300_BT_PREFIX = "RTMShunt300"
 BATTERY_LEGACY_NAME_MARKERS = ("BATT", "BATTERY")
 BATTERY_PRO_MANUFACTURER_ID = 0xE14C
@@ -85,6 +92,26 @@ def detect_device_type_from_ble_name(
         return DeviceType.BATTERY.value
 
     return default_device_type
+
+
+def detect_device_type_from_model(model: str | None) -> str | None:
+    """Infer the device type from a device-reported model string.
+
+    BLE names cannot distinguish a BT-TH module on a solar controller from
+    one on a DC-DC charger, but the model register can. Returns None when
+    the model does not identify a specific device type.
+    """
+    if not isinstance(model, str):
+        return None
+
+    normalized = model.strip()
+    if not normalized:
+        return None
+
+    if DCC_MODEL_PATTERN.match(normalized):
+        return DeviceType.DCC.value
+
+    return None
 
 
 def _is_legacy_battery_name(device_name: str) -> bool:

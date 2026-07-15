@@ -8,6 +8,13 @@
           "scan_interval": "Polling interval (seconds)",
           "device_type": "Device Type"
         }
+      },
+      "reconfigure": {
+        "description": "Reconfigure Renogy BLE device: {device_name}. \n\nCurrent device type: {current_device_type}. Changing the device type replaces the entities with the set matching the new type.",
+        "data": {
+          "scan_interval": "Polling interval (seconds)",
+          "device_type": "Device Type"
+        }
       }
     },
     "error": {
@@ -17,7 +24,8 @@
       "already_configured": "Device is already configured",
       "no_devices_found": "No Renogy BLE devices discovered",
       "not_supported_device": "This device is not a supported Renogy BLE device",
-      "unsupported_device_type": "The {device_type} device type is not currently supported. Only controller, battery, DCC (DC-DC charger), inverter, and shunt300 devices are fully supported at this time."
+      "unsupported_device_type": "The {device_type} device type is not currently supported. Only controller, battery, DCC (DC-DC charger), inverter, and shunt300 devices are fully supported at this time.",
+      "reconfigure_successful": "Re-configuration was successful"
     }
   },
   "options": {
