@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, cast
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
@@ -122,6 +122,8 @@ class RenogyBatteryTypeSelect(SelectEntity):
     """Representation of a Renogy battery type select entity."""
 
     entity_description: SelectEntityDescription
+    # Friendly name = device name + entity name, so UI device renames cascade.
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -141,7 +143,7 @@ class RenogyBatteryTypeSelect(SelectEntity):
         # Device-dependent properties
         if device:
             self._attr_unique_id = f"{device.address}_{description.key}"
-            self._attr_name = f"{device.name} {description.name}"
+            self._attr_name = cast("str | None", description.name)
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, device.address)},
                 name=device.name,
@@ -150,7 +152,7 @@ class RenogyBatteryTypeSelect(SelectEntity):
             )
         else:
             self._attr_unique_id = f"{coordinator.address}_{description.key}"
-            self._attr_name = f"Renogy {description.name}"
+            self._attr_name = cast("str | None", description.name)
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, coordinator.address)},
                 name=f"Renogy {device_type.upper()}",
@@ -261,6 +263,8 @@ class RenogyMaxCurrentSelect(SelectEntity):
     """Representation of a Renogy max charging current select entity."""
 
     entity_description: SelectEntityDescription
+    # Friendly name = device name + entity name, so UI device renames cascade.
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -280,7 +284,7 @@ class RenogyMaxCurrentSelect(SelectEntity):
         # Device-dependent properties
         if device:
             self._attr_unique_id = f"{device.address}_{description.key}"
-            self._attr_name = f"{device.name} {description.name}"
+            self._attr_name = cast("str | None", description.name)
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, device.address)},
                 name=device.name,
@@ -289,7 +293,7 @@ class RenogyMaxCurrentSelect(SelectEntity):
             )
         else:
             self._attr_unique_id = f"{coordinator.address}_{description.key}"
-            self._attr_name = f"Renogy {description.name}"
+            self._attr_name = cast("str | None", description.name)
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, coordinator.address)},
                 name=f"Renogy {device_type.upper()}",
