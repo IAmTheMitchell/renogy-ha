@@ -9,6 +9,7 @@ from .const import (
     RENOGY_BATTERY_PRO_PREFIXES,
     RENOGY_BT_PREFIX,
     RENOGY_INVERTER_PREFIX,
+    RENOGY_REGO_INVERTER_PREFIX,
     DeviceType,
 )
 
@@ -25,7 +26,7 @@ BATTERY_PRO_MANUFACTURER_ID = 0xE14C
 DEVICE_NAME_PREFIXES_BY_TYPE: dict[str, tuple[str, ...]] = {
     DeviceType.CONTROLLER.value: (RENOGY_BT_PREFIX,),
     DeviceType.BATTERY.value: (RENOGY_BT_PREFIX, *RENOGY_BATTERY_PRO_PREFIXES),
-    DeviceType.INVERTER.value: (RENOGY_INVERTER_PREFIX,),
+    DeviceType.INVERTER.value: (RENOGY_INVERTER_PREFIX, RENOGY_REGO_INVERTER_PREFIX),
     DeviceType.DCC.value: (RENOGY_BT_PREFIX,),
     DeviceType.SHUNT300.value: (SHUNT300_BT_PREFIX,),
 }
@@ -33,6 +34,7 @@ DEVICE_NAME_PREFIXES_BY_TYPE: dict[str, tuple[str, ...]] = {
 SUPPORTED_BLE_NAME_PREFIXES: tuple[str, ...] = (
     RENOGY_BT_PREFIX,
     RENOGY_INVERTER_PREFIX,
+    RENOGY_REGO_INVERTER_PREFIX,
     *RENOGY_BATTERY_PRO_PREFIXES,
     SHUNT300_BT_PREFIX,
 )
@@ -79,7 +81,9 @@ def detect_device_type_from_ble_name(
     manufacturer_data = manufacturer_data or {}
 
     if isinstance(device_name, str) and has_real_device_name(device_name):
-        if device_name.startswith(RENOGY_INVERTER_PREFIX):
+        if device_name.startswith(
+            (RENOGY_INVERTER_PREFIX, RENOGY_REGO_INVERTER_PREFIX)
+        ):
             return DeviceType.INVERTER.value
         if device_name.startswith(RENOGY_BATTERY_PRO_PREFIXES):
             return DeviceType.BATTERY.value

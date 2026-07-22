@@ -281,3 +281,54 @@ def test_solar_cutoff_current_writes_centiamps() -> None:
     )
     assert entity.native_value == 7.0
     entity.async_write_ha_state.assert_called_once()
+
+
+def test_inverter_numbers_cover_registers() -> None:
+    """Ensure REGO inverter setpoints are exposed with the correct registers/ranges."""
+    number = _load_number_module()
+
+    by_key = {d.key: d for d in number.INVERTER_ALL_NUMBERS}
+    assert set(by_key) == {
+        "inverter_ac_input_current_limit",
+        "inverter_charge_current",
+        "inverter_low_voltage_warn",
+        "inverter_over_voltage",
+    }
+    assert by_key["inverter_ac_input_current_limit"].register == 0x1168
+    assert by_key["inverter_ac_input_current_limit"].scale == 10.0
+    assert by_key["inverter_charge_current"].register == 0x1146
+    assert by_key["inverter_low_voltage_warn"].register == 0x114E
+    assert by_key["inverter_over_voltage"].register == 0x1164
+    # every setpoint writes with x10 scale
+    assert all(d.scale == 10.0 for d in number.INVERTER_ALL_NUMBERS)
+    # ranges clamped to the app's safe bounds
+    acil = by_key["inverter_ac_input_current_limit"]
+    assert (acil.native_min_value, acil.native_max_value) == (1.0, 50.0)
+    cc = by_key["inverter_charge_current"]
+    assert (cc.native_min_value, cc.native_max_value) == (1.0, 150.0)
+
+
+def test_inverter_number_setup_creates_entities_for_inverter_device() -> None:
+    """Ensure async_setup_entry wires up the inverter number descriptions."""
+    number = _load_number_module()
+
+    coordinator = MagicMock()
+    coordinator.device = None
+
+    hass = MagicMock()
+    hass.data = {number.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {number.CONF_DEVICE_TYPE: number.DeviceType.INVERTER.value}
+
+    async_add_entities = MagicMock()
+
+    asyncio.run(number.async_setup_entry(hass, config_entry, async_add_entities))
+
+    async_add_entities.assert_called_once()
+    (created_entities,) = async_add_entities.call_args.args
+    assert len(created_entities) == len(number.INVERTER_ALL_NUMBERS)
+    assert {e.entity_description.key for e in created_entities} == {
+        d.key for d in number.INVERTER_ALL_NUMBERS
+    }

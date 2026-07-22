@@ -809,3 +809,21 @@ def test_sensor_setup_registers_hub_battery_sensor_layer() -> None:
         coordinator,
         async_add_entities,
     )
+
+
+def test_inverter_sensors_cover_rego_fields() -> None:
+    """Ensure REGO inverter fields are exposed via INVERTER_SENSORS."""
+    sensor_module = _load_sensor_module()
+
+    keys = {description.key for description in sensor_module.INVERTER_SENSORS}
+    assert {
+        "ac_input_voltage",
+        "ac_input_current",
+        "battery_percentage",
+        "charging_current",
+        "solar_voltage",
+        "solar_current",
+        "solar_power",
+        "charging_power",
+        "charging_status",
+    } <= keys

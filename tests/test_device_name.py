@@ -144,3 +144,25 @@ def test_detect_device_type_from_model_ignores_other_models() -> None:
     assert device_name_module.detect_device_type_from_model("") is None
     assert device_name_module.detect_device_type_from_model("   ") is None
     assert device_name_module.detect_device_type_from_model(None) is None
+
+
+def test_btric_inverter_name_is_supported():
+    device_name_module = _load_device_name_module()
+    assert device_name_module.is_supported_renogy_ble_name("BTRIC130000029")
+
+
+def test_btric_inverter_type_detected():
+    device_name_module = _load_device_name_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    assert (
+        device_name_module.detect_device_type_from_ble_name("BTRIC130000029")
+        == const_module.DeviceType.INVERTER.value
+    )
+
+
+def test_btric_inverter_name_ready():
+    device_name_module = _load_device_name_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    assert device_name_module.is_device_name_ready(
+        "BTRIC130000029", const_module.DeviceType.INVERTER.value
+    )
