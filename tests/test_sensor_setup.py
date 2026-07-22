@@ -641,3 +641,21 @@ def test_battery_sensor_mapping_uses_library_field_names() -> None:
         descriptions[sensor_module.KEY_CELL_VOLTAGE_DELTA].value_fn(sample_data) == 0.3
     )
     assert descriptions[sensor_module.KEY_SW_VERSION].value_fn(sample_data) == "2.10"
+
+
+def test_inverter_sensors_cover_rego_fields() -> None:
+    """Ensure REGO inverter fields are exposed via INVERTER_SENSORS."""
+    sensor_module = _load_sensor_module()
+
+    keys = {description.key for description in sensor_module.INVERTER_SENSORS}
+    assert {
+        "ac_input_voltage",
+        "ac_input_current",
+        "battery_percentage",
+        "charging_current",
+        "solar_voltage",
+        "solar_current",
+        "solar_power",
+        "charging_power",
+        "charging_status",
+    } <= keys

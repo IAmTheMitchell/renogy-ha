@@ -31,6 +31,7 @@ from .const import (
     LOGGER,
     DCCRegister,
     DeviceType,
+    InverterRegister,
 )
 
 
@@ -292,6 +293,66 @@ DCC_OTHER_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
 # All DCC number entities
 DCC_ALL_NUMBERS = DCC_VOLTAGE_NUMBERS + DCC_TIME_NUMBERS + DCC_OTHER_NUMBERS
 
+# REGO-series inverter setting parameters (all use 0.1-scale registers, function 0x06)
+INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
+    RenogyNumberEntityDescription(
+        key="inverter_ac_input_current_limit",
+        name="AC Input Current Limit",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=NumberDeviceClass.CURRENT,
+        native_min_value=1.0,
+        native_max_value=50.0,
+        native_step=1.0,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        register=InverterRegister.AC_INPUT_CURRENT_LIMIT,
+        scale=10.0,
+        value_fn=lambda data: data.get("inverter_ac_input_current_limit"),
+    ),
+    RenogyNumberEntityDescription(
+        key="inverter_charge_current",
+        name="Charge Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=NumberDeviceClass.CURRENT,
+        native_min_value=1.0,
+        native_max_value=150.0,
+        native_step=1.0,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        register=InverterRegister.CHARGE_CURRENT,
+        scale=10.0,
+        value_fn=lambda data: data.get("inverter_charge_current"),
+    ),
+    RenogyNumberEntityDescription(
+        key="inverter_low_voltage_warn",
+        name="Low Voltage Warning",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=NumberDeviceClass.VOLTAGE,
+        native_min_value=9.0,
+        native_max_value=15.5,
+        native_step=0.1,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        register=InverterRegister.LOW_VOLTAGE_WARN,
+        scale=10.0,
+        value_fn=lambda data: data.get("inverter_low_voltage_warn"),
+    ),
+    RenogyNumberEntityDescription(
+        key="inverter_over_voltage",
+        name="Battery Over Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=NumberDeviceClass.VOLTAGE,
+        native_min_value=9.0,
+        native_max_value=16.0,
+        native_step=0.1,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        register=InverterRegister.BATTERY_OVER_VOLTAGE,
+        scale=10.0,
+        value_fn=lambda data: data.get("inverter_over_voltage"),
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -309,26 +370,26 @@ async def async_setup_entry(
     # Get device type from config
     device_type = config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
 
-    # Only create number entities for DCC devices
-    if device_type != DeviceType.DCC.value:
-        LOGGER.debug(
-            "Skipping number entities for non-DCC device type: %s", device_type
-        )
+    # Select the number descriptions for this device type
+    if device_type == DeviceType.DCC.value:
+        descriptions = DCC_ALL_NUMBERS
+    elif device_type == DeviceType.INVERTER.value:
+        descriptions = INVERTER_ALL_NUMBERS
+    else:
+        LOGGER.debug("No number entities for device type: %s", device_type)
         return
 
-    LOGGER.debug("Setting up number entities for DCC device")
-
-    entities = []
     device = coordinator.device
 
-    for description in DCC_ALL_NUMBERS:
-        entity = RenogyNumberEntity(
+    entities = [
+        RenogyNumberEntity(
             coordinator=coordinator,
             device=device,
             description=description,
             device_type=device_type,
         )
-        entities.append(entity)
+        for description in descriptions
+    ]
 
     if entities:
         LOGGER.debug("Adding %s number entities", len(entities))

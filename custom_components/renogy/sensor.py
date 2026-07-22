@@ -134,6 +134,10 @@ KEY_CELL_VOLTAGE_MAX = "cell_voltage_max"
 KEY_CELL_VOLTAGE_DELTA = "cell_voltage_delta"
 KEY_BATTERY_PROBLEM_CODE = "battery_problem_code"
 KEY_SW_VERSION = "sw_version"
+KEY_AC_INPUT_VOLTAGE = "ac_input_voltage"
+KEY_AC_INPUT_CURRENT = "ac_input_current"
+KEY_CHARGING_CURRENT = "charging_current"
+KEY_CHARGING_POWER = "charging_power"
 
 
 @dataclass(frozen=True)
@@ -819,6 +823,76 @@ INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: data.get(KEY_MODEL),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_AC_INPUT_VOLTAGE,
+        name="AC Input Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_AC_INPUT_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_AC_INPUT_CURRENT,
+        name="AC Input Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_AC_INPUT_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_BATTERY_PERCENTAGE,
+        name="Battery Percentage",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_BATTERY_PERCENTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CHARGING_CURRENT,
+        name="Charging Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_CHARGING_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SOLAR_VOLTAGE,
+        name="Solar Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_SOLAR_VOLTAGE),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SOLAR_CURRENT,
+        name="Solar Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_SOLAR_CURRENT),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SOLAR_POWER,
+        name="Solar Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_SOLAR_POWER),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CHARGING_POWER,
+        name="Charging Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: data.get(KEY_CHARGING_POWER),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_CHARGING_STATUS,
+        name="Charging Status",
+        device_class=None,
+        value_fn=lambda data: data.get(KEY_CHARGING_STATUS),
     ),
 )
 
