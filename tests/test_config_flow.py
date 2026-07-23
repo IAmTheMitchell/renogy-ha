@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import pytest
+import voluptuous as vol
+
 
 def _load_config_flow_module() -> Any:
     """Load config_flow with minimal Home Assistant stubs."""
@@ -497,3 +500,100 @@ def test_reconfigure_form_handles_missing_coordinator() -> None:
         _schema_default(form_result["data_schema"], const_module.CONF_DEVICE_TYPE)
         == const_module.DeviceType.DCC.value
     )
+
+
+def _schema_keys(data_schema: vol.Schema) -> set[str]:
+    """Return the set of field keys declared by a voluptuous schema."""
+    return {marker.schema for marker in data_schema.schema}
+
+
+def _options_entry(const_module: Any, device_type: str, options: Any = None) -> Any:
+    """Build a stub config entry for options-flow tests."""
+    return types.SimpleNamespace(
+        data={const_module.CONF_DEVICE_TYPE: device_type},
+        options=options or {},
+    )
+
+
+def test_options_flow_shows_all_three_knobs() -> None:
+    """The options form exposes poll interval, failure grace, reconnect interval."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    entry = _options_entry(const_module, const_module.DeviceType.CONTROLLER.value)
+    handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+
+    form = asyncio.run(handler.async_step_init(None))
+
+    assert form["type"] == "form"
+    assert _schema_keys(form["data_schema"]) >= {
+        const_module.CONF_SCAN_INTERVAL,
+        const_module.CONF_MAX_FAILURES,
+        const_module.CONF_UNAVAILABLE_RETRY_INTERVAL,
+    }
+
+
+def test_options_flow_shunt_shows_knobs_and_connection_mode() -> None:
+    """The shunt options form keeps connection mode and gains the three knobs."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    entry = _options_entry(const_module, const_module.DeviceType.SHUNT300.value)
+    handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+
+    form = asyncio.run(handler.async_step_init(None))
+
+    assert _schema_keys(form["data_schema"]) >= {
+        const_module.CONF_SHUNT_CONNECTION_MODE,
+        const_module.CONF_SCAN_INTERVAL,
+        const_module.CONF_MAX_FAILURES,
+        const_module.CONF_UNAVAILABLE_RETRY_INTERVAL,
+    }
+
+
+def test_options_flow_accepts_and_stores_valid_input() -> None:
+    """Valid options are stored in the entry options."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    entry = _options_entry(const_module, const_module.DeviceType.CONTROLLER.value)
+    handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+
+    user_input = {
+        const_module.CONF_SCAN_INTERVAL: 30,
+        const_module.CONF_MAX_FAILURES: 5,
+        const_module.CONF_UNAVAILABLE_RETRY_INTERVAL: 2,
+    }
+    result = asyncio.run(handler.async_step_init(user_input))
+
+    assert result["type"] == "create_entry"
+    assert result["data"] == user_input
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("CONF_SCAN_INTERVAL", 5),
+        ("CONF_MAX_FAILURES", 0),
+        ("CONF_UNAVAILABLE_RETRY_INTERVAL", 999),
+    ],
+)
+def test_options_flow_rejects_out_of_range(field: str, value: int) -> None:
+    """The options schema range-validates every knob."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    entry = _options_entry(const_module, const_module.DeviceType.CONTROLLER.value)
+    handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+    schema = asyncio.run(handler.async_step_init(None))["data_schema"]
+
+    key = getattr(const_module, field)
+    valid = {
+        const_module.CONF_SCAN_INTERVAL: 30,
+        const_module.CONF_MAX_FAILURES: 3,
+        const_module.CONF_UNAVAILABLE_RETRY_INTERVAL: 10,
+    }
+    valid[key] = value
+
+    with pytest.raises(vol.Invalid):
+        schema(valid)

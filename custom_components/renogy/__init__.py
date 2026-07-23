@@ -12,13 +12,17 @@ from homeassistant.helpers.device_registry import async_get as async_get_device_
 
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_MAX_FAILURES,
     CONF_NON_SHUNT_CONNECTION_MODE,
     CONF_SCAN_INTERVAL,
     CONF_SHUNT_CONNECTION_MODE,
+    CONF_UNAVAILABLE_RETRY_INTERVAL,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_MAX_FAILURES,
     DEFAULT_NON_SHUNT_CONNECTION_MODE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
+    DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
     DOMAIN,
     LOGGER,
     DeviceType,
@@ -45,8 +49,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     LOGGER.info("Setting up Renogy BLE integration with entry %s", entry.entry_id)
 
-    # Get configuration from entry
-    scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    # Get configuration from entry. Runtime knobs resolve options → data →
+    # default so that edits made in the options flow take effect on reload.
+    scan_interval = _resolve_setting(entry, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    max_failures = _resolve_setting(entry, CONF_MAX_FAILURES, DEFAULT_MAX_FAILURES)
+    unavailable_retry_interval = _resolve_setting(
+        entry, CONF_UNAVAILABLE_RETRY_INTERVAL, DEFAULT_UNAVAILABLE_RETRY_INTERVAL
+    )
     device_address = entry.data.get(CONF_ADDRESS)
     device_type = entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
     shunt_connection_mode = _get_shunt_connection_mode(entry)
@@ -75,6 +84,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device_type=device_type,
         shunt_connection_mode=shunt_connection_mode,
         non_shunt_connection_mode=non_shunt_connection_mode,
+        max_failures=max_failures,
+        unavailable_retry_interval=unavailable_retry_interval,
         device_data_callback=lambda device: _handle_device_update(hass, entry, device),
     )
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
@@ -105,6 +116,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.async_create_task(coordinator.async_request_refresh())
 
     return True
+
+
+def _resolve_setting(entry: ConfigEntry, key: str, default: object) -> object:
+    """Resolve a setting from options, then data, then the given default."""
+    return entry.options.get(key, entry.data.get(key, default))
 
 
 def _get_shunt_connection_mode(entry: ConfigEntry) -> str:

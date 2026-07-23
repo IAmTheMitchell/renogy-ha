@@ -183,6 +183,71 @@ def test_async_setup_entry_uses_configured_non_shunt_connection_mode() -> None:
     entry.add_update_listener.assert_called_once()
 
 
+def test_async_setup_entry_threads_grace_and_reconnect_options() -> None:
+    """Setup resolves the three knobs from options and passes them along."""
+    init_module, coordinator_class = _load_init_module()
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    hass.async_create_task = lambda coro: asyncio.get_running_loop().create_task(coro)
+
+    entry = MagicMock()
+    entry.entry_id = "entry-1"
+    entry.data = {
+        "address": "AA:BB:CC:DD:EE:FF",
+        init_module.CONF_DEVICE_TYPE: init_module.DeviceType.CONTROLLER.value,
+        init_module.CONF_SCAN_INTERVAL: 60,
+    }
+    entry.options = {
+        init_module.CONF_SCAN_INTERVAL: 45,
+        init_module.CONF_MAX_FAILURES: 5,
+        init_module.CONF_UNAVAILABLE_RETRY_INTERVAL: 2,
+    }
+    entry.add_update_listener = MagicMock(return_value=lambda: None)
+    entry.async_on_unload = MagicMock()
+
+    result = asyncio.run(init_module.async_setup_entry(hass, entry))
+
+    assert result is True
+    assert coordinator_class.last_init is not None
+    # Options override entry.data for the poll interval.
+    assert coordinator_class.last_init["scan_interval"] == 45
+    assert coordinator_class.last_init["max_failures"] == 5
+    assert coordinator_class.last_init["unavailable_retry_interval"] == 2
+
+
+def test_async_setup_entry_defaults_grace_and_reconnect_when_unset() -> None:
+    """Absent options fall back to entry.data then the documented defaults."""
+    init_module, coordinator_class = _load_init_module()
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    hass.async_create_task = lambda coro: asyncio.get_running_loop().create_task(coro)
+
+    entry = MagicMock()
+    entry.entry_id = "entry-1"
+    entry.data = {
+        "address": "AA:BB:CC:DD:EE:FF",
+        init_module.CONF_DEVICE_TYPE: init_module.DeviceType.CONTROLLER.value,
+        init_module.CONF_SCAN_INTERVAL: 60,
+    }
+    entry.options = {}
+    entry.add_update_listener = MagicMock(return_value=lambda: None)
+    entry.async_on_unload = MagicMock()
+
+    result = asyncio.run(init_module.async_setup_entry(hass, entry))
+
+    assert result is True
+    assert coordinator_class.last_init["scan_interval"] == 60
+    assert (
+        coordinator_class.last_init["max_failures"] == init_module.DEFAULT_MAX_FAILURES
+    )
+    assert (
+        coordinator_class.last_init["unavailable_retry_interval"]
+        == init_module.DEFAULT_UNAVAILABLE_RETRY_INTERVAL
+    )
+
+
 def test_reload_listener_reloads_entry() -> None:
     """Ensure option updates trigger a config-entry reload."""
     init_module, _ = _load_init_module()
