@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import sys
 import types
 from pathlib import Path
@@ -166,6 +167,41 @@ def test_bluetooth_discovery_uses_fallback_name_for_nameless_device() -> None:
     )
     assert flow.context["title_placeholders"] == {
         "name": config_flow_module.UNKNOWN_DEVICE_NAME,
+        "address": "AA:BB:CC:DD:EE:FF",
+    }
+
+
+def test_manifest_registers_rngpro_bluetooth_discovery() -> None:
+    """The manifest should subscribe Home Assistant to RNGPRO advertisements."""
+    manifest_path = (
+        Path(__file__).resolve().parents[1]
+        / "custom_components"
+        / "renogy"
+        / "manifest.json"
+    )
+    manifest = json.loads(manifest_path.read_text())
+
+    assert {"local_name": "RNGPRO*"} in manifest["bluetooth"]
+
+
+def test_bluetooth_discovery_routes_rngpro_to_battery() -> None:
+    """RNGPRO bluetooth discovery should default to the battery device type."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow = config_flow_module.RenogyConfigFlow()
+    flow.context = {}
+    discovery_info = config_flow_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RNGPRO125BAT-EF036881",
+    )
+
+    form_result = asyncio.run(flow.async_step_bluetooth(discovery_info))
+
+    assert form_result["type"] == "form"
+    assert flow._discovered_device is discovery_info
+    assert flow._default_device_type == const_module.DeviceType.BATTERY.value
+    assert flow.context["title_placeholders"] == {
+        "name": "RNGPRO125BAT-EF036881",
         "address": "AA:BB:CC:DD:EE:FF",
     }
 
