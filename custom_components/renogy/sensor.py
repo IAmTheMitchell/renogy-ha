@@ -1193,23 +1193,18 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
     @property
     def available(self) -> bool:
         """Return if the sensor is available."""
-        # Basic coordinator availability check
-        if not self.coordinator.last_update_success:
-            return False
-
-        # Check device availability if we have a device
+        # The device's grace counter (max_failures) governs availability, so a
+        # single missed poll does not flip the entity to unavailable. We do NOT
+        # hard-fail on coordinator.last_update_success — that would defeat the
+        # grace and drop the last cached reading on the first transient dropout.
         if self._device and not self._device.is_available:
             return False
 
-        # For the actual data, check either the device's parsed_data or
-        # coordinator's data.
-        data_available = False
+        # Available as long as we have a cached reading to serve.
         if self._device and self._device.parsed_data:
-            data_available = True
-        elif self.coordinator.data:
-            data_available = True
+            return True
 
-        return data_available
+        return bool(self.coordinator.data)
 
     @property
     def native_value(self) -> Any:
