@@ -386,9 +386,9 @@ PV_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda data: (
-            None
-            if data.get(KEY_POWER_GENERATION_TOTAL) is None
-            else data.get(KEY_POWER_GENERATION_TOTAL) / 1000
+            value / 1000
+            if (value := data.get(KEY_POWER_GENERATION_TOTAL)) is not None
+            else None
         ),
     ),
 )
