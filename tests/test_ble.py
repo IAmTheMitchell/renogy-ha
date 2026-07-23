@@ -968,3 +968,58 @@ def test_shunt_poll_keeps_last_good_data_when_library_read_fails():
     call_args = coordinator.device.update_availability.call_args[0]
     assert call_args[0] is False
     assert "history-only payload" in str(call_args[1])
+
+
+def test_model_mismatch_warns_once_for_dcc_model_on_controller_entry():
+    """A DCC model on a controller entry should log a single warning."""
+    ble_module = _load_ble_module()
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=logger,
+        address="CC:45:A5:8A:8F:D4",
+        scan_interval=30,
+        device_type="controller",
+    )
+
+    coordinator.data = {"model": "RBC50D1S-G6", "battery_voltage": 13.3}
+    logger.warning.reset_mock()
+
+    coordinator._warn_if_model_mismatch()
+    coordinator._warn_if_model_mismatch()
+
+    logger.warning.assert_called_once()
+    warning_args = logger.warning.call_args[0]
+    assert "RBC50D1S-G6" in warning_args
+    assert "dcc" in warning_args
+
+
+def test_model_mismatch_silent_when_type_matches_or_model_unknown():
+    """Matching or unrecognized models should not produce warnings."""
+    ble_module = _load_ble_module()
+
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=logger,
+        address="CC:45:A5:8A:8F:D4",
+        scan_interval=30,
+        device_type="dcc",
+    )
+    coordinator.data = {"model": "RBC50D1S-G6"}
+    logger.warning.reset_mock()
+    coordinator._warn_if_model_mismatch()
+    logger.warning.assert_not_called()
+
+    logger = MagicMock()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=logger,
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    coordinator.data = {"model": "RNG-CTRL-RVR40"}
+    logger.warning.reset_mock()
+    coordinator._warn_if_model_mismatch()
+    logger.warning.assert_not_called()

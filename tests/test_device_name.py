@@ -120,3 +120,27 @@ def test_is_device_name_ready_by_device_type() -> None:
     assert not device_name_module.is_device_name_ready(
         "Unknown Renogy Device", const_module.DeviceType.SHUNT300.value
     )
+
+
+def test_detect_device_type_from_model_identifies_dcc_chargers() -> None:
+    """DC-DC charger model strings should map to the DCC device type."""
+    device_name_module = _load_device_name_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    for model in ("DCC50S", "DCC30S", "RBC20D1U", "RBC50D1S-G6", "rbc30d1s"):
+        assert (
+            device_name_module.detect_device_type_from_model(model)
+            == const_module.DeviceType.DCC.value
+        ), model
+
+
+def test_detect_device_type_from_model_ignores_other_models() -> None:
+    """Non-DCC or unusable model strings should not suggest a device type."""
+    device_name_module = _load_device_name_module()
+
+    assert device_name_module.detect_device_type_from_model("RNG-CTRL-RVR40") is None
+    assert device_name_module.detect_device_type_from_model("RBT100LFP12S") is None
+    assert device_name_module.detect_device_type_from_model("RBC1218S0") is None
+    assert device_name_module.detect_device_type_from_model("") is None
+    assert device_name_module.detect_device_type_from_model("   ") is None
+    assert device_name_module.detect_device_type_from_model(None) is None
