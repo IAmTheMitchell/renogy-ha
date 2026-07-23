@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## [0.8.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.7.1...v0.8.0) (2026-07-23)
+
+
+### Features
+
+* add model-based device type detection and reconfigure flow ([#173](https://github.com/IAmTheMitchell/renogy-ha/issues/173)) ([3e2f011](https://github.com/IAmTheMitchell/renogy-ha/commit/3e2f011715409da17ca9f48488dba4199c483d8b))
+* recognize RNGPRO-family battery advertisements ([#172](https://github.com/IAmTheMitchell/renogy-ha/issues/172)) ([e77f19e](https://github.com/IAmTheMitchell/renogy-ha/commit/e77f19e06796f4e3ad60bd8231e2c3bd3d5f4862))
+
 ## [0.7.1](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.7.0...v0.7.1) (2026-04-25)
 
 
