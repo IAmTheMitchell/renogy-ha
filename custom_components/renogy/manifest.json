@@ -15,6 +15,9 @@
       "local_name": "RNGC*"
     },
     {
+      "local_name": "RNGPRO*"
+    },
+    {
       "local_name": "RTMShunt300*"
     },
     {
@@ -32,7 +35,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/IAmTheMitchell/renogy-ha/issues",
   "requirements": [
-    "renogy-ble==2.3.1"
+    "renogy-ble==2.4.0"
   ],
   "version": "0.7.1"
 }

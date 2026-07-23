@@ -37,6 +37,7 @@ def test_supported_renogy_name_prefixes() -> None:
     assert device_name_module.is_supported_renogy_ble_name("RNGRIU123456")
     assert device_name_module.is_supported_renogy_ble_name("RNGRBP123456")
     assert device_name_module.is_supported_renogy_ble_name("RNGC123456")
+    assert device_name_module.is_supported_renogy_ble_name("RNGPRO125BAT-EF036881")
     assert device_name_module.is_supported_renogy_ble_name(
         None, manufacturer_data={0xE14C: b"\x01"}
     )
@@ -62,6 +63,10 @@ def test_detect_device_type_from_ble_name() -> None:
     )
     assert (
         device_name_module.detect_device_type_from_ble_name("RNGC123456")
+        == const_module.DeviceType.BATTERY.value
+    )
+    assert (
+        device_name_module.detect_device_type_from_ble_name("RNGPRO125BAT-EF036881")
         == const_module.DeviceType.BATTERY.value
     )
     assert (
@@ -102,6 +107,9 @@ def test_is_device_name_ready_by_device_type() -> None:
     )
     assert device_name_module.is_device_name_ready(
         "RNGRBP123456", const_module.DeviceType.BATTERY.value
+    )
+    assert device_name_module.is_device_name_ready(
+        "RNGPRO125BAT-EF036881", const_module.DeviceType.BATTERY.value
     )
     assert device_name_module.is_device_name_ready(
         "BT-TH-BATTERY01", const_module.DeviceType.BATTERY.value

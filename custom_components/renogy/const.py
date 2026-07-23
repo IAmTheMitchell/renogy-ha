@@ -15,7 +15,7 @@ MAX_SCAN_INTERVAL = 600  # seconds
 # Renogy BT-1 and BT-2 module identifiers - devices advertise with these prefixes
 RENOGY_BT_PREFIX = "BT-TH-"
 RENOGY_INVERTER_PREFIX = "RNGRIU"
-RENOGY_BATTERY_PRO_PREFIXES = ("RNGRBP", "RNGC")
+RENOGY_BATTERY_PRO_PREFIXES = ("RNGRBP", "RNGC", "RNGPRO")
 
 # Configuration parameters
 CONF_SCAN_INTERVAL = "scan_interval"
