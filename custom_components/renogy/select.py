@@ -160,7 +160,18 @@ class RenogyBatteryTypeSelect(SelectEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.coordinator.last_update_success
+        # The device's grace counter (max_failures) governs availability, so a
+        # single missed poll does not flip the entity to unavailable. We do NOT
+        # hard-fail on coordinator.last_update_success — that would defeat the
+        # grace and drop the last cached reading on the first transient dropout.
+        if self._device and not self._device.is_available:
+            return False
+
+        # Available as long as we have a cached reading to serve.
+        if self._device and self._device.parsed_data:
+            return True
+
+        return bool(self.coordinator.data)
 
     @property
     def current_option(self) -> str | None:
@@ -299,7 +310,18 @@ class RenogyMaxCurrentSelect(SelectEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.coordinator.last_update_success
+        # The device's grace counter (max_failures) governs availability, so a
+        # single missed poll does not flip the entity to unavailable. We do NOT
+        # hard-fail on coordinator.last_update_success — that would defeat the
+        # grace and drop the last cached reading on the first transient dropout.
+        if self._device and not self._device.is_available:
+            return False
+
+        # Available as long as we have a cached reading to serve.
+        if self._device and self._device.parsed_data:
+            return True
+
+        return bool(self.coordinator.data)
 
     @property
     def current_option(self) -> str | None:
