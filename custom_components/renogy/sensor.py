@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from homeassistant.components.bluetooth.passive_update_coordinator import (
     PassiveBluetoothCoordinatorEntity,
@@ -1058,6 +1058,9 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
 
     entity_description: RenogyBLESensorDescription
     coordinator: RenogyActiveBluetoothCoordinator
+    # Compose the friendly name from the device name so UI device renames
+    # cascade to every entity (HA modern naming model).
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -1089,7 +1092,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
         # Device-dependent properties
         if device:
             self._attr_unique_id = f"{device.address}_{description.key}"
-            self._attr_name = f"{device.name} {description.name}"
+            self._attr_name = cast("str | None", description.name)
 
             # Properly set up device_info for the device registry
             self._attr_device_info = DeviceInfo(
@@ -1104,7 +1107,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
         else:
             # If we don't have a device yet, use coordinator address for unique ID
             self._attr_unique_id = f"{coordinator.address}_{description.key}"
-            self._attr_name = f"Renogy {description.name}"
+            self._attr_name = cast("str | None", description.name)
 
             # Set up basic device info based on coordinator
             self._attr_device_info = DeviceInfo(
@@ -1174,7 +1177,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
                 f"{self._device.address}_{self.entity_description.key}"
             )
             # Also update our name
-            self._attr_name = f"{self._device.name} {self.entity_description.name}"
+            self._attr_name = cast("str | None", self.entity_description.name)
 
             # And device_info
             self._attr_device_info = DeviceInfo(
@@ -1304,7 +1307,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
             self._attr_unique_id = (
                 f"{self._device.address}_{self.entity_description.key}"
             )
-            self._attr_name = f"{self._device.name} {self.entity_description.name}"
+            self._attr_name = cast("str | None", self.entity_description.name)
 
         self._last_updated = datetime.now()
 
