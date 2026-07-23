@@ -32,9 +32,11 @@ from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
 
 from .const import (
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_MAX_FAILURES,
     DEFAULT_NON_SHUNT_CONNECTION_MODE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
+    DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
     DeviceType,
     NonShuntConnectionMode,
     ShuntConnectionMode,
@@ -106,6 +108,8 @@ class RenogyActiveBluetoothCoordinator(
         device_type: str = DEFAULT_DEVICE_TYPE,
         shunt_connection_mode: str = DEFAULT_SHUNT_CONNECTION_MODE,
         non_shunt_connection_mode: str = DEFAULT_NON_SHUNT_CONNECTION_MODE,
+        max_failures: int = DEFAULT_MAX_FAILURES,
+        unavailable_retry_interval: int = DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
         device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
         | None = None,
     ):
@@ -123,6 +127,8 @@ class RenogyActiveBluetoothCoordinator(
         self.scan_interval = scan_interval
         self.shunt_connection_mode = shunt_connection_mode
         self.non_shunt_connection_mode = non_shunt_connection_mode
+        self.max_failures = max_failures
+        self.unavailable_retry_interval = unavailable_retry_interval
         self.device_type = device_type
         self.last_poll_time: datetime | None = None
         self.device_data_callback = device_data_callback
@@ -433,6 +439,8 @@ class RenogyActiveBluetoothCoordinator(
                 service_info.advertisement.rssi,
                 device_type=detected_type,
                 manufacturer_data=manufacturer_data,
+                max_failures=self.max_failures,
+                unavailable_retry_interval=self.unavailable_retry_interval,
             )
         else:
             old_name = self.device.name

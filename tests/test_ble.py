@@ -134,6 +134,8 @@ def _install_module_stubs() -> None:
             advertisement_rssi,
             device_type=None,
             manufacturer_data=None,
+            max_failures=3,
+            unavailable_retry_interval=10,
         ):
             self.ble_device = ble_device
             self.address = ble_device.address
@@ -141,6 +143,8 @@ def _install_module_stubs() -> None:
             self.rssi = advertisement_rssi
             self.device_type = device_type
             self.manufacturer_data = manufacturer_data or {}
+            self.max_failures = max_failures
+            self.unavailable_retry_interval = unavailable_retry_interval
             self.parsed_data = {}
             self.update_availability = MagicMock()
 
@@ -267,6 +271,30 @@ def test_update_device_detects_battery_from_manufacturer_data_only():
     assert coordinator.device_type == "battery"
     assert device.device_type == "battery"
     assert device.manufacturer_data == {0xE14C: b"\x01"}
+
+
+def test_update_device_applies_configured_grace_and_reconnect_interval():
+    """The coordinator constructs the device with its grace/reconnect settings."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        max_failures=5,
+        unavailable_retry_interval=2,
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-123456",
+        rssi=-60,
+    )
+
+    device = coordinator._update_device_from_service_info(service_info)
+
+    assert device.max_failures == 5
+    assert device.unavailable_retry_interval == 2
 
 
 def test_update_device_preserves_cached_manufacturer_data() -> None:

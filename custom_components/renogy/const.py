@@ -12,6 +12,18 @@ DEFAULT_SCAN_INTERVAL = 60  # seconds
 MIN_SCAN_INTERVAL = 10  # seconds
 MAX_SCAN_INTERVAL = 600  # seconds
 
+# Availability grace: consecutive failed polls tolerated before the device is
+# marked unavailable. Default matches RenogyBLEDevice.max_failures.
+DEFAULT_MAX_FAILURES = 3
+MIN_MAX_FAILURES = 1
+MAX_MAX_FAILURES = 10
+
+# Reconnect cooldown (minutes) before retrying a fully-unavailable device.
+# Default matches renogy_ble's UNAVAILABLE_RETRY_INTERVAL.
+DEFAULT_UNAVAILABLE_RETRY_INTERVAL = 10  # minutes
+MIN_UNAVAILABLE_RETRY_INTERVAL = 1  # minutes
+MAX_UNAVAILABLE_RETRY_INTERVAL = 60  # minutes
+
 # Renogy BT-1 and BT-2 module identifiers - devices advertise with these prefixes
 RENOGY_BT_PREFIX = "BT-TH-"
 RENOGY_INVERTER_PREFIX = "RNGRIU"
@@ -19,6 +31,8 @@ RENOGY_BATTERY_PRO_PREFIXES = ("RNGRBP", "RNGC", "RNGPRO")
 
 # Configuration parameters
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_MAX_FAILURES = "max_failures"
+CONF_UNAVAILABLE_RETRY_INTERVAL = "unavailable_retry_interval"
 CONF_DEVICE_TYPE = "device_type"  # New constant for device type
 CONF_SHUNT_CONNECTION_MODE = "shunt_connection_mode"
 CONF_NON_SHUNT_CONNECTION_MODE = "non_shunt_connection_mode"

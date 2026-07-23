@@ -19,17 +19,25 @@ from homeassistant.const import CONF_ADDRESS, CONF_SCAN_INTERVAL
 
 from .const import (
     CONF_DEVICE_TYPE,
+    CONF_MAX_FAILURES,
     CONF_NON_SHUNT_CONNECTION_MODE,
     CONF_SHUNT_CONNECTION_MODE,
+    CONF_UNAVAILABLE_RETRY_INTERVAL,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_MAX_FAILURES,
     DEFAULT_NON_SHUNT_CONNECTION_MODE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
+    DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
     DEVICE_TYPES,
     DOMAIN,
     LOGGER,
+    MAX_MAX_FAILURES,
     MAX_SCAN_INTERVAL,
+    MAX_UNAVAILABLE_RETRY_INTERVAL,
+    MIN_MAX_FAILURES,
     MIN_SCAN_INTERVAL,
+    MIN_UNAVAILABLE_RETRY_INTERVAL,
     NON_SHUNT_CONNECTION_MODES,
     SHUNT_CONNECTION_MODES,
     SUPPORTED_DEVICE_TYPES,
@@ -78,26 +86,78 @@ def _detect_device_type_for_discovery(discovery_info: BluetoothServiceInfoBleak)
     )
 
 
-def _build_shunt_options_schema(default_mode: str) -> vol.Schema:
+def _resolve_option(config_entry: ConfigEntry, key: str, default: Any) -> Any:
+    """Resolve a setting from options, then data, then the given default."""
+    return config_entry.options.get(key, config_entry.data.get(key, default))
+
+
+def _runtime_options_schema_dict(config_entry: ConfigEntry) -> dict[Any, Any]:
+    """Build the shared runtime knobs (poll interval, grace, reconnect interval).
+
+    Each field is pre-filled from options → data → default and range-validated.
+    """
+    return {
+        vol.Optional(
+            CONF_SCAN_INTERVAL,
+            default=_resolve_option(
+                config_entry, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+            ),
+        ): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+        ),
+        vol.Optional(
+            CONF_MAX_FAILURES,
+            default=_resolve_option(
+                config_entry, CONF_MAX_FAILURES, DEFAULT_MAX_FAILURES
+            ),
+        ): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=MIN_MAX_FAILURES, max=MAX_MAX_FAILURES),
+        ),
+        vol.Optional(
+            CONF_UNAVAILABLE_RETRY_INTERVAL,
+            default=_resolve_option(
+                config_entry,
+                CONF_UNAVAILABLE_RETRY_INTERVAL,
+                DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
+            ),
+        ): vol.All(
+            vol.Coerce(int),
+            vol.Range(
+                min=MIN_UNAVAILABLE_RETRY_INTERVAL,
+                max=MAX_UNAVAILABLE_RETRY_INTERVAL,
+            ),
+        ),
+    }
+
+
+def _build_shunt_options_schema(
+    config_entry: ConfigEntry, default_mode: str
+) -> vol.Schema:
     """Build the Smart Shunt options schema."""
     return vol.Schema(
         {
             vol.Required(
                 CONF_SHUNT_CONNECTION_MODE,
                 default=default_mode,
-            ): vol.In(SHUNT_CONNECTION_MODES)
+            ): vol.In(SHUNT_CONNECTION_MODES),
+            **_runtime_options_schema_dict(config_entry),
         }
     )
 
 
-def _build_non_shunt_options_schema(default_mode: str) -> vol.Schema:
+def _build_non_shunt_options_schema(
+    config_entry: ConfigEntry, default_mode: str
+) -> vol.Schema:
     """Build the non-shunt connection mode schema."""
     return vol.Schema(
         {
             vol.Required(
                 CONF_NON_SHUNT_CONNECTION_MODE,
                 default=default_mode,
-            ): vol.In(NON_SHUNT_CONNECTION_MODES)
+            ): vol.In(NON_SHUNT_CONNECTION_MODES),
+            **_runtime_options_schema_dict(config_entry),
         }
     )
 
@@ -373,7 +433,9 @@ class RenogyOptionsFlowHandler(OptionsFlow):
             )
             return self.async_show_form(
                 step_id="init",
-                data_schema=_build_shunt_options_schema(current_mode),
+                data_schema=_build_shunt_options_schema(
+                    self._config_entry, current_mode
+                ),
             )
 
         if user_input is not None:
@@ -385,5 +447,7 @@ class RenogyOptionsFlowHandler(OptionsFlow):
         )
         return self.async_show_form(
             step_id="init",
-            data_schema=_build_non_shunt_options_schema(current_mode),
+            data_schema=_build_non_shunt_options_schema(
+                self._config_entry, current_mode
+            ),
         )
