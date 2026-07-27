@@ -350,6 +350,63 @@ def test_shunt_energy_sensors_use_total_increasing_state_class() -> None:
         )
 
 
+def test_measurement_sensors_declare_display_precision() -> None:
+    """Ensure every sensor with a unit suggests a display precision.
+
+    Without a suggestion Home Assistant falls back to the device class default
+    in UNITS_PRECISION, which is 0 decimals for a voltage reported in volts, so
+    13.7 V is displayed as 14.
+    """
+    sensor_module = _load_sensor_module()
+
+    groups = [
+        name
+        for name in dir(sensor_module)
+        if name.endswith("_SENSORS") and isinstance(getattr(sensor_module, name), tuple)
+    ]
+    assert groups, "No sensor description groups found"
+
+    missing = [
+        f"{group}:{description.key}"
+        for group in groups
+        for description in getattr(sensor_module, group)
+        if description.native_unit_of_measurement is not None
+        and description.suggested_display_precision is None
+    ]
+
+    assert not missing, f"Sensors without a suggested display precision: {missing}"
+
+
+def test_measured_voltage_sensors_are_not_rounded_to_integers() -> None:
+    """Measured voltages must keep at least one decimal.
+
+    Renogy devices report voltages in 0.1 V steps at coarsest, so displaying
+    them as whole volts loses real resolution. Home Assistant's default for the
+    voltage device class in volts is 0 decimals, which is why each of these has
+    to say so explicitly.
+    """
+    sensor_module = _load_sensor_module()
+
+    # system_voltage is a nominal rating (12/24 V), not a measurement.
+    nominal_keys = {"system_voltage"}
+
+    voltage_precisions = {
+        description.key: description.suggested_display_precision
+        for group in dir(sensor_module)
+        if group.endswith("_SENSORS")
+        and isinstance(getattr(sensor_module, group), tuple)
+        for description in getattr(sensor_module, group)
+        if description.device_class == sensor_module.SensorDeviceClass.VOLTAGE
+        and description.key not in nominal_keys
+    }
+
+    assert voltage_precisions, "No measured voltage sensors found"
+    for key, precision in voltage_precisions.items():
+        assert precision is not None and precision >= 1, (
+            f"{key} would be displayed as a whole number of volts"
+        )
+
+
 def test_shunt_status_sensor_exposes_troubleshooting_attributes() -> None:
     """Ensure SHUNT300 entities expose extra troubleshooting metadata."""
     sensor_module = _load_sensor_module()
