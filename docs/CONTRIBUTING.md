@@ -4,8 +4,8 @@ Thanks for contributing.
 
 Start here:
 
-- Read [`AGENTS.md`](AGENTS.md) for repository-specific guardrails.
-- Read [`README.md`](README.md) for integration capabilities, prerequisites, and user-facing behavior.
+- Read [`AGENTS.md`](../AGENTS.md) for repository-specific guardrails.
+- Read [`README.md`](../README.md) for integration capabilities, prerequisites, and user-facing behavior.
 
 ## Scope and Boundaries
 
