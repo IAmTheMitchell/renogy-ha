@@ -54,7 +54,7 @@ Keep in mind:
 - Update frequency follows the configured polling interval.
 - Sensor values may feel less immediate than in `sustained` mode.
 
-## Controllers, DCC Chargers, and Inverters
+## Batteries, Controllers, DCC Chargers, and Inverters
 
 Non-shunt devices do not use the Smart Shunt `sustained` listener. They expose:
 
@@ -88,6 +88,7 @@ Keep in mind:
 - For Smart Shunt 300 devices, start with `sustained`.
 - Switch a Smart Shunt to `intermittent` if you see repeated disconnects or poor
   Bluetooth stability.
-- For controllers, DCC chargers, and inverters, start with `intermittent`.
+- For batteries, controllers, DCC chargers, and inverters, start with
+  `intermittent`.
 - Try `persistent_session` on non-shunt devices only if repeated reconnects are
   causing trouble and you want to test a longer-lived BLE session.

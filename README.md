@@ -97,7 +97,7 @@ The integration is configurable through the Home Assistant UI after installation
   - Lower values provide more frequent updates but may impact battery life
 - **Connection Mode**: Starting in `0.6.0`, devices expose connection mode options in the config entry options flow
   - Smart Shunt 300 devices support `sustained` and `intermittent`
-  - Controllers, DCC chargers, and inverters support `intermittent` and `persistent_session`
+  - Batteries, controllers, DCC chargers, and inverters support `intermittent` and `persistent_session`
   - See [docs/connection-modes.md](docs/connection-modes.md) for behavior and recommendations
 
 ## Sensors
