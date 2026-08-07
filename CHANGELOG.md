@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.8.1](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.8.0...v0.8.1) (2026-08-07)
+
+
+### Documentation
+
+* refresh supported devices and setup guidance ([#190](https://github.com/IAmTheMitchell/renogy-ha/issues/190)) ([baa44a4](https://github.com/IAmTheMitchell/renogy-ha/commit/baa44a4c38a2cc6aea5ac005b3253e8900dd3697))
+
 ## [0.8.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.7.1...v0.8.0) (2026-07-23)
 
 
