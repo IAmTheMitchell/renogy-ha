@@ -5,31 +5,39 @@
 ![HACS](https://github.com/IAmTheMitchell/renogy-ha/actions/workflows/validate.yml/badge.svg)
 ![Release](https://github.com/IAmTheMitchell/renogy-ha/actions/workflows/release.yml/badge.svg)
 
-This custom Home Assistant integration provides monitoring capabilities for
-Renogy devices over Bluetooth Low Energy (BLE). Charge controllers and DCC
-chargers use BT-1 or BT-2 modules; Renogy inverters advertise directly over BLE
-as `RNGRIU*`; Smart Shunt 300 devices advertise directly over BLE as
-`RTMShunt300*`.
+This custom Home Assistant integration provides monitoring and control
+capabilities for Renogy devices over Bluetooth Low Energy (BLE). Charge
+controllers and DCC chargers use BT-1 or BT-2 modules. Supported batteries,
+inverters, and Smart Shunt 300 devices advertise directly over BLE.
 
 > **Disclaimer:** This integration is experimental software. Use caution when controlling electrical loads, and ensure any connected equipment is properly rated and protected.
 
-## Currently Supported Devices
+## Supported Devices
 
-Tested:
+Supported device families:
 
-- Renogy Rover
-- Renogy Wanderer
-- Renogy DC-DC Charger
-- Renogy Smart Shunt 300
+- Renogy charge controllers using BT-1 or BT-2, including Rover and Wanderer
+- Renogy DC-DC chargers using BT-1 or BT-2, including DCC and RBC model families
+- Renogy batteries using the legacy, Battery Pro, or RNGPRO protocol:
+  - Legacy `BT-TH-*` names containing `BATT` or `BATTERY`
+  - Battery Pro names beginning with `RNGRBP` or `RNGC`
+  - RNGPRO-family names beginning with `RNGPRO`
+  - Battery Pro advertisements containing manufacturer ID `0xE14C`
 - Renogy inverters advertising `RNGRIU*`
+- Renogy Smart Shunt 300 devices advertising `RTMShunt300*`
 
-Should work, but untested:
+Expected to work, but not yet confirmed:
 
 - Renogy Adventurer
+
+Support is protocol-family based, so behavior can vary by model and firmware.
+When reporting a problem, include the exact model, Bluetooth name, integration
+debug logs, and a comparison with the Renogy app.
 
 ## Features
 
 - Automatic discovery of Renogy BLE devices
+- Automatic discovery of supported Renogy battery advertisements
 - Automatic discovery of Renogy inverter devices advertising `RNGRIU*`
 - Automatic discovery of Smart Shunt 300 devices advertising `RTMShunt300*`
 - Monitor battery status (voltage, current, temperature, charge state)
@@ -38,15 +46,16 @@ Should work, but untested:
 - Monitor inverter AC output, frequency, load power, temperature, and diagnostic metadata
 - Monitor Smart Shunt voltage, current, power, state of charge, and derived energy
 - Turn the DC load output on/off (supported controllers only)
+- Configure supported DCC charging parameters, battery type, and maximum current
 - Monitor controller information
-- All data exposed as Home Assistant sensors
+- Telemetry exposed as Home Assistant sensors
 - Energy dashboard compatible sensors
 - Configurable polling interval
 - Automatic error recovery
 
 ## Prerequisites
 
-- Home Assistant instance (version 2025.3 or newer)
+- Home Assistant instance (version 2026.3 or newer)
 - A compatible Bluetooth adapter on your Home Assistant host device
 - Bluetooth discovery enabled in Home Assistant
 
@@ -56,6 +65,7 @@ _Includes Amazon affiliate links which provide a small commission to support thi
 
 - Compatible Renogy device (see above)
   - Charge controllers and DCC chargers require a [BT-1](https://amzn.to/4pq4csm) or [BT-2](https://amzn.to/4iTNSO8) Bluetooth module.
+  - Supported Renogy batteries use their built-in BLE radio.
   - Renogy inverters advertise directly over BLE as `RNGRIU*`.
   - Smart Shunt 300 devices use their built-in BLE radio and do not require a BT-1 or BT-2 dongle.
   - Make sure to purchase the correct module for your device. Different devices use different ports.
@@ -87,20 +97,32 @@ The integration is configurable through the Home Assistant UI after installation
   - Lower values provide more frequent updates but may impact battery life
 - **Connection Mode**: Starting in `0.6.0`, devices expose connection mode options in the config entry options flow
   - Smart Shunt 300 devices support `sustained` and `intermittent`
-  - Controllers, DCC chargers, and inverters support `intermittent` and `persistent_session`
+  - Batteries, controllers, DCC chargers, and inverters support `intermittent` and `persistent_session`
   - See [docs/connection-modes.md](docs/connection-modes.md) for behavior and recommendations
 
 ## Sensors
 
 The integration provides the following sensor groups:
 
-### Battery Sensors
+### Controller and DCC Battery Sensors
 
 - Voltage
 - Current
 - Temperature
 - State of Charge
 - Charging Status
+
+### Renogy Battery Sensors
+
+- Voltage
+- Current
+- Power
+- Temperature
+- State of Charge
+- Remaining and rated capacity
+- Cycle count
+- Cell count and voltage diagnostics, when reported
+- Protection status, when the protocol exposes it
 
 ### Solar Panel (PV) Sensors
 
@@ -136,6 +158,16 @@ Some Renogy charge controllers expose a controllable DC load output. This integr
 
 > **Caution:** This feature is experimental. Write commands may be interpreted differently by devices or firmware versions, which could cause unexpected load behavior. Use appropriate fusing and wiring, and verify behavior in a safe test setup before relying on it.
 
+### DCC Configuration
+
+Supported DC-DC chargers also expose configuration entities for battery type,
+maximum charging current, charging voltages, protection thresholds, charge
+timing, temperature compensation, and solar cutoff current.
+
+> **Caution:** DCC configuration writes change charger behavior. Confirm that
+> every value is appropriate for the connected battery and electrical system
+> before applying it.
+
 ### Controller Info
 
 - Temperature
@@ -170,11 +202,13 @@ It can be extremely helpful to enable debug logging when troubleshooting issues.
 
 1. Verify the device is supported by this integration
 2. For controllers or DCC chargers, confirm a BT-1 or BT-2 module is installed
-3. For inverter devices, confirm the BLE name starts with `RNGRIU`
-4. For Smart Shunt 300 devices, confirm the BLE name starts with `RTMShunt300`
-5. Check that Bluetooth is enabled on your Home Assistant host
-6. Ensure the device is within range (typically 10m/33ft)
-7. Restart the Bluetooth adapter
+3. For batteries, confirm the advertisement matches one of the documented
+   battery names or manufacturer IDs
+4. For inverter devices, confirm the BLE name starts with `RNGRIU`
+5. For Smart Shunt 300 devices, confirm the BLE name starts with `RTMShunt300`
+6. Check that Bluetooth is enabled on your Home Assistant host
+7. Ensure the device is within range (typically 10m/33ft)
+8. Restart the Bluetooth adapter
 
 ### Connection Issues
 

@@ -1,5 +1,11 @@
 # Renogy BLE Integration Specification for Home Assistant
 
+> [!NOTE]
+> This is a historical implementation specification retained for project
+> context. It does not describe every currently supported device or entity. See
+> the repository [`README.md`](../../README.md) and
+> [`AGENTS.md`](../../AGENTS.md) instead.
+
 ## Overview
 
 This document outlines the detailed requirements, architecture, data handling,

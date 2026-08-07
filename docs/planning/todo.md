@@ -1,5 +1,10 @@
 # Renogy Rover BLE Integration Todo Checklist
 
+> [!NOTE]
+> This completed checklist is retained as a historical planning artifact. It is
+> not current setup or contribution guidance. See the repository
+> [`README.md`](../../README.md) and [`AGENTS.md`](../../AGENTS.md) instead.
+
 This checklist outlines all the steps needed to implement the Renogy Rover BLE integration for Home Assistant. Follow each item carefully and check them off as you complete each task.
 
 ---

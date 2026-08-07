@@ -1,5 +1,10 @@
 # Prompt 1: Project Setup & Repository Structure
 
+> [!NOTE]
+> This is a historical implementation plan retained for project context. It is
+> not current user or developer documentation. See the repository
+> [`README.md`](../../README.md) and [`AGENTS.md`](../../AGENTS.md) instead.
+
 We are building a Home Assistant integration for Renogy Rover BLE devices. The integration will be distributed via HACS. Start by setting up the project repository with the following structure:
 
     custom_components/
