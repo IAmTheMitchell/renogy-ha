@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## [0.9.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.8.0...v0.9.0) (2026-08-07)
+
+
+### Features
+
+* declare display precision for sensors ([#189](https://github.com/IAmTheMitchell/renogy-ha/issues/189)) ([3ac4cf3](https://github.com/IAmTheMitchell/renogy-ha/commit/3ac4cf335d713194ad1082b5d85f45263b85a0d9))
+
+
+### Bug Fixes
+
+* write DCC solar cutoff current in centiamps ([#188](https://github.com/IAmTheMitchell/renogy-ha/issues/188)) ([6414c4e](https://github.com/IAmTheMitchell/renogy-ha/commit/6414c4edf686f159782f4a19eea6a90975325909))
+
+
+### Documentation
+
+* refresh supported devices and setup guidance ([#190](https://github.com/IAmTheMitchell/renogy-ha/issues/190)) ([baa44a4](https://github.com/IAmTheMitchell/renogy-ha/commit/baa44a4c38a2cc6aea5ac005b3253e8900dd3697))
+
 ## [0.8.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.7.1...v0.8.0) (2026-07-23)
 
 
