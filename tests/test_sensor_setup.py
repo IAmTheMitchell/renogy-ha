@@ -403,20 +403,20 @@ def test_measured_voltage_sensors_are_not_rounded_to_integers() -> None:
     # system_voltage is a nominal rating (12/24 V), not a measurement.
     nominal_keys = {"system_voltage"}
 
-    voltage_precisions = {
-        description.key: description.suggested_display_precision
+    voltage_precisions = [
+        (group, description.key, description.suggested_display_precision)
         for group in dir(sensor_module)
         if group.endswith("_SENSORS")
         and isinstance(getattr(sensor_module, group), tuple)
         for description in getattr(sensor_module, group)
         if description.device_class == sensor_module.SensorDeviceClass.VOLTAGE
         and description.key not in nominal_keys
-    }
+    ]
 
     assert voltage_precisions, "No measured voltage sensors found"
-    for key, precision in voltage_precisions.items():
+    for group, key, precision in voltage_precisions:
         assert precision is not None and precision >= 1, (
-            f"{key} would be displayed as a whole number of volts"
+            f"{group}:{key} would be displayed as a whole number of volts"
         )
 
 
