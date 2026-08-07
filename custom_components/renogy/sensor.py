@@ -900,7 +900,7 @@ RENOGY_BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
+        suggested_display_precision=3,
         value_fn=lambda data: data.get(KEY_BATTERY_POWER),
     ),
     RenogyBLESensorDescription(
@@ -926,7 +926,7 @@ RENOGY_BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="Remaining Capacity",
         native_unit_of_measurement="Ah",
         state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
+        suggested_display_precision=3,
         value_fn=lambda data: data.get(KEY_BATTERY_REMAINING_CAPACITY),
     ),
     RenogyBLESensorDescription(
@@ -934,7 +934,7 @@ RENOGY_BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="Nominal Capacity",
         native_unit_of_measurement="Ah",
         state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
+        suggested_display_precision=3,
         value_fn=lambda data: data.get(KEY_BATTERY_CAPACITY),
     ),
     RenogyBLESensorDescription(

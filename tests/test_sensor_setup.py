@@ -377,6 +377,19 @@ def test_measurement_sensors_declare_display_precision() -> None:
     assert not missing, f"Sensors without a suggested display precision: {missing}"
 
 
+def test_smart_battery_sensors_preserve_three_decimal_values() -> None:
+    """Ensure smart-battery display precision preserves parser resolution."""
+    sensor_module = _load_sensor_module()
+
+    descriptions = {
+        description.key: description
+        for description in sensor_module.RENOGY_BATTERY_SENSORS
+    }
+
+    for key in ("battery_power", "battery_remaining_capacity", "battery_capacity"):
+        assert descriptions[key].suggested_display_precision == 3
+
+
 def test_measured_voltage_sensors_are_not_rounded_to_integers() -> None:
     """Measured voltages must keep at least one decimal.
 
