@@ -284,7 +284,7 @@ DCC_OTHER_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
         register=DCCRegister.SOLAR_CUTOFF_CURRENT,
-        scale=1.0,
+        scale=100.0,  # 7.0A -> 700 centiamps
         value_fn=lambda data: data.get("solar_cutoff_current"),
     ),
 )
