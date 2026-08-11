@@ -46,3 +46,32 @@ jobs:
 
       - name: Type check with ty
         run: uv run ty check . --output-format=github
+
+  test-minimum-homeassistant:
+    runs-on: ubuntu-latest
+    environment: test
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Resolve the minimum supported Home Assistant
+        run: uv lock --upgrade-package homeassistant --resolution lowest-direct
+
+      - name: Install the project
+        run: uv sync --all-extras --dev --locked --resolution lowest-direct
+
+      - name: Verify the Home Assistant version
+        run: >-
+          uv run python -c "from importlib.metadata import version;
+          assert version('homeassistant') == '2026.3.0'"
+
+      - name: Run tests
+        run: uv run pytest tests
