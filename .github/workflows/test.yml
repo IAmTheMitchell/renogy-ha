@@ -70,8 +70,9 @@ jobs:
 
       - name: Verify the Home Assistant version
         run: >-
-          uv run python -c "from importlib.metadata import version;
+          uv run --locked --resolution lowest-direct python -c
+          "from importlib.metadata import version;
           assert version('homeassistant') == '2026.3.0'"
 
       - name: Run tests
-        run: uv run pytest tests
+        run: uv run --locked --resolution lowest-direct pytest tests
