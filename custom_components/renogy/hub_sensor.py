@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.bluetooth.passive_update_coordinator import (
     PassiveBluetoothCoordinatorEntity,
@@ -111,7 +111,7 @@ class RenogyHubBatterySensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         logical_id = hub_battery_identifier(coordinator.address, slave_id)
 
         self._attr_has_entity_name = True
-        self._attr_name = description.name
+        self._attr_name = cast(str | None, description.name)
         self._attr_unique_id = f"{logical_id}_{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, logical_id)},
@@ -123,7 +123,8 @@ class RenogyHubBatterySensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
     @property
     def _battery(self) -> RenogyHubBatteryState | None:
         """Return the latest cached state for this slave ID."""
-        for battery in self.coordinator.hub_batteries:
+        coordinator = cast(Any, self.coordinator)
+        for battery in coordinator.hub_batteries:
             if battery.slave_id == self._slave_id:
                 return battery
         return None
@@ -132,8 +133,9 @@ class RenogyHubBatterySensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
     def available(self) -> bool:
         """Return whether the parent poll and this logical battery are available."""
         battery = self._battery
+        coordinator = cast(Any, self.coordinator)
         return bool(
-            self.coordinator.last_update_success
+            coordinator.last_update_success
             and battery is not None
             and battery.available
         )
