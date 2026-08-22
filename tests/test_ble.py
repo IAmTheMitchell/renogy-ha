@@ -119,9 +119,10 @@ def _install_module_stubs() -> None:
     class RenogyBleClient:
         """Stub RenogyBleClient for testing."""
 
-        def __init__(self, scanner, transport_mode="per_operation"):
+        def __init__(self, scanner, transport_mode="per_operation", device_id=0xFF):
             self.scanner = scanner
             self.transport_mode = transport_mode
+            self.device_id = device_id
             self.close = AsyncMock()
 
         async def read_device(self, device):
@@ -159,6 +160,7 @@ def _install_module_stubs() -> None:
             self.error = error
 
     renogy_ble_ble_module.RenogyBleClient = RenogyBleClient
+    renogy_ble_ble_module.INVERTER_DEVICE_ID = 0x20
     renogy_ble_ble_module.RenogyBLEDevice = RenogyBLEDevice
     renogy_ble_ble_module.RenogyBleReadResult = RenogyBleReadResult
     renogy_ble_ble_module.clean_device_name = clean_device_name
@@ -463,6 +465,20 @@ def test_non_shunt_device_defaults_to_intermittent_client():
 
     assert coordinator._ble_client.__class__.__name__ == "RenogyBleClient"
     assert coordinator._ble_client.transport_mode == "per_operation"
+
+
+def test_inverter_client_uses_inverter_modbus_device_id() -> None:
+    """Inverter writes should use the same device ID as inverter reads."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="inverter",
+    )
+
+    assert coordinator._ble_client.device_id == 0x20
 
 
 def test_non_shunt_persistent_mode_uses_library_persistent_transport():

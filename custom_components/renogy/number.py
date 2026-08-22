@@ -26,10 +26,12 @@ from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
+    CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
     DEFAULT_DEVICE_TYPE,
     DOMAIN,
     LOGGER,
+    RENOGY_REGO_INVERTER_PREFIX,
     DCCRegister,
     DeviceType,
     InverterRegister,
@@ -296,9 +298,9 @@ INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         name="Charge Current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=NumberDeviceClass.CURRENT,
-        native_min_value=1.0,
+        native_min_value=5.0,
         native_max_value=150.0,
-        native_step=1.0,
+        native_step=5.0,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
         register=InverterRegister.CHARGE_CURRENT,
@@ -352,7 +354,9 @@ async def async_setup_entry(
     # Select the number descriptions for this device type
     if device_type == DeviceType.DCC.value:
         descriptions = DCC_ALL_NUMBERS
-    elif device_type == DeviceType.INVERTER.value:
+    elif device_type == DeviceType.INVERTER.value and str(
+        config_entry.data.get(CONF_DEVICE_NAME, "")
+    ).startswith(RENOGY_REGO_INVERTER_PREFIX):
         descriptions = INVERTER_ALL_NUMBERS
     else:
         LOGGER.debug("No number entities for device type: %s", device_type)

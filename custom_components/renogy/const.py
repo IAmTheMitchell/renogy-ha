@@ -21,6 +21,7 @@ RENOGY_BATTERY_PRO_PREFIXES = ("RNGRBP", "RNGC", "RNGPRO")
 # Configuration parameters
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_DEVICE_TYPE = "device_type"  # New constant for device type
+CONF_DEVICE_NAME = "device_name"
 CONF_SHUNT_CONNECTION_MODE = "shunt_connection_mode"
 CONF_NON_SHUNT_CONNECTION_MODE = "non_shunt_connection_mode"
 CONF_COMMUNICATION_HUB_ENABLED = "communication_hub_enabled"

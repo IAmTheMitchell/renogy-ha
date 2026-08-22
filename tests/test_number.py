@@ -305,7 +305,11 @@ def test_inverter_numbers_cover_registers() -> None:
     acil = by_key["inverter_ac_input_current_limit"]
     assert (acil.native_min_value, acil.native_max_value) == (1.0, 50.0)
     cc = by_key["inverter_charge_current"]
-    assert (cc.native_min_value, cc.native_max_value) == (1.0, 150.0)
+    assert (cc.native_min_value, cc.native_max_value, cc.native_step) == (
+        5.0,
+        150.0,
+        5.0,
+    )
 
 
 def test_inverter_number_setup_creates_entities_for_inverter_device() -> None:
@@ -320,7 +324,10 @@ def test_inverter_number_setup_creates_entities_for_inverter_device() -> None:
 
     config_entry = MagicMock()
     config_entry.entry_id = "entry-1"
-    config_entry.data = {number.CONF_DEVICE_TYPE: number.DeviceType.INVERTER.value}
+    config_entry.data = {
+        number.CONF_DEVICE_TYPE: number.DeviceType.INVERTER.value,
+        number.CONF_DEVICE_NAME: "BTRIC130000029",
+    }
 
     async_add_entities = MagicMock()
 
@@ -332,3 +339,24 @@ def test_inverter_number_setup_creates_entities_for_inverter_device() -> None:
     assert {e.entity_description.key for e in created_entities} == {
         d.key for d in number.INVERTER_ALL_NUMBERS
     }
+
+
+def test_inverter_number_setup_skips_non_rego_inverters() -> None:
+    """REGO setpoints should not be exposed on incompatible inverter profiles."""
+    number = _load_number_module()
+
+    coordinator = MagicMock()
+    coordinator.device = None
+    hass = MagicMock()
+    hass.data = {number.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {
+        number.CONF_DEVICE_TYPE: number.DeviceType.INVERTER.value,
+        number.CONF_DEVICE_NAME: "RNGRIU123456",
+    }
+    async_add_entities = MagicMock()
+
+    asyncio.run(number.async_setup_entry(hass, config_entry, async_add_entities))
+
+    async_add_entities.assert_not_called()

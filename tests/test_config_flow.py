@@ -254,6 +254,7 @@ def test_bluetooth_entry_uses_fallback_title_for_nameless_device() -> None:
             const_module.CONF_DEVICE_TYPE: const_module.DeviceType.BATTERY.value,
             const_module.CONF_SCAN_INTERVAL: const_module.DEFAULT_SCAN_INTERVAL,
             "address": "AA:BB:CC:DD:EE:FF",
+            const_module.CONF_DEVICE_NAME: config_flow_module.UNKNOWN_DEVICE_NAME,
         },
     }
 
@@ -288,6 +289,7 @@ def test_manual_entry_detects_battery_when_default_type_is_unchanged() -> None:
             "address": "AA:BB:CC:DD:EE:FF",
             const_module.CONF_DEVICE_TYPE: const_module.DeviceType.BATTERY.value,
             const_module.CONF_SCAN_INTERVAL: const_module.DEFAULT_SCAN_INTERVAL,
+            const_module.CONF_DEVICE_NAME: config_flow_module.UNKNOWN_DEVICE_NAME,
         },
     }
 
@@ -322,6 +324,7 @@ def test_manual_entry_keeps_explicit_device_type_override() -> None:
             "address": "AA:BB:CC:DD:EE:FF",
             const_module.CONF_DEVICE_TYPE: const_module.DeviceType.DCC.value,
             const_module.CONF_SCAN_INTERVAL: const_module.DEFAULT_SCAN_INTERVAL,
+            const_module.CONF_DEVICE_NAME: config_flow_module.UNKNOWN_DEVICE_NAME,
         },
     }
 

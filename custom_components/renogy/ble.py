@@ -28,7 +28,12 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from renogy_ble import ble as renogy_ble_module
-from renogy_ble.ble import RenogyBleClient, RenogyBLEDevice, clean_device_name
+from renogy_ble.ble import (
+    INVERTER_DEVICE_ID,
+    RenogyBleClient,
+    RenogyBLEDevice,
+    clean_device_name,
+)
 
 from .const import (
     DEFAULT_DEVICE_TYPE,
@@ -179,6 +184,8 @@ class RenogyActiveBluetoothCoordinator(
     def _build_generic_ble_client(self, scanner: Any) -> RenogyBleClient:
         """Build the generic library client for the active device mode."""
         client_kwargs: dict[str, Any] = {"scanner": scanner}
+        if self.device_type == DeviceType.INVERTER.value:
+            client_kwargs["device_id"] = INVERTER_DEVICE_ID
         if self._uses_persistent_non_shunt_session():
             client_kwargs["transport_mode"] = (
                 NonShuntConnectionMode.PERSISTENT_SESSION.value

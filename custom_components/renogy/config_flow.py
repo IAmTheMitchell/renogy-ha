@@ -19,6 +19,7 @@ from homeassistant.const import CONF_ADDRESS, CONF_SCAN_INTERVAL
 
 from .const import (
     CONF_COMMUNICATION_HUB_ENABLED,
+    CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
     CONF_NON_SHUNT_CONNECTION_MODE,
     CONF_SHUNT_CONNECTION_MODE,
@@ -193,6 +194,9 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
             if self._discovered_device:
                 # Coming from bluetooth discovery with device already selected
                 user_input[CONF_ADDRESS] = self._discovered_device.address
+                user_input[CONF_DEVICE_NAME] = _display_name_for_discovery(
+                    self._discovered_device
+                )
 
                 # Create a config entry
                 return self.async_create_entry(
@@ -209,6 +213,10 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                 # when discovery data identifies a non-controller device.
                 if user_input.get(CONF_DEVICE_TYPE) == DEFAULT_DEVICE_TYPE:
                     user_input[CONF_DEVICE_TYPE] = detected_type
+
+                user_input[CONF_DEVICE_NAME] = _display_name_for_discovery(
+                    discovery_info
+                )
 
                 await self.async_set_unique_id(address, raise_on_progress=False)
                 self._abort_if_unique_id_configured()
