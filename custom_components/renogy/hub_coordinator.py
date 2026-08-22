@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -9,6 +10,7 @@ from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .hub import RenogyHubBatteryManager, RenogyHubBatteryState
 
 HubManagerFactory = Callable[[Any], RenogyHubBatteryManager]
+HUB_REDISCOVERY_INTERVAL_SECONDS = 60 * 60
 
 
 class RenogyHubBluetoothCoordinator(RenogyActiveBluetoothCoordinator):
@@ -24,7 +26,7 @@ class RenogyHubBluetoothCoordinator(RenogyActiveBluetoothCoordinator):
         """Initialize the coordinator and optional Communication Hub manager."""
         super().__init__(*args, **kwargs)
         self.communication_hub_enabled = communication_hub_enabled
-        self._hub_discovery_complete = False
+        self._last_hub_discovery: float | None = None
         self._hub_battery_manager: RenogyHubBatteryManager | None = None
 
         if communication_hub_enabled:
@@ -59,27 +61,38 @@ class RenogyHubBluetoothCoordinator(RenogyActiveBluetoothCoordinator):
             return False
 
         if rediscover is None:
-            rediscover = not self._hub_discovery_complete
-
-        try:
-            updated = await manager.async_update(device, rediscover=rediscover)
-        except Exception as err:  # noqa: BLE001
-            self._hub_discovery_complete = True
-            self.logger.warning(
-                "Communication Hub battery read failed for %s: %s",
-                device.address,
-                err,
+            now = time.monotonic()
+            rediscover = (
+                self._last_hub_discovery is None
+                or now - self._last_hub_discovery >= HUB_REDISCOVERY_INTERVAL_SECONDS
             )
-            return False
 
-        self._hub_discovery_complete = True
-        if not updated and manager.last_error is not None:
-            self.logger.debug(
-                "Communication Hub battery read returned no update for %s: %s",
-                device.address,
-                manager.last_error,
-            )
-        return updated
+        # The parent read releases the base coordinator lock before reaching this
+        # extension. Reacquire it so Hub reads cannot overlap refreshes or writes.
+        async with self._connection_lock:
+            self._connection_in_progress = True
+            try:
+                if rediscover:
+                    self._last_hub_discovery = time.monotonic()
+                updated = await manager.async_update(device, rediscover=rediscover)
+            except Exception as err:  # noqa: BLE001
+                manager.mark_unavailable(err)
+                self.logger.warning(
+                    "Communication Hub battery read failed for %s: %s",
+                    device.address,
+                    err,
+                )
+                return False
+            finally:
+                self._connection_in_progress = False
+
+            if not updated and manager.last_error is not None:
+                self.logger.debug(
+                    "Communication Hub battery read returned no update for %s: %s",
+                    device.address,
+                    manager.last_error,
+                )
+            return updated
 
     async def async_rediscover_hub_batteries(self) -> bool:
         """Explicitly rescan the bounded Hub slave range for battery changes."""

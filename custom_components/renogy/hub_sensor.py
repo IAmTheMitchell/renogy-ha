@@ -134,8 +134,10 @@ class RenogyHubBatterySensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         """Return whether the parent poll and this logical battery are available."""
         battery = self._battery
         coordinator = cast(Any, self.coordinator)
+        parent_device = coordinator.device
         return bool(
-            coordinator.last_update_success
+            parent_device is not None
+            and parent_device.is_available
             and battery is not None
             and battery.available
         )

@@ -203,6 +203,28 @@ def test_hub_manager_handles_non_numeric_optional_values() -> None:
     assert battery.battery_percentage == 84.8
 
 
+def test_hub_manager_marks_all_cached_batteries_unavailable() -> None:
+    """A raised Hub transaction should invalidate every cached child battery."""
+    manager, _hub = _manager(
+        [
+            _FakeResult(
+                True,
+                [
+                    _battery(0x30, battery_voltage=49.8),
+                    _battery(0x31, battery_voltage=49.7),
+                ],
+            )
+        ]
+    )
+    asyncio.run(manager.async_update(object()))
+    error = TimeoutError("Hub connection failed")
+
+    manager.mark_unavailable(error)
+
+    assert manager.last_error is error
+    assert all(not battery.available for battery in manager.batteries)
+
+
 def test_hub_battery_identifier_is_stable_and_slave_specific() -> None:
     """Logical battery identifiers should be unique beneath one BLE address."""
     address = "F0:F8:F2:57:47:0D"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import sys
+import time
 import types
 from pathlib import Path
 from typing import Any, cast
@@ -38,6 +39,8 @@ def _load_hub_coordinator_module() -> Any:
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             self._ble_client = object()
+            self._connection_lock = asyncio.Lock()
+            self._connection_in_progress = False
             self.device = RenogyBLEDevice(kwargs.get("address", "AA:BB:CC:DD:EE:FF"))
             self.logger = MagicMock()
             self.last_update_success = True
@@ -85,6 +88,12 @@ class _FakeHubManager:
         self.batteries = batteries
         self.last_error: Exception | None = None
         self.calls: list[bool] = []
+        self.unavailable_errors: list[Exception] = []
+
+    def mark_unavailable(self, error: Exception) -> None:
+        """Record invalidation of cached Hub battery state."""
+        self.last_error = error
+        self.unavailable_errors.append(error)
 
     async def async_update(self, _device: Any, *, rediscover: bool = False) -> bool:
         self.calls.append(rediscover)
@@ -158,6 +167,7 @@ def test_hub_failure_does_not_mark_primary_device_unavailable() -> None:
 
     assert coordinator.last_update_success is True
     assert manager.calls == [True]
+    assert manager.unavailable_errors == [manager._error]
     coordinator.logger.warning.assert_called_once()
 
 
@@ -174,3 +184,40 @@ def test_hub_coordinator_supports_explicit_rediscovery() -> None:
     asyncio.run(_run())
 
     assert manager.calls == [True, True]
+
+
+def test_hub_coordinator_periodically_rediscovers_batteries() -> None:
+    """A later poll should rescan for batteries missed during initial discovery."""
+    module = _load_hub_coordinator_module()
+    manager = _FakeHubManager(results=[True, True, True])
+    coordinator = _coordinator(module, manager)
+
+    async def _run() -> None:
+        assert await coordinator._read_device_data(object()) is True
+        assert await coordinator._read_device_data(object()) is True
+        coordinator._last_hub_discovery = (
+            time.monotonic() - module.HUB_REDISCOVERY_INTERVAL_SECONDS
+        )
+        assert await coordinator._read_device_data(object()) is True
+
+    asyncio.run(_run())
+
+    assert manager.calls == [True, False, True]
+
+
+def test_hub_transaction_holds_coordinator_connection_guard() -> None:
+    """Hub I/O should remain serialized with parent refreshes and writes."""
+    module = _load_hub_coordinator_module()
+
+    class GuardCheckingManager(_FakeHubManager):
+        async def async_update(self, _device: Any, *, rediscover: bool = False) -> bool:
+            assert coordinator._connection_lock.locked()
+            assert coordinator._connection_in_progress is True
+            return await super().async_update(_device, rediscover=rediscover)
+
+    manager = GuardCheckingManager()
+    coordinator = _coordinator(module, manager)
+
+    assert asyncio.run(coordinator._read_device_data(object())) is True
+    assert coordinator._connection_lock.locked() is False
+    assert coordinator._connection_in_progress is False

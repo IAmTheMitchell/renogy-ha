@@ -67,6 +67,12 @@ class RenogyHubBatteryManager:
         """Return cached state for one Hub battery."""
         return self._batteries.get(slave_id)
 
+    def mark_unavailable(self, error: Exception) -> None:
+        """Retain cached telemetry while marking every Hub battery unavailable."""
+        self.last_error = error
+        for slave_id, state in tuple(self._batteries.items()):
+            self._batteries[slave_id] = replace(state, available=False)
+
     async def async_update(self, device: Any, *, rediscover: bool = False) -> bool:
         """Read Hub batteries and refresh the validated logical-device cache."""
         result = await self._hub.read_batteries(device, rediscover=rediscover)

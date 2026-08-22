@@ -7,6 +7,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -26,6 +27,7 @@ class _Coordinator:
         self.address = "F0:F8:F2:57:47:0D"
         self.communication_hub_enabled = True
         self.last_update_success = True
+        self.device = SimpleNamespace(is_available=True)
         self.hub_batteries: tuple[_BatteryState, ...] = ()
         self.listeners: list[Any] = []
 
@@ -315,6 +317,9 @@ def test_hub_battery_sensor_tracks_logical_battery_availability() -> None:
     assert entity.native_value == 50.5
 
     coordinator.last_update_success = False
+    assert entity.available is True
+
+    coordinator.device.is_available = False
     assert entity.available is False
 
 
