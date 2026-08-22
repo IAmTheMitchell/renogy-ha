@@ -264,6 +264,9 @@ class RenogyActiveBluetoothCoordinator(
                 self.address,
             )
             self.last_update_success = False
+            if self.device is not None:
+                self.device.update_availability(False, None)
+            self.async_update_listeners()
             return
         if service_info is None:
             self.logger.debug(
@@ -274,7 +277,6 @@ class RenogyActiveBluetoothCoordinator(
 
         try:
             await self._async_poll_device(service_info)
-            self.async_update_listeners()
         except Exception as err:
             self.last_update_success = False
             error_traceback = traceback.format_exc()
@@ -286,6 +288,8 @@ class RenogyActiveBluetoothCoordinator(
             )
             if self.device:
                 self.device.update_availability(False, err)
+
+        self.async_update_listeners()
 
     def async_add_listener(
         self, update_callback: Callable[[], None], context: Any = None
@@ -1088,6 +1092,8 @@ class RenogyActiveBluetoothCoordinator(
         """Handle the device going unavailable."""
         self.logger.info("Device %s is no longer available", service_info.address)
         self.last_update_success = False
+        if self.device is not None:
+            self.device.update_availability(False, None)
         self.async_update_listeners()
 
     @callback

@@ -7,6 +7,8 @@ from enum import Enum
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 
 def _install_module_stubs() -> None:
     """Install minimal module stubs to import the BLE coordinator."""
@@ -195,6 +197,138 @@ def _load_ble_module():
     import importlib
 
     return importlib.import_module("custom_components.renogy.ble")
+
+
+class _GraceDevice:
+    """Device fake with the same consecutive-failure grace contract."""
+
+    def __init__(self, max_failures: int = 3) -> None:
+        self.failure_count = 0
+        self.max_failures = max_failures
+        self.available = True
+        self.parsed_data = {"battery_voltage": 12.6}
+
+    @property
+    def is_available(self) -> bool:
+        """Return whether the failure grace remains."""
+        return self.available and self.failure_count < self.max_failures
+
+    def update_availability(self, success: bool, _error=None) -> None:
+        """Update consecutive failures like RenogyBLEDevice."""
+        if success:
+            self.failure_count = 0
+            self.available = True
+            return
+
+        self.failure_count += 1
+        if self.failure_count >= self.max_failures:
+            self.available = False
+
+
+def test_refresh_without_service_info_exhausts_device_grace() -> None:
+    """Repeated refresh failures must eventually mark cached entities unavailable."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    device = _GraceDevice()
+    coordinator.device = device
+    coordinator.data = dict(device.parsed_data)
+    coordinator._service_info_for_operation = MagicMock(return_value=None)
+    coordinator._can_use_cached_device_without_service_info = MagicMock(
+        return_value=False
+    )
+    listener = MagicMock()
+    coordinator.async_add_listener(listener)
+
+    for _ in range(2):
+        asyncio.run(coordinator.async_request_refresh())
+        assert device.is_available is True
+
+    asyncio.run(coordinator.async_request_refresh())
+
+    assert device.is_available is False
+    assert coordinator.last_update_success is False
+    assert listener.call_count == 3
+
+
+def test_unavailable_event_updates_device_grace() -> None:
+    """A Bluetooth unavailable event must count toward device failure grace."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    device = _GraceDevice()
+    coordinator.device = device
+    listener = MagicMock()
+    coordinator.async_add_listener(listener)
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+
+    coordinator._async_handle_unavailable(service_info)
+
+    assert device.failure_count == 1
+    assert coordinator.last_update_success is False
+    listener.assert_called_once_with()
+
+
+def test_refresh_exception_notifies_after_updating_device_grace() -> None:
+    """An unexpected polling error must publish its availability transition."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    device = _GraceDevice(max_failures=1)
+    coordinator.device = device
+    coordinator._service_info_for_operation = MagicMock(return_value=MagicMock())
+    coordinator._async_poll_device = AsyncMock(side_effect=RuntimeError("poll failed"))
+    listener = MagicMock()
+    coordinator.async_add_listener(listener)
+
+    asyncio.run(coordinator.async_request_refresh())
+
+    assert device.is_available is False
+    assert coordinator.last_update_success is False
+    listener.assert_called_once_with()
+
+
+def test_listener_exception_does_not_update_device_grace() -> None:
+    """A listener bug after a successful poll is not a BLE communication failure."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+    )
+    device = _GraceDevice(max_failures=1)
+    coordinator.device = device
+    coordinator._service_info_for_operation = MagicMock(return_value=MagicMock())
+    coordinator._async_poll_device = AsyncMock(return_value={"battery_voltage": 12.6})
+    coordinator.async_add_listener(MagicMock(side_effect=RuntimeError("listener")))
+
+    with pytest.raises(RuntimeError, match="listener"):
+        asyncio.run(coordinator.async_request_refresh())
+
+    assert device.failure_count == 0
+    assert device.is_available is True
+    assert coordinator.last_update_success is True
 
 
 def test_read_device_data_handles_ble_errors():

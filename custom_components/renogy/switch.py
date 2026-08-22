@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
@@ -154,16 +155,7 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
     @property
     def available(self) -> bool:
         """Return if the switch is available."""
-        if not self.coordinator.last_update_success:
-            return False
-
-        if self._device and not self._device.is_available:
-            return False
-
-        if self._device and self._device.parsed_data:
-            return True
-
-        return bool(self.coordinator.data)
+        return is_entity_available(self.coordinator, self._device)
 
     @property
     def is_on(self) -> bool | None:

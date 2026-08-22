@@ -30,6 +30,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
+from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
@@ -1119,23 +1120,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
     @property
     def available(self) -> bool:
         """Return if the sensor is available."""
-        # Basic coordinator availability check
-        if not self.coordinator.last_update_success:
-            return False
-
-        # Check device availability if we have a device
-        if self._device and not self._device.is_available:
-            return False
-
-        # For the actual data, check either the device's parsed_data or
-        # coordinator's data.
-        data_available = False
-        if self._device and self._device.parsed_data:
-            data_available = True
-        elif self.coordinator.data:
-            data_available = True
-
-        return data_available
+        return is_entity_available(self.coordinator, self._device)
 
     @property
     def native_value(self) -> Any:
