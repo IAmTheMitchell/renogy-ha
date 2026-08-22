@@ -34,7 +34,10 @@
         "data": {
           "shunt_connection_mode": "Smart Shunt connection mode",
           "non_shunt_connection_mode": "Non-shunt connection mode",
-          "communication_hub_enabled": "Communication Hub / multiple batteries"
+          "communication_hub_enabled": "Communication Hub / multiple batteries",
+          "scan_interval": "Polling interval (seconds)",
+          "max_failures": "Failed polls before unavailable",
+          "unavailable_retry_interval": "Reconnect interval while unavailable (minutes)"
         }
       }
     }

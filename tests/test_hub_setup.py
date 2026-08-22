@@ -104,6 +104,11 @@ def test_communication_hub_option_enables_hub_coordinator() -> None:
     assert result is True
     assert hub_class.last_init is not None
     assert hub_class.last_init["communication_hub_enabled"] is True
+    assert hub_class.last_init["max_failures"] == module.DEFAULT_MAX_FAILURES
+    assert (
+        hub_class.last_init["unavailable_retry_interval"]
+        == module.DEFAULT_UNAVAILABLE_RETRY_INTERVAL
+    )
     assert base_class.last_init is None
     assert isinstance(
         hass.data[module.DOMAIN][entry.entry_id]["coordinator"],

@@ -136,6 +136,8 @@ def _install_module_stubs() -> None:
             advertisement_rssi,
             device_type=None,
             manufacturer_data=None,
+            max_failures=3,
+            unavailable_retry_interval=10,
         ):
             self.ble_device = ble_device
             self.address = ble_device.address
@@ -143,8 +145,24 @@ def _install_module_stubs() -> None:
             self.rssi = advertisement_rssi
             self.device_type = device_type
             self.manufacturer_data = manufacturer_data or {}
+            self.max_failures = max_failures
+            self.unavailable_retry_interval = unavailable_retry_interval
             self.parsed_data = {}
-            self.update_availability = MagicMock()
+            self.failure_count = 0
+            self.is_available = True
+            self.should_retry_connection = True
+
+            def _update_availability(success, _error=None):
+                if success:
+                    self.failure_count = 0
+                    self.is_available = True
+                    return
+
+                self.failure_count += 1
+                if self.failure_count >= self.max_failures:
+                    self.is_available = False
+
+            self.update_availability = MagicMock(side_effect=_update_availability)
 
     def clean_device_name(name: str) -> str:
         """Return a cleaned device name for testing."""
@@ -358,10 +376,40 @@ def test_read_device_data_handles_ble_errors():
 
     assert success is False
     assert coordinator.last_update_success is False
+    assert coordinator.device.is_available is True
     coordinator.device.update_availability.assert_called_once()
     call_args = coordinator.device.update_availability.call_args[0]
     assert call_args[0] is False
     assert "read failed" in str(call_args[1])
+
+
+def test_read_failures_respect_configured_availability_grace():
+    """Entities stay available until the configured failure threshold is reached."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        max_failures=2,
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._ble_client.read_device = AsyncMock(
+        side_effect=ble_module.BleakError("read failed")
+    )
+
+    assert asyncio.run(coordinator._read_device_data(service_info)) is False
+    assert coordinator.last_update_success is False
+    assert coordinator.device.is_available is True
+
+    assert asyncio.run(coordinator._read_device_data(service_info)) is False
+    assert coordinator.last_update_success is False
+    assert coordinator.device.is_available is False
 
 
 def test_sustained_shunt_device_defaults_to_generic_client():
@@ -401,6 +449,56 @@ def test_update_device_detects_battery_from_manufacturer_data_only():
     assert coordinator.device_type == "battery"
     assert device.device_type == "battery"
     assert device.manufacturer_data == {0xE14C: b"\x01"}
+
+
+def test_update_device_applies_configured_grace_and_reconnect_interval():
+    """The coordinator constructs the device with its grace/reconnect settings."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        max_failures=5,
+        unavailable_retry_interval=2,
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-123456",
+        rssi=-60,
+    )
+
+    device = coordinator._update_device_from_service_info(service_info)
+
+    assert device.max_failures == 5
+    assert device.unavailable_retry_interval == 2
+
+
+def test_poll_skips_connection_during_unavailable_retry_cooldown():
+    """An unavailable intermittent device should not reconnect before cooldown."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        unavailable_retry_interval=2,
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-123456",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    coordinator.device.should_retry_connection = False
+    coordinator._ble_client.read_device = AsyncMock()
+
+    result = asyncio.run(coordinator._async_poll_device(service_info))
+
+    assert result == {}
+    coordinator._ble_client.read_device.assert_not_awaited()
 
 
 def test_update_device_preserves_cached_manufacturer_data() -> None:
@@ -569,6 +667,62 @@ def test_refresh_without_service_info_still_fails_without_cached_device():
     logger.error.assert_called_once()
 
 
+def test_missing_service_info_respects_configured_availability_grace():
+    """Advertisement loss should count toward the same configured threshold."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        max_failures=2,
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    ble_module.bluetooth.async_last_service_info.return_value = None
+    listener = MagicMock()
+    coordinator.async_add_listener(listener)
+
+    asyncio.run(coordinator.async_request_refresh())
+    assert coordinator.last_update_success is False
+    assert coordinator.device.is_available is True
+
+    asyncio.run(coordinator.async_request_refresh())
+    assert coordinator.last_update_success is False
+    assert listener.call_count == 2
+
+
+def test_bluetooth_unavailable_event_respects_configured_grace():
+    """Bluetooth unavailable events should honor the failure threshold."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        max_failures=2,
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+
+    coordinator._async_handle_unavailable(service_info)
+    assert coordinator.last_update_success is False
+    assert coordinator.device.is_available is True
+
+    coordinator._async_handle_unavailable(service_info)
+    assert coordinator.last_update_success is False
+
+
 def test_read_device_data_uses_cached_device_without_service_info():
     """Ensure reads can reuse the cached BLE device for persistent sessions."""
     ble_module = _load_ble_module()
@@ -730,8 +884,14 @@ def test_sustained_shunt_notification_recovers_from_duplicate_payload_after_erro
         scan_interval=30,
         device_type="shunt300",
         shunt_connection_mode="sustained",
+        max_failures=1,
     )
-    coordinator.device = MagicMock(parsed_data={})
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RTMShunt300A1B2",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
     listener = MagicMock()
     coordinator.async_add_listener(listener)
 
@@ -748,10 +908,12 @@ def test_sustained_shunt_notification_recovers_from_duplicate_payload_after_erro
 
     with patch.object(ble_module.time, "monotonic", side_effect=[100.0, 110.0]):
         coordinator._process_sustained_shunt_notification(b"first")
-        coordinator.last_update_success = False
+        coordinator._record_poll_availability(False, RuntimeError("disconnected"))
+        assert coordinator.device.failure_count == 1
         coordinator._process_sustained_shunt_notification(b"second")
 
     assert coordinator.last_update_success is True
+    assert coordinator.device.failure_count == 0
     assert listener.call_count == 2
     assert coordinator.device.update_availability.call_args_list[-1][0] == (True, None)
 
@@ -865,6 +1027,7 @@ def test_sustained_shunt_listener_error_notifies_entities():
         scan_interval=30,
         device_type="shunt300",
         shunt_connection_mode="sustained",
+        max_failures=1,
     )
     listener = MagicMock()
     coordinator.async_add_listener(listener)
@@ -896,6 +1059,40 @@ def test_sustained_shunt_listener_error_notifies_entities():
     )
     assert listener.call_count == 1
     assert client.disconnect.await_count == 1
+
+
+def test_sustained_shunt_respects_unavailable_retry_cooldown():
+    """A sustained shunt should not reconnect before its cooldown expires."""
+    ble_module = _load_ble_module()
+    hass = MagicMock()
+    hass.state = ble_module.CoreState.running
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=hass,
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="shunt300",
+        shunt_connection_mode="sustained",
+        unavailable_retry_interval=2,
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RTMShunt300A1B2",
+        rssi=-60,
+    )
+    ble_module.bluetooth.async_last_service_info.return_value = service_info
+    coordinator._update_device_from_service_info(service_info)
+    coordinator.device.should_retry_connection = False
+    ble_module.establish_connection = AsyncMock()
+    original_sleep = ble_module.asyncio.sleep
+    ble_module.asyncio.sleep = AsyncMock(side_effect=asyncio.CancelledError())
+
+    try:
+        asyncio.run(coordinator._shunt_notification_loop())
+    finally:
+        ble_module.asyncio.sleep = original_sleep
+
+    ble_module.establish_connection.assert_not_awaited()
 
 
 def test_sustained_shunt_listener_waits_for_started_scanner_and_fresh_advertisement():
@@ -1074,6 +1271,7 @@ def test_shunt_poll_keeps_last_good_data_when_library_read_fails():
         scan_interval=30,
         device_type="shunt300",
         shunt_connection_mode="intermittent",
+        max_failures=1,
     )
     cached_data = {"shunt_voltage": 13.2, "reading_verified": True}
     failed_read_data = {"shunt_voltage": 15.7, "reading_verified": False}

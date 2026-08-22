@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import pytest
+import voluptuous as vol
+
 
 def _load_config_flow_module() -> Any:
     """Load config_flow with minimal Home Assistant stubs."""
@@ -131,14 +134,19 @@ def _load_config_flow_module() -> Any:
             entry: Any,
             *,
             data_updates: dict[str, Any] | None = None,
+            options: dict[str, Any] | None = None,
         ) -> dict[str, Any]:
             """Apply data updates and abort like Home Assistant does."""
             entry.data = {**entry.data, **(data_updates or {})}
+            if options is not None:
+                entry.options = options
             self.last_data_updates = data_updates
+            self.last_options = options
             return {
                 "type": "abort",
                 "reason": "reconfigure_successful",
                 "data_updates": data_updates,
+                "options": options,
             }
 
     class OptionsFlow:
@@ -331,6 +339,7 @@ def _make_reconfigure_flow(
     const_module: Any,
     *,
     data: dict[str, Any],
+    options: dict[str, Any] | None = None,
     coordinator_model: str | None = None,
 ) -> tuple[Any, Any]:
     """Build a flow + entry pair prepared for reconfiguration."""
@@ -340,6 +349,7 @@ def _make_reconfigure_flow(
         entry_id="test-entry-id",
         title="BT-TH-A58A8FD4",
         data=data,
+        options=options or {},
     )
 
     flow = config_flow_module.RenogyConfigFlow()
@@ -388,6 +398,25 @@ def test_reconfigure_form_defaults_to_current_entry_values() -> None:
         == const_module.DeviceType.CONTROLLER.value
     )
     assert _schema_default(schema, "scan_interval") == 120
+
+
+def test_reconfigure_form_defaults_to_options_scan_interval() -> None:
+    """The form should show the active options-backed polling interval."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow, _entry = _make_reconfigure_flow(
+        config_flow_module,
+        const_module,
+        data={
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.CONTROLLER.value,
+            const_module.CONF_SCAN_INTERVAL: 60,
+        },
+        options={const_module.CONF_SCAN_INTERVAL: 45},
+    )
+
+    form_result = asyncio.run(flow.async_step_reconfigure())
+
+    assert _schema_default(form_result["data_schema"], "scan_interval") == 45
 
 
 def test_reconfigure_form_suggests_dcc_from_reported_model() -> None:
@@ -446,6 +475,42 @@ def test_reconfigure_updates_device_type_and_reloads() -> None:
         const_module.CONF_DEVICE_TYPE: const_module.DeviceType.DCC.value,
         "scan_interval": 60,
     }
+    assert entry.options == {"scan_interval": 60}
+
+
+def test_reconfigure_updates_scan_interval_already_saved_in_options() -> None:
+    """Reconfigure must not leave an older options value shadowing entry data."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow, entry = _make_reconfigure_flow(
+        config_flow_module,
+        const_module,
+        data={
+            "address": "CC:45:A5:8A:8F:D4",
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.CONTROLLER.value,
+            const_module.CONF_SCAN_INTERVAL: 60,
+        },
+        options={
+            const_module.CONF_SCAN_INTERVAL: 45,
+            const_module.CONF_MAX_FAILURES: 5,
+        },
+    )
+
+    result = asyncio.run(
+        flow.async_step_reconfigure(
+            {
+                const_module.CONF_DEVICE_TYPE: const_module.DeviceType.CONTROLLER.value,
+                const_module.CONF_SCAN_INTERVAL: 120,
+            }
+        )
+    )
+
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[const_module.CONF_SCAN_INTERVAL] == 120
+    assert entry.options == {
+        const_module.CONF_SCAN_INTERVAL: 120,
+        const_module.CONF_MAX_FAILURES: 5,
+    }
 
 
 def test_reconfigure_rejects_unsupported_device_type() -> None:
@@ -497,3 +562,117 @@ def test_reconfigure_form_handles_missing_coordinator() -> None:
         _schema_default(form_result["data_schema"], const_module.CONF_DEVICE_TYPE)
         == const_module.DeviceType.DCC.value
     )
+
+
+def _schema_keys(data_schema: vol.Schema) -> set[str]:
+    """Return the set of field keys declared by a voluptuous schema."""
+    return {marker.schema for marker in data_schema.schema}
+
+
+def _options_entry(const_module: Any, device_type: str, options: Any = None) -> Any:
+    """Build a stub config entry for options-flow tests."""
+    return types.SimpleNamespace(
+        data={const_module.CONF_DEVICE_TYPE: device_type},
+        options=options or {},
+    )
+
+
+def test_options_flow_shows_all_three_knobs() -> None:
+    """The options form exposes poll interval, failure grace, reconnect interval."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    entry = _options_entry(const_module, const_module.DeviceType.CONTROLLER.value)
+    handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+
+    form = asyncio.run(handler.async_step_init(None))
+
+    assert form["type"] == "form"
+    assert _schema_keys(form["data_schema"]) >= {
+        const_module.CONF_SCAN_INTERVAL,
+        const_module.CONF_MAX_FAILURES,
+        const_module.CONF_UNAVAILABLE_RETRY_INTERVAL,
+    }
+
+
+def test_options_flow_shunt_shows_knobs_and_connection_mode() -> None:
+    """The shunt options form keeps connection mode and gains the three knobs."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    entry = _options_entry(const_module, const_module.DeviceType.SHUNT300.value)
+    handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+
+    form = asyncio.run(handler.async_step_init(None))
+
+    assert _schema_keys(form["data_schema"]) >= {
+        const_module.CONF_SHUNT_CONNECTION_MODE,
+        const_module.CONF_SCAN_INTERVAL,
+        const_module.CONF_MAX_FAILURES,
+        const_module.CONF_UNAVAILABLE_RETRY_INTERVAL,
+    }
+
+
+def test_options_flow_accepts_and_stores_valid_input() -> None:
+    """Valid options are stored in the entry options."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    entry = _options_entry(const_module, const_module.DeviceType.CONTROLLER.value)
+    handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+
+    user_input = {
+        const_module.CONF_SCAN_INTERVAL: 30,
+        const_module.CONF_MAX_FAILURES: 5,
+        const_module.CONF_UNAVAILABLE_RETRY_INTERVAL: 2,
+    }
+    result = asyncio.run(handler.async_step_init(user_input))
+
+    assert result["type"] == "create_entry"
+    assert result["data"] == user_input
+
+
+@pytest.mark.parametrize("filename", ["strings.json", "translations/en.json"])
+def test_runtime_options_have_user_facing_labels(filename: str) -> None:
+    """Every runtime option should have a canonical English label."""
+    integration_path = (
+        Path(__file__).resolve().parents[1] / "custom_components" / "renogy"
+    )
+    labels = json.loads((integration_path / filename).read_text())["options"]["step"][
+        "init"
+    ]["data"]
+
+    assert labels["scan_interval"] == "Polling interval (seconds)"
+    assert labels["max_failures"] == "Failed polls before unavailable"
+    assert labels["unavailable_retry_interval"] == (
+        "Reconnect interval while unavailable (minutes)"
+    )
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("CONF_SCAN_INTERVAL", 5),
+        ("CONF_MAX_FAILURES", 0),
+        ("CONF_UNAVAILABLE_RETRY_INTERVAL", 999),
+    ],
+)
+def test_options_flow_rejects_out_of_range(field: str, value: int) -> None:
+    """The options schema range-validates every knob."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+
+    entry = _options_entry(const_module, const_module.DeviceType.CONTROLLER.value)
+    handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+    schema = asyncio.run(handler.async_step_init(None))["data_schema"]
+
+    key = getattr(const_module, field)
+    valid = {
+        const_module.CONF_SCAN_INTERVAL: 30,
+        const_module.CONF_MAX_FAILURES: 3,
+        const_module.CONF_UNAVAILABLE_RETRY_INTERVAL: 10,
+    }
+    valid[key] = value
+
+    with pytest.raises(vol.Invalid):
+        schema(valid)
