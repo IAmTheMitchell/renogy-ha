@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from homeassistant.components.bluetooth.passive_update_coordinator import (
     PassiveBluetoothCoordinatorEntity,
@@ -76,6 +76,8 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
 
     entity_description: RenogyBLESwitchDescription
     coordinator: RenogyActiveBluetoothCoordinator
+    # Friendly name = device name + entity name, so UI device renames cascade.
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -96,7 +98,7 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
 
         if device:
             self._attr_unique_id = f"{device.address}_{self.entity_description.key}"
-            self._attr_name = f"{device.name} {self.entity_description.name}"
+            self._attr_name = cast("str | None", self.entity_description.name)
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, device.address)},
                 name=device.name,
@@ -109,7 +111,7 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
             self._attr_unique_id = (
                 f"{coordinator.address}_{self.entity_description.key}"
             )
-            self._attr_name = f"Renogy {self.entity_description.name}"
+            self._attr_name = cast("str | None", self.entity_description.name)
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, coordinator.address)},
                 name=f"Renogy {device_type.capitalize()}",
@@ -119,6 +121,13 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
                 sw_version=device_type.capitalize(),
             )
 
+    @property
+    def suggested_object_id(self) -> str | None:
+        """Preserve the legacy entity component before name resolution."""
+        if self._device is None:
+            return f"Renogy {self._attr_name}"
+        return super().suggested_object_id
+
     def _update_device_metadata(self, device: RenogyBLEDevice) -> None:
         """Refresh entity metadata from the latest device details."""
         device_model = f"Renogy {self._device_type.capitalize()}"
@@ -126,7 +135,7 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
             device_model = device.parsed_data["model"]
 
         self._attr_unique_id = f"{device.address}_{self.entity_description.key}"
-        self._attr_name = f"{device.name} {self.entity_description.name}"
+        self._attr_name = cast("str | None", self.entity_description.name)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device.address)},
             name=device.name,

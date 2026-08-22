@@ -249,6 +249,7 @@ def test_switch_updates_metadata_when_coordinator_name_resolves() -> None:
         device=None,
         device_type=switch_module.DeviceType.CONTROLLER.value,
     )
+    assert entity.suggested_object_id == "Renogy DC Load"
     entity.async_write_ha_state = MagicMock()
 
     resolved_device = MagicMock()
@@ -262,7 +263,10 @@ def test_switch_updates_metadata_when_coordinator_name_resolves() -> None:
     entity._handle_coordinator_update()
 
     assert entity._device is resolved_device
-    assert entity._attr_name == "BT-TH-12345 DC Load"
+    # has_entity_name=True: the entity name is just the description name;
+    # HA composes the friendly name from the device name at display time.
+    assert entity._attr_has_entity_name is True
+    assert entity._attr_name == "DC Load"
     assert entity._attr_device_info["name"] == "BT-TH-12345"
     assert entity._attr_device_info["model"] == "Rover 40A"
     entity.async_write_ha_state.assert_called_once()

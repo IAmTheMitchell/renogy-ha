@@ -56,6 +56,23 @@ def _install_module_stubs() -> None:
     number_module.NumberMode = NumberMode
     sys.modules["homeassistant.components.number"] = number_module
 
+    select_module = cast(Any, types.ModuleType("homeassistant.components.select"))
+
+    class SelectEntity:
+        """Stub select entity base class for testing."""
+
+    @dataclass(frozen=True)
+    class SelectEntityDescription:
+        """Stub select entity description for testing."""
+
+        key: str | None = None
+        name: str | None = None
+        entity_category: str | None = None
+
+    select_module.SelectEntity = SelectEntity
+    select_module.SelectEntityDescription = SelectEntityDescription
+    sys.modules["homeassistant.components.select"] = select_module
+
     config_entries_module = cast(Any, types.ModuleType("homeassistant.config_entries"))
 
     class ConfigEntry:
@@ -162,6 +179,53 @@ def _load_number_module() -> Any:
     sys.modules.pop("custom_components.renogy.number", None)
     sys.modules.pop("custom_components.renogy", None)
     return importlib.import_module("custom_components.renogy.number")
+
+
+def _load_select_module() -> Any:
+    """Load the select module with stubs in place."""
+    _install_module_stubs()
+    sys.modules.pop("custom_components.renogy.select", None)
+    sys.modules.pop("custom_components.renogy", None)
+    return importlib.import_module("custom_components.renogy.select")
+
+
+def test_unresolved_writable_entities_preserve_legacy_object_ids() -> None:
+    """Modern names should retain legacy IDs until the device name resolves."""
+    number_module = _load_number_module()
+    coordinator = MagicMock(address="AA:BB:CC:DD:EE:FF", data={})
+    description = next(
+        item
+        for item in number_module.DCC_OTHER_NUMBERS
+        if item.key == "solar_cutoff_current"
+    )
+    number = number_module.RenogyNumberEntity(
+        coordinator,
+        None,
+        description,
+        number_module.DeviceType.DCC.value,
+    )
+
+    assert number._attr_has_entity_name is True
+    assert number._attr_name == "Solar Cutoff Current"
+    assert number.suggested_object_id == "Renogy Solar Cutoff Current"
+
+    select_module = _load_select_module()
+    selects = (
+        select_module.RenogyBatteryTypeSelect,
+        select_module.RenogyMaxCurrentSelect,
+    )
+    for entity_class, select_description in zip(
+        selects, select_module.DCC_SELECT_ENTITIES, strict=True
+    ):
+        entity = entity_class(
+            coordinator,
+            None,
+            select_description,
+            select_module.DeviceType.DCC.value,
+        )
+        assert entity._attr_has_entity_name is True
+        assert entity._attr_name == select_description.name
+        assert entity.suggested_object_id == f"Renogy {select_description.name}"
 
 
 def test_number_reads_value_directly_from_description_key() -> None:

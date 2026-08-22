@@ -271,6 +271,29 @@ def _read_sensor_value(
     return entity.native_value
 
 
+def test_unresolved_sensor_preserves_legacy_object_id() -> None:
+    """Modern sensor names should retain the unresolved-path legacy ID."""
+    sensor_module = _load_sensor_module()
+    coordinator = MagicMock(
+        address="AA:BB:CC:DD:EE:FF",
+        device=None,
+        data={},
+        last_update_success=True,
+    )
+    description = sensor_module.CONTROLLER_SENSORS[0]
+    entity = sensor_module.RenogyBLESensor(
+        coordinator,
+        None,
+        description,
+        "Battery",
+        sensor_module.DeviceType.CONTROLLER.value,
+    )
+
+    assert entity._attr_has_entity_name is True
+    assert entity._attr_name == description.name
+    assert entity.suggested_object_id == f"Renogy {description.name}"
+
+
 def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
     """Ensure setup skips refresh/wait loop when shunt name is already available."""
     sensor_module = _load_sensor_module()
