@@ -16,6 +16,8 @@ from unittest.mock import MagicMock
 class _BatteryState:
     slave_id: int
     battery_voltage: float | None = None
+    battery_current: float | None = None
+    battery_power: float | None = None
     battery_remaining_capacity: float | None = None
     battery_capacity: float | None = None
     battery_percentage: float | None = None
@@ -94,6 +96,8 @@ def _install_module_stubs() -> None:
 
     class SensorDeviceClass:
         VOLTAGE = "voltage"
+        CURRENT = "current"
+        POWER = "power"
         BATTERY = "battery"
 
     class SensorStateClass:
@@ -116,10 +120,18 @@ def _install_module_stubs() -> None:
     const_module = cast(Any, types.ModuleType("homeassistant.const"))
     const_module.PERCENTAGE = "%"
 
+    class UnitOfElectricCurrent:
+        AMPERE = "A"
+
     class UnitOfElectricPotential:
         VOLT = "V"
 
+    class UnitOfPower:
+        WATT = "W"
+
+    const_module.UnitOfElectricCurrent = UnitOfElectricCurrent
     const_module.UnitOfElectricPotential = UnitOfElectricPotential
+    const_module.UnitOfPower = UnitOfPower
     sys.modules["homeassistant.const"] = const_module
 
     core_module = cast(Any, types.ModuleType("homeassistant.core"))
@@ -204,6 +216,8 @@ def test_hub_sensor_descriptions_expose_only_validated_telemetry() -> None:
 
     assert {description.key for description in module.HUB_BATTERY_SENSORS} == {
         "battery_voltage",
+        "battery_current",
+        "battery_power",
         "battery_remaining_capacity",
         "battery_capacity",
         "battery_percentage",
@@ -233,7 +247,7 @@ def test_hub_sensor_setup_adds_noncontiguous_responders_once() -> None:
     coordinator.notify()
 
     assert len(added_batches) == 1
-    assert len(added_batches[0]) == 8
+    assert len(added_batches[0]) == 12
     assert {entity._slave_id for entity in added_batches[0]} == {0x30, 0x33}
 
     coordinator.notify()
@@ -246,7 +260,7 @@ def test_hub_sensor_setup_adds_noncontiguous_responders_once() -> None:
     coordinator.notify()
 
     assert len(added_batches) == 2
-    assert len(added_batches[1]) == 4
+    assert len(added_batches[1]) == 6
     assert {entity._slave_id for entity in added_batches[1]} == {0x31}
 
 
@@ -257,6 +271,8 @@ def test_hub_battery_0x33_is_child_device_with_validated_values() -> None:
         _BatteryState(
             slave_id=0x33,
             battery_voltage=50.4,
+            battery_current=3.26,
+            battery_power=164.304,
             battery_remaining_capacity=44.493,
             battery_capacity=49.995,
             battery_percentage=89.0,
@@ -270,6 +286,8 @@ def test_hub_battery_0x33_is_child_device_with_validated_values() -> None:
     entities_by_key = {entity.entity_description.key: entity for entity in entities}
 
     assert entities_by_key["battery_voltage"].native_value == 50.4
+    assert entities_by_key["battery_current"].native_value == 3.26
+    assert entities_by_key["battery_power"].native_value == 164.304
     assert entities_by_key["battery_remaining_capacity"].native_value == 44.493
     assert entities_by_key["battery_capacity"].native_value == 49.995
     assert entities_by_key["battery_percentage"].native_value == 89.0
