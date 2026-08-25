@@ -16,6 +16,8 @@ class RenogyHubBatteryState:
 
     slave_id: int
     battery_voltage: float | None
+    battery_current: float | None
+    battery_power: float | None
     battery_remaining_capacity: float | None
     battery_capacity: float | None
     battery_percentage: float | None
@@ -26,6 +28,8 @@ class RenogyHubBatteryState:
         return {
             "slave_id": self.slave_id,
             "battery_voltage": self.battery_voltage,
+            "battery_current": self.battery_current,
+            "battery_power": self.battery_power,
             "battery_remaining_capacity": self.battery_remaining_capacity,
             "battery_capacity": self.battery_capacity,
             "battery_percentage": self.battery_percentage,
@@ -97,6 +101,8 @@ class RenogyHubBatteryManager:
         return RenogyHubBatteryState(
             slave_id=int(battery.slave_id),
             battery_voltage=_optional_float(data.get("battery_voltage")),
+            battery_current=_optional_float(data.get("battery_current")),
+            battery_power=_optional_float(data.get("battery_power")),
             battery_remaining_capacity=_optional_float(
                 data.get("battery_remaining_capacity")
             ),

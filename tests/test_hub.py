@@ -70,8 +70,8 @@ def _manager(results: list[_FakeResult]) -> tuple[Any, _FakeHub]:
     return manager, fake_hub
 
 
-def test_hub_manager_caches_only_validated_fields() -> None:
-    """Unvalidated current and power values must not enter HA Hub state."""
+def test_hub_manager_caches_validated_fields() -> None:
+    """Validated Hub telemetry should enter Home Assistant state."""
     manager, _hub = _manager(
         [
             _FakeResult(
@@ -83,8 +83,8 @@ def test_hub_manager_caches_only_validated_fields() -> None:
                         battery_remaining_capacity=42.389,
                         battery_capacity=49.995,
                         battery_percentage=84.8,
-                        battery_current=123.45,
-                        battery_power=6789,
+                        battery_current=3.26,
+                        battery_power=162.348,
                     )
                 ],
             )
@@ -99,12 +99,12 @@ def test_hub_manager_caches_only_validated_fields() -> None:
     assert battery.as_dict() == {
         "slave_id": 0x30,
         "battery_voltage": 49.8,
+        "battery_current": 3.26,
+        "battery_power": 162.348,
         "battery_remaining_capacity": 42.389,
         "battery_capacity": 49.995,
         "battery_percentage": 84.8,
     }
-    assert "battery_current" not in battery.as_dict()
-    assert "battery_power" not in battery.as_dict()
 
 
 def test_hub_manager_marks_missing_cached_battery_unavailable() -> None:
