@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## [0.9.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.8.0...v0.9.0) (2026-08-26)
+
+
+### Features
+
+* add Communication Hub multi-battery support ([#208](https://github.com/IAmTheMitchell/renogy-ha/issues/208)) ([2bf2b3c](https://github.com/IAmTheMitchell/renogy-ha/commit/2bf2b3c43e4eaef48a611443a9d66a5737af8292))
+* add REGO-series inverter support (discovery, sensors, controls) ([#183](https://github.com/IAmTheMitchell/renogy-ha/issues/183)) ([d475380](https://github.com/IAmTheMitchell/renogy-ha/commit/d475380b478b912b93a961c239a4932475a86ce3))
+* declare display precision for sensors ([#189](https://github.com/IAmTheMitchell/renogy-ha/issues/189)) ([3ac4cf3](https://github.com/IAmTheMitchell/renogy-ha/commit/3ac4cf335d713194ad1082b5d85f45263b85a0d9))
+* expose Communication Hub battery current and power ([#213](https://github.com/IAmTheMitchell/renogy-ha/issues/213)) ([b8f6673](https://github.com/IAmTheMitchell/renogy-ha/commit/b8f6673d70f9a4491823cbbc468505a1cd9c3219))
+* expose configurable runtime resilience knobs ([#184](https://github.com/IAmTheMitchell/renogy-ha/issues/184)) ([be94393](https://github.com/IAmTheMitchell/renogy-ha/commit/be943934d7b6dd36ee9e4e20faf6ac67e3bd6c13))
+
+
+### Bug Fixes
+
+* honor BLE failure grace for entity availability ([#182](https://github.com/IAmTheMitchell/renogy-ha/issues/182)) ([6780630](https://github.com/IAmTheMitchell/renogy-ha/commit/67806301ce25f29ae4d77be91eeb8e87c7501292))
+* preserve entity IDs with device-based names ([#181](https://github.com/IAmTheMitchell/renogy-ha/issues/181)) ([25bb5a9](https://github.com/IAmTheMitchell/renogy-ha/commit/25bb5a93ef8fa4caf1d9d866d90a82fbe12a4d35))
+* write DCC solar cutoff current in centiamps ([#188](https://github.com/IAmTheMitchell/renogy-ha/issues/188)) ([6414c4e](https://github.com/IAmTheMitchell/renogy-ha/commit/6414c4edf686f159782f4a19eea6a90975325909))
+
+
+### Documentation
+
+* refresh supported devices and setup guidance ([#190](https://github.com/IAmTheMitchell/renogy-ha/issues/190)) ([baa44a4](https://github.com/IAmTheMitchell/renogy-ha/commit/baa44a4c38a2cc6aea5ac005b3253e8900dd3697))
+
 ## [0.8.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.7.1...v0.8.0) (2026-07-23)
 
 
