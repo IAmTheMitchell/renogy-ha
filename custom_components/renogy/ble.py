@@ -115,6 +115,7 @@ class RenogyActiveBluetoothCoordinator(
         non_shunt_connection_mode: str = DEFAULT_NON_SHUNT_CONNECTION_MODE,
         max_failures: int = DEFAULT_MAX_FAILURES,
         unavailable_retry_interval: int = DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
+        model_hint: str | None = None,
         device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
         | None = None,
     ):
@@ -135,6 +136,7 @@ class RenogyActiveBluetoothCoordinator(
         self.max_failures = max_failures
         self.unavailable_retry_interval = unavailable_retry_interval
         self.device_type = device_type
+        self.model_hint = model_hint
         self.last_poll_time: datetime | None = None
         self.device_data_callback = device_data_callback
         self.logger.debug(
@@ -462,6 +464,7 @@ class RenogyActiveBluetoothCoordinator(
                 manufacturer_data=manufacturer_data,
                 max_failures=self.max_failures,
                 unavailable_retry_interval=self.unavailable_retry_interval,
+                model_hint=self.model_hint,
             )
         else:
             old_name = self.device.name
@@ -491,6 +494,9 @@ class RenogyActiveBluetoothCoordinator(
                     self.device_type,
                 )
                 self.device.device_type = self.device_type
+
+            # Service-info refreshes must not drop the configured register profile.
+            self.device.model_hint = self.model_hint
 
         if (
             self._uses_intermittent_shunt_reads(self.device.device_type)

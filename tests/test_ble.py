@@ -139,6 +139,7 @@ def _install_module_stubs() -> None:
             manufacturer_data=None,
             max_failures=3,
             unavailable_retry_interval=10,
+            model_hint=None,
         ):
             self.ble_device = ble_device
             self.address = ble_device.address
@@ -148,6 +149,7 @@ def _install_module_stubs() -> None:
             self.manufacturer_data = manufacturer_data or {}
             self.max_failures = max_failures
             self.unavailable_retry_interval = unavailable_retry_interval
+            self.model_hint = model_hint
             self.parsed_data = {}
             self.failure_count = 0
             self.is_available = True
@@ -577,6 +579,33 @@ def test_inverter_client_uses_inverter_modbus_device_id() -> None:
     )
 
     assert coordinator._ble_client.device_id == 0x20
+
+
+def test_inverter_model_hint_is_applied_and_preserved_on_refresh() -> None:
+    """The configured inverter profile must survive service-info refreshes."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="inverter",
+        model_hint="RIV4835CSH1S",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RNGRIU123456",
+        rssi=-60,
+    )
+
+    device = coordinator._update_device_from_service_info(service_info)
+    assert device.model_hint == "RIV4835CSH1S"
+
+    device.model_hint = None
+    refreshed_device = coordinator._update_device_from_service_info(service_info)
+
+    assert refreshed_device is device
+    assert refreshed_device.model_hint == "RIV4835CSH1S"
 
 
 def test_non_shunt_persistent_mode_uses_library_persistent_transport():

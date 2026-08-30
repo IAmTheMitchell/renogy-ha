@@ -15,6 +15,18 @@
           "scan_interval": "Polling interval (seconds)",
           "device_type": "Device Type"
         }
+      },
+      "inverter_profile": {
+        "description": "Select the register profile for this inverter. Use Generic unless the inverter model is RIV4835CSH1S.",
+        "data": {
+          "inverter_profile": "Inverter profile"
+        }
+      },
+      "reconfigure_inverter_profile": {
+        "description": "Select the register profile for Renogy BLE device: {device_name}.",
+        "data": {
+          "inverter_profile": "Inverter profile"
+        }
       }
     },
     "error": {
@@ -25,7 +37,8 @@
       "no_devices_found": "No Renogy BLE devices discovered",
       "not_supported_device": "This device is not a supported Renogy BLE device",
       "unsupported_device_type": "The {device_type} device type is not currently supported. Only controller, battery, DCC (DC-DC charger), inverter, and shunt300 devices are fully supported at this time.",
-      "reconfigure_successful": "Re-configuration was successful"
+      "reconfigure_successful": "Re-configuration was successful",
+      "inverter_profile_missing_context": "The inverter profile step expired. Start setup or reconfiguration again."
     }
   },
   "options": {

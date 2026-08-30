@@ -337,6 +337,49 @@ def test_manual_entry_keeps_explicit_device_type_override() -> None:
     }
 
 
+def test_inverter_setup_persists_selected_model_profile() -> None:
+    """Inverter setup should request and store the model-specific profile."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow = config_flow_module.RenogyConfigFlow()
+    flow._discovered_device = config_flow_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="RNGRIU123456",
+    )
+
+    profile_form = asyncio.run(
+        flow.async_step_user(
+            {
+                const_module.CONF_DEVICE_TYPE: const_module.DeviceType.INVERTER.value,
+                const_module.CONF_SCAN_INTERVAL: 60,
+            }
+        )
+    )
+
+    assert profile_form["type"] == "form"
+    assert profile_form["step_id"] == "inverter_profile"
+    assert (
+        _schema_default(profile_form["data_schema"], const_module.CONF_INVERTER_PROFILE)
+        == const_module.DEFAULT_INVERTER_PROFILE
+    )
+
+    result = asyncio.run(
+        flow.async_step_inverter_profile(
+            {
+                const_module.CONF_INVERTER_PROFILE: (
+                    const_module.RIV4835CSH1S_INVERTER_PROFILE
+                )
+            }
+        )
+    )
+
+    assert result["type"] == "create_entry"
+    assert result["data"][const_module.CONF_INVERTER_PROFILE] == (
+        const_module.RIV4835CSH1S_INVERTER_PROFILE
+    )
+    assert result["data"]["address"] == "AA:BB:CC:DD:EE:FF"
+
+
 def _make_reconfigure_flow(
     config_flow_module: Any,
     const_module: Any,
@@ -514,6 +557,52 @@ def test_reconfigure_updates_scan_interval_already_saved_in_options() -> None:
         const_module.CONF_SCAN_INTERVAL: 120,
         const_module.CONF_MAX_FAILURES: 5,
     }
+
+
+def test_reconfigure_inverter_persists_selected_profile() -> None:
+    """Inverter reconfiguration should preserve and update its profile."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    flow, entry = _make_reconfigure_flow(
+        config_flow_module,
+        const_module,
+        data={
+            "address": "CC:45:A5:8A:8F:D4",
+            const_module.CONF_DEVICE_TYPE: const_module.DeviceType.INVERTER.value,
+            const_module.CONF_SCAN_INTERVAL: 60,
+            const_module.CONF_INVERTER_PROFILE: (
+                const_module.RIV4835CSH1S_INVERTER_PROFILE
+            ),
+        },
+    )
+
+    profile_form = asyncio.run(
+        flow.async_step_reconfigure(
+            {
+                const_module.CONF_DEVICE_TYPE: const_module.DeviceType.INVERTER.value,
+                const_module.CONF_SCAN_INTERVAL: 90,
+            }
+        )
+    )
+
+    assert profile_form["step_id"] == "reconfigure_inverter_profile"
+    assert (
+        _schema_default(profile_form["data_schema"], const_module.CONF_INVERTER_PROFILE)
+        == const_module.RIV4835CSH1S_INVERTER_PROFILE
+    )
+
+    result = asyncio.run(
+        flow.async_step_reconfigure_inverter_profile(
+            {const_module.CONF_INVERTER_PROFILE: const_module.DEFAULT_INVERTER_PROFILE}
+        )
+    )
+
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[const_module.CONF_INVERTER_PROFILE] == (
+        const_module.DEFAULT_INVERTER_PROFILE
+    )
+    assert entry.data[const_module.CONF_SCAN_INTERVAL] == 90
+    assert entry.options[const_module.CONF_SCAN_INTERVAL] == 90
 
 
 def test_reconfigure_rejects_unsupported_device_type() -> None:

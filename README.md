@@ -99,6 +99,10 @@ The integration is configurable through the Home Assistant UI after installation
   - Smart Shunt 300 devices support `sustained` and `intermittent`
   - Batteries, controllers, DCC chargers, and inverters support `intermittent` and `persistent_session`
   - See [docs/connection-modes.md](docs/connection-modes.md) for behavior and recommendations
+- **Inverter Profile**: Inverter entries can use the generic register layout or
+  the model-specific `RIV4835CSH1S` profile
+  - Existing entries can switch profiles through **Reconfigure** without being deleted
+  - See [docs/inverter-profiles.md](docs/inverter-profiles.md) for selection guidance
 
 ## Sensors
 

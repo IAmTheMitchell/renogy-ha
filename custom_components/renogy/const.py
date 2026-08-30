@@ -35,6 +35,7 @@ CONF_SCAN_INTERVAL = "scan_interval"
 CONF_MAX_FAILURES = "max_failures"
 CONF_UNAVAILABLE_RETRY_INTERVAL = "unavailable_retry_interval"
 CONF_DEVICE_TYPE = "device_type"  # New constant for device type
+CONF_INVERTER_PROFILE = "inverter_profile"
 CONF_DEVICE_NAME = "device_name"
 CONF_SHUNT_CONNECTION_MODE = "shunt_connection_mode"
 CONF_NON_SHUNT_CONNECTION_MODE = "non_shunt_connection_mode"
@@ -57,6 +58,11 @@ class DeviceType(Enum):
 # List of supported device types
 DEVICE_TYPES = [e.value for e in DeviceType]
 DEFAULT_DEVICE_TYPE = DeviceType.CONTROLLER.value
+
+GENERIC_INVERTER_PROFILE = "generic"
+RIV4835CSH1S_INVERTER_PROFILE = "RIV4835CSH1S"
+INVERTER_PROFILES = [GENERIC_INVERTER_PROFILE, RIV4835CSH1S_INVERTER_PROFILE]
+DEFAULT_INVERTER_PROFILE = GENERIC_INVERTER_PROFILE
 
 
 class ShuntConnectionMode(Enum):

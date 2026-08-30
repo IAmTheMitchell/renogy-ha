@@ -13,6 +13,7 @@ from homeassistant.helpers.device_registry import async_get as async_get_device_
 from .const import (
     CONF_COMMUNICATION_HUB_ENABLED,
     CONF_DEVICE_TYPE,
+    CONF_INVERTER_PROFILE,
     CONF_MAX_FAILURES,
     CONF_NON_SHUNT_CONNECTION_MODE,
     CONF_SCAN_INTERVAL,
@@ -20,6 +21,7 @@ from .const import (
     CONF_UNAVAILABLE_RETRY_INTERVAL,
     DEFAULT_COMMUNICATION_HUB_ENABLED,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_INVERTER_PROFILE,
     DEFAULT_MAX_FAILURES,
     DEFAULT_NON_SHUNT_CONNECTION_MODE,
     DEFAULT_SCAN_INTERVAL,
@@ -27,6 +29,7 @@ from .const import (
     DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
     DOMAIN,
     LOGGER,
+    RIV4835CSH1S_INVERTER_PROFILE,
     DeviceType,
 )
 from .device_name import has_real_device_name
@@ -63,6 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     shunt_connection_mode = _get_shunt_connection_mode(entry)
     non_shunt_connection_mode = _get_non_shunt_connection_mode(entry)
     communication_hub_enabled = _get_communication_hub_enabled(entry)
+    model_hint = _get_inverter_model_hint(entry)
 
     if not device_address:
         LOGGER.error("No device address provided in config entry")
@@ -98,6 +102,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             unavailable_retry_interval=unavailable_retry_interval,
             device_data_callback=device_data_callback,
             communication_hub_enabled=True,
+            model_hint=model_hint,
         )
     else:
         coordinator = RenogyActiveBluetoothCoordinator(
@@ -111,6 +116,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             max_failures=max_failures,
             unavailable_retry_interval=unavailable_retry_interval,
             device_data_callback=device_data_callback,
+            model_hint=model_hint,
         )
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 
@@ -183,6 +189,20 @@ def _get_communication_hub_enabled(entry: ConfigEntry) -> bool:
             DEFAULT_COMMUNICATION_HUB_ENABLED,
         )
     )
+
+
+def _get_inverter_model_hint(entry: ConfigEntry) -> str | None:
+    """Return a model hint only for a configured model-specific inverter profile."""
+    if (
+        entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
+        != DeviceType.INVERTER.value
+    ):
+        return None
+
+    profile = entry.data.get(CONF_INVERTER_PROFILE, DEFAULT_INVERTER_PROFILE)
+    if profile == RIV4835CSH1S_INVERTER_PROFILE:
+        return RIV4835CSH1S_INVERTER_PROFILE
+    return None
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

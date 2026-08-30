@@ -35,9 +35,12 @@ from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
+    CONF_INVERTER_PROFILE,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_INVERTER_PROFILE,
     DOMAIN,
     LOGGER,
+    RIV4835CSH1S_INVERTER_PROFILE,
     DeviceType,
 )
 from .hub_sensor import setup_hub_battery_sensors
@@ -138,6 +141,7 @@ KEY_AC_INPUT_VOLTAGE = "ac_input_voltage"
 KEY_AC_INPUT_CURRENT = "ac_input_current"
 KEY_CHARGING_CURRENT = "charging_current"
 KEY_CHARGING_POWER = "charging_power"
+KEY_LINE_CHARGING_CURRENT = "line_charging_current"
 
 
 @dataclass(frozen=True)
@@ -854,6 +858,17 @@ INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     ),
 )
 
+RIV4835CSH1S_INVERTER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_LINE_CHARGING_CURRENT,
+        name="Line Charging Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+    ),
+)
+
 RENOGY_BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
         key=KEY_BATTERY_VOLTAGE,
@@ -1006,6 +1021,9 @@ async def async_setup_entry(
 
     # Get device type from config
     device_type = config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
+    inverter_profile = config_entry.data.get(
+        CONF_INVERTER_PROFILE, DEFAULT_INVERTER_PROFILE
+    )
     LOGGER.debug("Setting up sensors for device type: %s", device_type)
 
     # Create entities with the best name currently available.
@@ -1019,7 +1037,9 @@ async def async_setup_entry(
         LOGGER.info("Creating entities with coordinator only (generic name)")
         device = None
 
-    device_entities = create_entities_helper(coordinator, device, device_type)
+    device_entities = create_entities_helper(
+        coordinator, device, device_type, inverter_profile
+    )
 
     # Add all entities to Home Assistant
     if device_entities:
@@ -1041,6 +1061,7 @@ def create_entities_helper(
     coordinator: RenogyActiveBluetoothCoordinator,
     device: Optional[RenogyBLEDevice],
     device_type: str = DEFAULT_DEVICE_TYPE,
+    inverter_profile: str = DEFAULT_INVERTER_PROFILE,
 ) -> List[RenogyBLESensor]:
     """Create sensor entities with provided coordinator and optional device."""
     entities = []
@@ -1050,6 +1071,14 @@ def create_entities_helper(
         device_type,
         SENSORS_BY_DEVICE_TYPE[DeviceType.CONTROLLER.value],
     )
+    if (
+        device_type == DeviceType.INVERTER.value
+        and inverter_profile == RIV4835CSH1S_INVERTER_PROFILE
+    ):
+        sensor_groups = {
+            **sensor_groups,
+            "RIV4835CSH1S": RIV4835CSH1S_INVERTER_SENSORS,
+        }
 
     # Group sensors by category
     for category_name, sensor_list in sensor_groups.items():

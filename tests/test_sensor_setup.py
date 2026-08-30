@@ -328,7 +328,10 @@ def test_sensor_setup_does_not_wait_for_named_shunt() -> None:
 
     coordinator.async_request_refresh.assert_not_awaited()
     create.assert_called_once_with(
-        coordinator, device, sensor_module.DeviceType.SHUNT300.value
+        coordinator,
+        device,
+        sensor_module.DeviceType.SHUNT300.value,
+        sensor_module.DEFAULT_INVERTER_PROFILE,
     )
     async_add_entities.assert_not_called()
 
@@ -364,7 +367,10 @@ def test_sensor_setup_does_not_wait_for_unknown_device_name() -> None:
 
     coordinator.async_request_refresh.assert_not_awaited()
     create.assert_called_once_with(
-        coordinator, None, sensor_module.DeviceType.CONTROLLER.value
+        coordinator,
+        None,
+        sensor_module.DeviceType.CONTROLLER.value,
+        sensor_module.DEFAULT_INVERTER_PROFILE,
     )
     async_add_entities.assert_called_once_with(["entity"])
 
@@ -811,8 +817,8 @@ def test_sensor_setup_registers_hub_battery_sensor_layer() -> None:
     )
 
 
-def test_inverter_sensors_cover_rego_fields() -> None:
-    """Ensure REGO inverter fields are exposed via INVERTER_SENSORS."""
+def test_inverter_sensors_cover_profile_fields() -> None:
+    """Ensure common and RIV-only inverter fields have entity descriptions."""
     sensor_module = _load_sensor_module()
 
     keys = {description.key for description in sensor_module.INVERTER_SENSORS}
@@ -827,3 +833,33 @@ def test_inverter_sensors_cover_rego_fields() -> None:
         "charging_power",
         "charging_status",
     } <= keys
+    assert {
+        description.key for description in sensor_module.RIV4835CSH1S_INVERTER_SENSORS
+    } == {"line_charging_current"}
+
+
+def test_line_charging_current_only_created_for_riv_profile() -> None:
+    """Generic inverters should not gain an unavailable RIV-only entity."""
+    sensor_module = _load_sensor_module()
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+
+    generic_entities = sensor_module.create_entities_helper(
+        coordinator,
+        None,
+        sensor_module.DeviceType.INVERTER.value,
+        sensor_module.DEFAULT_INVERTER_PROFILE,
+    )
+    riv_entities = sensor_module.create_entities_helper(
+        coordinator,
+        None,
+        sensor_module.DeviceType.INVERTER.value,
+        sensor_module.RIV4835CSH1S_INVERTER_PROFILE,
+    )
+
+    assert "line_charging_current" not in {
+        entity.entity_description.key for entity in generic_entities
+    }
+    assert "line_charging_current" in {
+        entity.entity_description.key for entity in riv_entities
+    }

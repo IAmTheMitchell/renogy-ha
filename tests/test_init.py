@@ -132,6 +132,50 @@ def test_non_shunt_connection_mode_defaults_to_intermittent() -> None:
     assert init_module._get_non_shunt_connection_mode(entry) == "intermittent"
 
 
+def test_inverter_model_hint_only_applies_to_model_specific_profile() -> None:
+    """Generic and non-inverter entries must not select a model profile."""
+    init_module, _ = _load_init_module()
+    entry = MagicMock()
+    entry.data = {
+        init_module.CONF_DEVICE_TYPE: init_module.DeviceType.INVERTER.value,
+        init_module.CONF_INVERTER_PROFILE: (init_module.RIV4835CSH1S_INVERTER_PROFILE),
+    }
+
+    assert init_module._get_inverter_model_hint(entry) == "RIV4835CSH1S"
+
+    entry.data[init_module.CONF_INVERTER_PROFILE] = init_module.DEFAULT_INVERTER_PROFILE
+    assert init_module._get_inverter_model_hint(entry) is None
+
+    entry.data[init_module.CONF_DEVICE_TYPE] = init_module.DeviceType.CONTROLLER.value
+    entry.data[init_module.CONF_INVERTER_PROFILE] = (
+        init_module.RIV4835CSH1S_INVERTER_PROFILE
+    )
+    assert init_module._get_inverter_model_hint(entry) is None
+
+
+def test_async_setup_entry_passes_selected_inverter_model_hint() -> None:
+    """Setup should pass the selected released profile into the coordinator."""
+    init_module, coordinator_class = _load_init_module()
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    hass.async_create_task = lambda coro: asyncio.get_running_loop().create_task(coro)
+
+    entry = MagicMock()
+    entry.entry_id = "entry-1"
+    entry.data = {
+        "address": "AA:BB:CC:DD:EE:FF",
+        init_module.CONF_DEVICE_TYPE: init_module.DeviceType.INVERTER.value,
+        init_module.CONF_INVERTER_PROFILE: (init_module.RIV4835CSH1S_INVERTER_PROFILE),
+    }
+    entry.options = {}
+    entry.add_update_listener = MagicMock(return_value=lambda: None)
+    entry.async_on_unload = MagicMock()
+
+    assert asyncio.run(init_module.async_setup_entry(hass, entry)) is True
+    assert coordinator_class.last_init["model_hint"] == "RIV4835CSH1S"
+
+
 def test_async_setup_entry_uses_configured_shunt_connection_mode() -> None:
     """Ensure setup passes the selected shunt mode into the coordinator."""
     init_module, coordinator_class = _load_init_module()

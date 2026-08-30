@@ -21,12 +21,14 @@ from .const import (
     CONF_COMMUNICATION_HUB_ENABLED,
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_INVERTER_PROFILE,
     CONF_MAX_FAILURES,
     CONF_NON_SHUNT_CONNECTION_MODE,
     CONF_SHUNT_CONNECTION_MODE,
     CONF_UNAVAILABLE_RETRY_INTERVAL,
     DEFAULT_COMMUNICATION_HUB_ENABLED,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_INVERTER_PROFILE,
     DEFAULT_MAX_FAILURES,
     DEFAULT_NON_SHUNT_CONNECTION_MODE,
     DEFAULT_SCAN_INTERVAL,
@@ -34,6 +36,7 @@ from .const import (
     DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
     DEVICE_TYPES,
     DOMAIN,
+    INVERTER_PROFILES,
     LOGGER,
     MAX_MAX_FAILURES,
     MAX_SCAN_INTERVAL,
@@ -181,6 +184,9 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_devices: dict[str, BluetoothServiceInfoBleak] = {}
         self._discovered_device: BluetoothServiceInfoBleak | None = None
         self._default_device_type: str = DEFAULT_DEVICE_TYPE
+        self._pending_entry_data: dict[str, Any] | None = None
+        self._pending_entry_title: str | None = None
+        self._pending_reconfigure_data: dict[str, Any] | None = None
 
     @staticmethod
     def async_get_options_flow(config_entry: ConfigEntry) -> RenogyOptionsFlowHandler:
@@ -257,10 +263,8 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._discovered_device
                 )
 
-                # Create a config entry
-                return self.async_create_entry(
-                    title=_display_name_for_discovery(self._discovered_device),
-                    data=user_input,
+                return await self._async_finish_user_step(
+                    _display_name_for_discovery(self._discovered_device), user_input
                 )
             elif CONF_ADDRESS in user_input:
                 # Manual device selection
@@ -280,9 +284,8 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(address, raise_on_progress=False)
                 self._abort_if_unique_id_configured()
 
-                return self.async_create_entry(
-                    title=_display_name_for_discovery(discovery_info),
-                    data=user_input,
+                return await self._async_finish_user_step(
+                    _display_name_for_discovery(discovery_info), user_input
                 )
 
         # If we have a discovered device from bluetooth auto-discovery,
@@ -336,6 +339,43 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def _async_finish_user_step(
+        self, title: str, data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Create a non-inverter entry or request its inverter profile."""
+        if data[CONF_DEVICE_TYPE] != DeviceType.INVERTER.value:
+            data.pop(CONF_INVERTER_PROFILE, None)
+            return self.async_create_entry(title=title, data=data)
+
+        self._pending_entry_title = title
+        self._pending_entry_data = data
+        return await self.async_step_inverter_profile()
+
+    async def async_step_inverter_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Select the register profile for a new inverter entry."""
+        if self._pending_entry_data is None or self._pending_entry_title is None:
+            return self.async_abort(reason="inverter_profile_missing_context")
+
+        if user_input is not None:
+            data = {
+                **self._pending_entry_data,
+                CONF_INVERTER_PROFILE: user_input[CONF_INVERTER_PROFILE],
+            }
+            return self.async_create_entry(title=self._pending_entry_title, data=data)
+
+        return self.async_show_form(
+            step_id="inverter_profile",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_INVERTER_PROFILE, default=DEFAULT_INVERTER_PROFILE
+                    ): vol.In(INVERTER_PROFILES)
+                }
+            ),
+        )
+
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -357,12 +397,17 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
             scan_interval = user_input[CONF_SCAN_INTERVAL]
+            updates = {
+                CONF_DEVICE_TYPE: device_type,
+                CONF_SCAN_INTERVAL: scan_interval,
+            }
+            if device_type == DeviceType.INVERTER.value:
+                self._pending_reconfigure_data = updates
+                return await self.async_step_reconfigure_inverter_profile()
+
             return self.async_update_reload_and_abort(
                 entry,
-                data_updates={
-                    CONF_DEVICE_TYPE: device_type,
-                    CONF_SCAN_INTERVAL: scan_interval,
-                },
+                data_updates=updates,
                 options={**entry.options, CONF_SCAN_INTERVAL: scan_interval},
             )
 
@@ -393,6 +438,41 @@ class RenogyConfigFlow(ConfigFlow, domain=DOMAIN):
                 "device_name": entry.title,
                 "current_device_type": current_type,
             },
+        )
+
+    async def async_step_reconfigure_inverter_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Select and persist the profile while reconfiguring an inverter."""
+        entry = self._get_reconfigure_entry()
+        if self._pending_reconfigure_data is None:
+            return self.async_abort(reason="inverter_profile_missing_context")
+
+        current_profile = entry.data.get(
+            CONF_INVERTER_PROFILE, DEFAULT_INVERTER_PROFILE
+        )
+        if user_input is not None:
+            updates = {
+                **self._pending_reconfigure_data,
+                CONF_INVERTER_PROFILE: user_input[CONF_INVERTER_PROFILE],
+            }
+            scan_interval = updates[CONF_SCAN_INTERVAL]
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates=updates,
+                options={**entry.options, CONF_SCAN_INTERVAL: scan_interval},
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure_inverter_profile",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_INVERTER_PROFILE, default=current_profile
+                    ): vol.In(INVERTER_PROFILES)
+                }
+            ),
+            description_placeholders={"device_name": entry.title},
         )
 
     def _detect_device_type_from_coordinator(self, entry: ConfigEntry) -> str | None:
