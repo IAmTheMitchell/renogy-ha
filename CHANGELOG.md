@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.10.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.9.0...v0.10.0) (2026-08-31)
+
+
+### Features
+
+* Add RIV4835CSH1S inverter profile support ([#217](https://github.com/IAmTheMitchell/renogy-ha/issues/217)) ([4b9b87c](https://github.com/IAmTheMitchell/renogy-ha/commit/4b9b87c61a1117efac802c2d963c99f48cf6dc8c))
+
 ## [0.9.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.8.0...v0.9.0) (2026-08-26)
 
 
