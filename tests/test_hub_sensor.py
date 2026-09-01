@@ -24,6 +24,17 @@ class _BatteryState:
     available: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class _BankState:
+    communicating_battery_count: int
+    discovered_battery_count: int
+    battery_current: float | None = None
+    battery_power: float | None = None
+    battery_remaining_capacity: float | None = None
+    battery_capacity: float | None = None
+    battery_percentage: float | None = None
+
+
 class _Coordinator:
     def __init__(self) -> None:
         self.address = "F0:F8:F2:57:47:0D"
@@ -31,6 +42,7 @@ class _Coordinator:
         self.last_update_success = True
         self.device = SimpleNamespace(is_available=True)
         self.hub_batteries: tuple[_BatteryState, ...] = ()
+        self.hub_bank: _BankState | None = None
         self.listeners: list[Any] = []
 
     def async_add_listener(self, callback: Any, context: Any = None) -> Any:
@@ -185,9 +197,11 @@ def _install_module_stubs() -> None:
 
     hub_stub = cast(Any, types.ModuleType("custom_components.renogy.hub"))
     hub_stub.RenogyHubBatteryState = _BatteryState
+    hub_stub.RenogyHubBankState = _BankState
     hub_stub.hub_battery_identifier = lambda address, slave_id: (
         f"{address}:hub:{slave_id:02X}"
     )
+    hub_stub.hub_bank_identifier = lambda address: f"{address}:hub:bank"
     sys.modules["custom_components.renogy.hub"] = hub_stub
 
 
@@ -222,9 +236,18 @@ def test_hub_sensor_descriptions_expose_only_validated_telemetry() -> None:
         "battery_capacity",
         "battery_percentage",
     }
+    assert {description.key for description in module.HUB_BANK_SENSORS} == {
+        "communicating_battery_count",
+        "discovered_battery_count",
+        "battery_current",
+        "battery_power",
+        "battery_remaining_capacity",
+        "battery_capacity",
+        "battery_percentage",
+    }
 
 
-def test_hub_sensor_setup_adds_noncontiguous_responders_once() -> None:
+def test_hub_sensor_setup_adds_noncontiguous_responders_and_bank_once() -> None:
     module = _load_hub_sensor_module()
     coordinator = _Coordinator()
     config_entry = _ConfigEntry()
@@ -244,11 +267,26 @@ def test_hub_sensor_setup_adds_noncontiguous_responders_once() -> None:
         _BatteryState(slave_id=0x30, battery_voltage=50.5),
         _BatteryState(slave_id=0x33, battery_voltage=50.4),
     )
+    coordinator.hub_bank = _BankState(
+        communicating_battery_count=2,
+        discovered_battery_count=2,
+    )
     coordinator.notify()
 
     assert len(added_batches) == 1
-    assert len(added_batches[0]) == 12
-    assert {entity._slave_id for entity in added_batches[0]} == {0x30, 0x33}
+    assert len(added_batches[0]) == 19
+    assert sum(
+        isinstance(entity, module.RenogyHubBatterySensor)
+        for entity in added_batches[0]
+    ) == 12
+    assert sum(
+        isinstance(entity, module.RenogyHubBankSensor) for entity in added_batches[0]
+    ) == 7
+    assert {
+        entity._slave_id
+        for entity in added_batches[0]
+        if isinstance(entity, module.RenogyHubBatterySensor)
+    } == {0x30, 0x33}
 
     coordinator.notify()
     assert len(added_batches) == 1
@@ -257,10 +295,18 @@ def test_hub_sensor_setup_adds_noncontiguous_responders_once() -> None:
         *coordinator.hub_batteries,
         _BatteryState(slave_id=0x31, battery_voltage=50.5),
     )
+    coordinator.hub_bank = _BankState(
+        communicating_battery_count=3,
+        discovered_battery_count=3,
+    )
     coordinator.notify()
 
     assert len(added_batches) == 2
     assert len(added_batches[1]) == 6
+    assert all(
+        isinstance(entity, module.RenogyHubBatterySensor)
+        for entity in added_batches[1]
+    )
     assert {entity._slave_id for entity in added_batches[1]} == {0x31}
 
 
@@ -304,6 +350,105 @@ def test_hub_battery_0x33_is_child_device_with_validated_values() -> None:
     )
     assert voltage._attr_device_info["name"] == "Renogy Hub Battery 0x33"
     assert voltage.extra_state_attributes == {"slave_id": "0x33"}
+
+
+def test_hub_bank_is_sibling_device_with_aggregate_values() -> None:
+    module = _load_hub_sensor_module()
+    coordinator = _Coordinator()
+    coordinator.hub_bank = _BankState(
+        communicating_battery_count=4,
+        discovered_battery_count=4,
+        battery_current=-7.09,
+        battery_power=-352.086,
+        battery_remaining_capacity=188.284,
+        battery_capacity=199.974,
+        battery_percentage=94.2,
+    )
+
+    entities = [
+        module.RenogyHubBankSensor(coordinator, description)
+        for description in module.HUB_BANK_SENSORS
+    ]
+    entities_by_key = {entity.entity_description.key: entity for entity in entities}
+
+    assert entities_by_key["communicating_battery_count"].native_value == 4
+    assert entities_by_key["discovered_battery_count"].native_value == 4
+    assert entities_by_key["battery_current"].native_value == -7.09
+    assert entities_by_key["battery_power"].native_value == -352.086
+    assert entities_by_key["battery_remaining_capacity"].native_value == 188.284
+    assert entities_by_key["battery_capacity"].native_value == 199.974
+    assert entities_by_key["battery_percentage"].native_value == 94.2
+
+    current = entities_by_key["battery_current"]
+    assert current.available is True
+    assert current._attr_unique_id == "F0:F8:F2:57:47:0D:hub:bank_battery_current"
+    assert current._attr_device_info["identifiers"] == {
+        ("renogy", "F0:F8:F2:57:47:0D:hub:bank")
+    }
+    assert current._attr_device_info["via_device"] == (
+        "renogy",
+        "F0:F8:F2:57:47:0D",
+    )
+    assert current._attr_device_info["name"] == "Renogy Hub Communicating Bank"
+
+
+def test_hub_bank_counts_remain_available_when_all_batteries_are_offline() -> None:
+    """Counts should show a partial/offline bank while aggregates go unavailable."""
+    module = _load_hub_sensor_module()
+    coordinator = _Coordinator()
+    coordinator.hub_bank = _BankState(
+        communicating_battery_count=0,
+        discovered_battery_count=4,
+    )
+
+    entities = {
+        description.key: module.RenogyHubBankSensor(coordinator, description)
+        for description in module.HUB_BANK_SENSORS
+    }
+
+    assert entities["communicating_battery_count"].available is True
+    assert entities["communicating_battery_count"].native_value == 0
+    assert entities["discovered_battery_count"].available is True
+    assert entities["discovered_battery_count"].native_value == 4
+    assert entities["battery_current"].available is False
+    assert entities["battery_power"].available is False
+    assert entities["battery_remaining_capacity"].available is False
+    assert entities["battery_capacity"].available is False
+    assert entities["battery_percentage"].available is False
+
+    coordinator.device.is_available = False
+    assert entities["communicating_battery_count"].available is False
+    assert entities["discovered_battery_count"].available is False
+
+
+def test_hub_bank_metric_recovers_when_data_returns() -> None:
+    """A bank metric should become available again when complete data returns."""
+    module = _load_hub_sensor_module()
+    coordinator = _Coordinator()
+    coordinator.hub_bank = _BankState(
+        communicating_battery_count=2,
+        discovered_battery_count=2,
+        battery_current=None,
+    )
+    entity = module.RenogyHubBankSensor(
+        coordinator,
+        next(
+            description
+            for description in module.HUB_BANK_SENSORS
+            if description.key == "battery_current"
+        ),
+    )
+
+    assert entity.available is False
+    assert entity.native_value is None
+
+    coordinator.hub_bank = _BankState(
+        communicating_battery_count=2,
+        discovered_battery_count=2,
+        battery_current=-3.25,
+    )
+    assert entity.available is True
+    assert entity.native_value == -3.25
 
 
 def test_hub_battery_sensor_tracks_logical_battery_availability() -> None:

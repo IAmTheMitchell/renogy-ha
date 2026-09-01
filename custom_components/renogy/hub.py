@@ -36,9 +36,39 @@ class RenogyHubBatteryState:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class RenogyHubBankState:
+    """Derived telemetry for batteries currently communicating through the Hub."""
+
+    communicating_battery_count: int
+    discovered_battery_count: int
+    battery_current: float | None
+    battery_power: float | None
+    battery_remaining_capacity: float | None
+    battery_capacity: float | None
+    battery_percentage: float | None
+
+    def as_dict(self) -> dict[str, float | int | None]:
+        """Return derived communicating-bank telemetry."""
+        return {
+            "communicating_battery_count": self.communicating_battery_count,
+            "discovered_battery_count": self.discovered_battery_count,
+            "battery_current": self.battery_current,
+            "battery_power": self.battery_power,
+            "battery_remaining_capacity": self.battery_remaining_capacity,
+            "battery_capacity": self.battery_capacity,
+            "battery_percentage": self.battery_percentage,
+        }
+
+
 def hub_battery_identifier(address: str, slave_id: int) -> str:
     """Return a stable logical device identifier below one physical BLE address."""
     return f"{address}:hub:{slave_id:02X}"
+
+
+def hub_bank_identifier(address: str) -> str:
+    """Return a stable logical identifier for the communicating battery bank."""
+    return f"{address}:hub:bank"
 
 
 class RenogyHubBatteryManager:
@@ -66,6 +96,43 @@ class RenogyHubBatteryManager:
     def batteries(self) -> tuple[RenogyHubBatteryState, ...]:
         """Return cached batteries ordered by Modbus slave ID."""
         return tuple(self._batteries[key] for key in sorted(self._batteries))
+
+    @property
+    def bank(self) -> RenogyHubBankState | None:
+        """Return aggregates for batteries that are currently communicating."""
+        batteries = self.batteries
+        if not batteries:
+            return None
+
+        communicating = tuple(battery for battery in batteries if battery.available)
+        remaining_capacity = _sum_complete(
+            communicating, "battery_remaining_capacity", precision=3
+        )
+        nominal_capacity = _sum_complete(
+            communicating, "battery_capacity", precision=3
+        )
+
+        percentage: float | None = None
+        if (
+            remaining_capacity is not None
+            and nominal_capacity is not None
+            and nominal_capacity > 0
+        ):
+            percentage = round(remaining_capacity / nominal_capacity * 100, 1)
+
+        return RenogyHubBankState(
+            communicating_battery_count=len(communicating),
+            discovered_battery_count=len(batteries),
+            battery_current=_sum_complete(
+                communicating, "battery_current", precision=2
+            ),
+            battery_power=_sum_complete(
+                communicating, "battery_power", precision=3
+            ),
+            battery_remaining_capacity=remaining_capacity,
+            battery_capacity=nominal_capacity,
+            battery_percentage=percentage,
+        )
 
     def get_battery(self, slave_id: int) -> RenogyHubBatteryState | None:
         """Return cached state for one Hub battery."""
@@ -109,6 +176,25 @@ class RenogyHubBatteryManager:
             battery_capacity=_optional_float(data.get("battery_capacity")),
             battery_percentage=_optional_float(data.get("battery_percentage")),
         )
+
+
+def _sum_complete(
+    batteries: tuple[RenogyHubBatteryState, ...],
+    field: str,
+    *,
+    precision: int,
+) -> float | None:
+    """Sum a field only when every communicating battery has a valid value."""
+    if not batteries:
+        return None
+
+    values: list[float] = []
+    for battery in batteries:
+        value = getattr(battery, field)
+        if value is None:
+            return None
+        values.append(float(value))
+    return round(sum(values), precision)
 
 
 def _optional_float(value: Any) -> float | None:

@@ -32,6 +32,7 @@ def _load_hub_module() -> Any:
 
 hub_module = _load_hub_module()
 RenogyHubBatteryManager = hub_module.RenogyHubBatteryManager
+hub_bank_identifier = hub_module.hub_bank_identifier
 hub_battery_identifier = hub_module.hub_battery_identifier
 
 
@@ -105,6 +106,167 @@ def test_hub_manager_caches_validated_fields() -> None:
         "battery_capacity": 49.995,
         "battery_percentage": 84.8,
     }
+
+
+def test_hub_manager_builds_communicating_bank_aggregates() -> None:
+    """Bank telemetry should aggregate all currently communicating batteries."""
+    manager, _hub = _manager(
+        [
+            _FakeResult(
+                True,
+                [
+                    _battery(
+                        0x30,
+                        battery_voltage=49.6,
+                        battery_current=-2.87,
+                        battery_power=-142.352,
+                        battery_remaining_capacity=45.695,
+                        battery_capacity=49.993,
+                        battery_percentage=91.4,
+                    ),
+                    _battery(
+                        0x31,
+                        battery_voltage=49.7,
+                        battery_current=-1.53,
+                        battery_power=-76.041,
+                        battery_remaining_capacity=47.494,
+                        battery_capacity=49.993,
+                        battery_percentage=95.0,
+                    ),
+                    _battery(
+                        0x32,
+                        battery_voltage=49.7,
+                        battery_current=-1.87,
+                        battery_power=-92.939,
+                        battery_remaining_capacity=46.818,
+                        battery_capacity=49.993,
+                        battery_percentage=93.6,
+                    ),
+                    _battery(
+                        0x33,
+                        battery_voltage=49.7,
+                        battery_current=-0.82,
+                        battery_power=-40.754,
+                        battery_remaining_capacity=48.277,
+                        battery_capacity=49.995,
+                        battery_percentage=96.6,
+                    ),
+                ],
+            )
+        ]
+    )
+
+    assert asyncio.run(manager.async_update(object())) is True
+
+    bank = manager.bank
+    assert bank is not None
+    assert bank.as_dict() == {
+        "communicating_battery_count": 4,
+        "discovered_battery_count": 4,
+        "battery_current": -7.09,
+        "battery_power": -352.086,
+        "battery_remaining_capacity": 188.284,
+        "battery_capacity": 199.974,
+        "battery_percentage": 94.2,
+    }
+
+
+def test_hub_manager_excludes_unavailable_battery_from_bank() -> None:
+    """A missed battery should remain discovered but leave bank aggregates."""
+    timeout_error = TimeoutError("battery timeout")
+    manager, _hub = _manager(
+        [
+            _FakeResult(
+                True,
+                [
+                    _battery(
+                        0x30,
+                        battery_current=-2.0,
+                        battery_power=-100.0,
+                        battery_remaining_capacity=40.0,
+                        battery_capacity=50.0,
+                    ),
+                    _battery(
+                        0x31,
+                        battery_current=-1.0,
+                        battery_power=-50.0,
+                        battery_remaining_capacity=45.0,
+                        battery_capacity=50.0,
+                    ),
+                ],
+            ),
+            _FakeResult(
+                True,
+                [
+                    _battery(
+                        0x30,
+                        battery_current=-2.2,
+                        battery_power=-110.0,
+                        battery_remaining_capacity=39.0,
+                        battery_capacity=50.0,
+                    )
+                ],
+                timeout_error,
+            ),
+        ]
+    )
+
+    async def _run() -> None:
+        assert await manager.async_update(object()) is True
+        assert await manager.async_update(object()) is True
+
+    asyncio.run(_run())
+
+    bank = manager.bank
+    assert bank is not None
+    assert bank.as_dict() == {
+        "communicating_battery_count": 1,
+        "discovered_battery_count": 2,
+        "battery_current": -2.2,
+        "battery_power": -110.0,
+        "battery_remaining_capacity": 39.0,
+        "battery_capacity": 50.0,
+        "battery_percentage": 78.0,
+    }
+
+
+def test_hub_manager_requires_complete_fields_for_each_bank_metric() -> None:
+    """A missing value on a communicating battery must not yield a partial total."""
+    manager, _hub = _manager(
+        [
+            _FakeResult(
+                True,
+                [
+                    _battery(
+                        0x30,
+                        battery_current=-2.0,
+                        battery_power=-100.0,
+                        battery_remaining_capacity=40.0,
+                        battery_capacity=50.0,
+                    ),
+                    _battery(
+                        0x31,
+                        battery_current=None,
+                        battery_power=-50.0,
+                        battery_remaining_capacity=45.0,
+                        battery_capacity=50.0,
+                    ),
+                ],
+            )
+        ]
+    )
+
+    asyncio.run(manager.async_update(object()))
+
+    bank = manager.bank
+    assert bank is not None
+    assert bank.communicating_battery_count == 2
+    assert bank.discovered_battery_count == 2
+    assert bank.battery_current is None
+    assert bank.battery_power == -150.0
+    assert bank.battery_remaining_capacity == 85.0
+    assert bank.battery_capacity == 100.0
+    assert bank.battery_percentage == 85.0
 
 
 def test_hub_manager_marks_missing_cached_battery_unavailable() -> None:
@@ -210,8 +372,22 @@ def test_hub_manager_marks_all_cached_batteries_unavailable() -> None:
             _FakeResult(
                 True,
                 [
-                    _battery(0x30, battery_voltage=49.8),
-                    _battery(0x31, battery_voltage=49.7),
+                    _battery(
+                        0x30,
+                        battery_voltage=49.8,
+                        battery_current=-2.0,
+                        battery_power=-100.0,
+                        battery_remaining_capacity=40.0,
+                        battery_capacity=50.0,
+                    ),
+                    _battery(
+                        0x31,
+                        battery_voltage=49.7,
+                        battery_current=-1.0,
+                        battery_power=-50.0,
+                        battery_remaining_capacity=45.0,
+                        battery_capacity=50.0,
+                    ),
                 ],
             )
         ]
@@ -223,6 +399,22 @@ def test_hub_manager_marks_all_cached_batteries_unavailable() -> None:
 
     assert manager.last_error is error
     assert all(not battery.available for battery in manager.batteries)
+    bank = manager.bank
+    assert bank is not None
+    assert bank.communicating_battery_count == 0
+    assert bank.discovered_battery_count == 2
+    assert bank.battery_current is None
+    assert bank.battery_power is None
+    assert bank.battery_remaining_capacity is None
+    assert bank.battery_capacity is None
+    assert bank.battery_percentage is None
+
+
+def test_hub_manager_has_no_bank_before_any_battery_is_discovered() -> None:
+    """The logical bank should not exist until at least one battery is discovered."""
+    manager, _hub = _manager([])
+
+    assert manager.bank is None
 
 
 def test_hub_battery_identifier_is_stable_and_slave_specific() -> None:
@@ -231,3 +423,11 @@ def test_hub_battery_identifier_is_stable_and_slave_specific() -> None:
 
     assert hub_battery_identifier(address, 0x30) == "F0:F8:F2:57:47:0D:hub:30"
     assert hub_battery_identifier(address, 0x31) == "F0:F8:F2:57:47:0D:hub:31"
+
+
+def test_hub_bank_identifier_is_stable() -> None:
+    """The communicating bank should have one stable logical device identifier."""
+    assert (
+        hub_bank_identifier("F0:F8:F2:57:47:0D")
+        == "F0:F8:F2:57:47:0D:hub:bank"
+    )

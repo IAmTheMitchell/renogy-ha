@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
-from .hub import RenogyHubBatteryManager, RenogyHubBatteryState
+from .hub import RenogyHubBankState, RenogyHubBatteryManager, RenogyHubBatteryState
 
 HubManagerFactory = Callable[[Any], RenogyHubBatteryManager]
 HUB_REDISCOVERY_INTERVAL_SECONDS = 60 * 60
@@ -39,6 +39,13 @@ class RenogyHubBluetoothCoordinator(RenogyActiveBluetoothCoordinator):
         if self._hub_battery_manager is None:
             return ()
         return self._hub_battery_manager.batteries
+
+    @property
+    def hub_bank(self) -> RenogyHubBankState | None:
+        """Return derived telemetry for currently communicating Hub batteries."""
+        if self._hub_battery_manager is None:
+            return None
+        return self._hub_battery_manager.bank
 
     async def _read_device_data(self, service_info: Any) -> bool:
         """Read the primary device, then poll Hub batteries when enabled."""

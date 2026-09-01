@@ -59,6 +59,9 @@ def _load_hub_coordinator_module() -> Any:
     class RenogyHubBatteryState:
         """Minimal cached Hub state placeholder."""
 
+    class RenogyHubBankState:
+        """Minimal derived Hub bank placeholder."""
+
     class RenogyHubBatteryManager:
         """Default manager placeholder; tests inject a fake manager factory."""
 
@@ -66,6 +69,7 @@ def _load_hub_coordinator_module() -> Any:
             raise AssertionError("Tests should inject a Hub manager factory")
 
     hub_module.RenogyHubBatteryState = RenogyHubBatteryState
+    hub_module.RenogyHubBankState = RenogyHubBankState
     hub_module.RenogyHubBatteryManager = RenogyHubBatteryManager
     sys.modules["custom_components.renogy.hub"] = hub_module
 
@@ -82,10 +86,12 @@ class _FakeHubManager:
         results: list[bool] | None = None,
         error: Exception | None = None,
         batteries: tuple[Any, ...] = (),
+        bank: Any | None = None,
     ) -> None:
         self._results = list(results or [True])
         self._error = error
         self.batteries = batteries
+        self.bank = bank
         self.last_error: Exception | None = None
         self.calls: list[bool] = []
         self.unavailable_errors: list[Exception] = []
@@ -127,7 +133,18 @@ def test_hub_coordinator_is_disabled_by_default() -> None:
 
     assert coordinator.communication_hub_enabled is False
     assert coordinator.hub_batteries == ()
+    assert coordinator.hub_bank is None
     assert asyncio.run(coordinator._read_device_data(object())) is True
+
+
+def test_hub_coordinator_exposes_manager_bank_state() -> None:
+    """The coordinator should expose the manager's derived bank state."""
+    module = _load_hub_coordinator_module()
+    bank = object()
+    manager = _FakeHubManager(bank=bank)
+    coordinator = _coordinator(module, manager)
+
+    assert coordinator.hub_bank is bank
 
 
 def test_hub_coordinator_discovers_once_then_uses_cached_polling() -> None:
