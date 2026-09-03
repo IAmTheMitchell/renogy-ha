@@ -108,9 +108,7 @@ class RenogyHubBatteryManager:
         remaining_capacity = _sum_complete(
             communicating, "battery_remaining_capacity", precision=3
         )
-        nominal_capacity = _sum_complete(
-            communicating, "battery_capacity", precision=3
-        )
+        nominal_capacity = _sum_complete(communicating, "battery_capacity", precision=3)
 
         percentage: float | None = None
         if (
@@ -126,9 +124,7 @@ class RenogyHubBatteryManager:
             battery_current=_sum_complete(
                 communicating, "battery_current", precision=2
             ),
-            battery_power=_sum_complete(
-                communicating, "battery_power", precision=3
-            ),
+            battery_power=_sum_complete(communicating, "battery_power", precision=3),
             battery_remaining_capacity=remaining_capacity,
             battery_capacity=nominal_capacity,
             battery_percentage=percentage,

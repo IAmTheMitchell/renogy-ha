@@ -275,13 +275,20 @@ def test_hub_sensor_setup_adds_noncontiguous_responders_and_bank_once() -> None:
 
     assert len(added_batches) == 1
     assert len(added_batches[0]) == 19
-    assert sum(
-        isinstance(entity, module.RenogyHubBatterySensor)
-        for entity in added_batches[0]
-    ) == 12
-    assert sum(
-        isinstance(entity, module.RenogyHubBankSensor) for entity in added_batches[0]
-    ) == 7
+    assert (
+        sum(
+            isinstance(entity, module.RenogyHubBatterySensor)
+            for entity in added_batches[0]
+        )
+        == 12
+    )
+    assert (
+        sum(
+            isinstance(entity, module.RenogyHubBankSensor)
+            for entity in added_batches[0]
+        )
+        == 7
+    )
     assert {
         entity._slave_id
         for entity in added_batches[0]
@@ -304,8 +311,7 @@ def test_hub_sensor_setup_adds_noncontiguous_responders_and_bank_once() -> None:
     assert len(added_batches) == 2
     assert len(added_batches[1]) == 6
     assert all(
-        isinstance(entity, module.RenogyHubBatterySensor)
-        for entity in added_batches[1]
+        isinstance(entity, module.RenogyHubBatterySensor) for entity in added_batches[1]
     )
     assert {entity._slave_id for entity in added_batches[1]} == {0x31}
 

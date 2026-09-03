@@ -427,7 +427,4 @@ def test_hub_battery_identifier_is_stable_and_slave_specific() -> None:
 
 def test_hub_bank_identifier_is_stable() -> None:
     """The communicating bank should have one stable logical device identifier."""
-    assert (
-        hub_bank_identifier("F0:F8:F2:57:47:0D")
-        == "F0:F8:F2:57:47:0D:hub:bank"
-    )
+    assert hub_bank_identifier("F0:F8:F2:57:47:0D") == "F0:F8:F2:57:47:0D:hub:bank"
