@@ -356,3 +356,61 @@ def test_async_shutdown_coordinator_times_out() -> None:
 
     coordinator.async_shutdown.assert_awaited_once()
     init_module.LOGGER.warning.assert_called_once()
+
+
+def test_registry_update_scopes_lookup_to_config_entry() -> None:
+    """Duplicate identifiers across entries must resolve to the owning entry."""
+    module, _ = _load_init_module()
+    registry = MagicMock()
+    module.async_get_device_registry.return_value = registry
+    entry = types.SimpleNamespace(entry_id="renogy-entry")
+    device = types.SimpleNamespace(
+        address="AA:BB", name="Controller", device_type="controller", parsed_data={}
+    )
+    registry.async_get_device_by_identifier.return_value = types.SimpleNamespace(
+        id="owned"
+    )
+
+    asyncio.run(module.update_device_registry(MagicMock(), entry, device))
+
+    registry.async_get_device_by_identifier.assert_called_once_with(
+        (module.DOMAIN, "AA:BB"), "renogy-entry"
+    )
+    registry.async_get_device.assert_not_called()
+    registry.async_update_device.assert_called_once_with(
+        "owned", name="Controller", model="Controller"
+    )
+
+
+def test_registry_update_supports_legacy_home_assistant() -> None:
+    """The supported HA minimum has no scoped lookup method."""
+    module, _ = _load_init_module()
+    registry = MagicMock(spec=["async_get_device", "async_update_device"])
+    module.async_get_device_registry.return_value = registry
+    registry.async_get_device.return_value = types.SimpleNamespace(id="legacy")
+    device = types.SimpleNamespace(
+        address="AA:BB", name="Controller", device_type="controller", parsed_data={}
+    )
+
+    asyncio.run(module.update_device_registry(MagicMock(), MagicMock(), device))
+
+    registry.async_get_device.assert_called_once_with({(module.DOMAIN, "AA:BB")})
+    registry.async_update_device.assert_called_once_with(
+        "legacy", name="Controller", model="Controller"
+    )
+
+
+def test_registry_update_does_not_fall_back_when_scoped_lookup_misses() -> None:
+    """A missing owned device must not update another entry's device."""
+    module, _ = _load_init_module()
+    registry = MagicMock()
+    module.async_get_device_registry.return_value = registry
+    registry.async_get_device_by_identifier.return_value = None
+    device = types.SimpleNamespace(
+        address="AA:BB", name="Controller", device_type="controller", parsed_data={}
+    )
+
+    asyncio.run(module.update_device_registry(MagicMock(), MagicMock(), device))
+
+    registry.async_get_device.assert_not_called()
+    registry.async_update_device.assert_not_called()
