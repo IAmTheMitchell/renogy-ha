@@ -42,6 +42,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
     DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
+    STATIC_DEVICE_INFO_KEYS,
     DeviceType,
     NonShuntConnectionMode,
     ShuntConnectionMode,
@@ -970,13 +971,31 @@ class RenogyActiveBluetoothCoordinator(
 
                 # Update coordinator data if successful
                 if success and device.parsed_data:
-                    self.data = dict(device.parsed_data)
+                    self.data = self._merge_static_device_info(dict(device.parsed_data))
                     self.logger.debug("Updated coordinator data: %s", self.data)
                     self._warn_if_model_mismatch()
 
                 return success
             finally:
                 self._connection_in_progress = False
+
+    def _merge_static_device_info(self, fresh: dict[str, Any]) -> dict[str, Any]:
+        """Carry static device-info keys forward when a poll could not read them.
+
+        renogy-ble clears the device's parsed data at the start of every poll and
+        skips any register section that times out. The BT-TH module answers the
+        device-info registers far less reliably than the measurement registers, so
+        a successful poll frequently arrives without ``model`` or ``device_id``.
+        Replacing the coordinator data wholesale then flips those diagnostic
+        sensors to unknown for values that never change. Only the keys listed in
+        STATIC_DEVICE_INFO_KEYS are carried; a measurement missing from a poll is
+        left missing so a stale reading is never reported as current.
+        """
+        previous = self.data if isinstance(self.data, dict) else {}
+        for key in STATIC_DEVICE_INFO_KEYS:
+            if key not in fresh and key in previous:
+                fresh[key] = previous[key]
+        return fresh
 
     def _warn_if_model_mismatch(self) -> None:
         """Warn once when the reported model implies a different device type.

@@ -149,3 +149,12 @@ DCC_MAX_CURRENT_OPTIONS = [10, 20, 30, 40, 50, 60]
 
 # Mapping from amps to centiamps for writing
 DCC_MAX_CURRENT_TO_DEVICE = {amp: amp * 100 for amp in DCC_MAX_CURRENT_OPTIONS}
+
+# Keys that describe the device rather than measure it. They come from the low
+# device-info registers (12 and 26 on a controller), which the BT-TH module
+# answers unreliably, and renogy-ble clears its parsed data before every poll.
+# The coordinator carries these forward from the previous poll when a fresh poll
+# did not manage to read them, so a value that never changes does not flip to
+# unknown every time one register read times out. Measurements are never
+# carried: a stale reading presented as current is worse than an unknown.
+STATIC_DEVICE_INFO_KEYS: tuple[str, ...] = ("model", "device_id")
