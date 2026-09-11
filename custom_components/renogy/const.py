@@ -122,6 +122,12 @@ class DCCRegister:
 
 
 # REGO-series inverter setting registers (for write operations)
+class ControllerRegister:
+    """Modbus register addresses for charge-controller (Rover/Wanderer) parameters."""
+
+    BATTERY_TYPE = 0xE004
+
+
 class InverterRegister:
     """Modbus registers for REGO-series inverter settings (function 0x06, value x10)."""
 
@@ -143,9 +149,34 @@ DCC_BATTERY_TYPES = {
 # Reverse mapping for setting battery type
 DCC_BATTERY_TYPE_VALUES = {v: k for k, v in DCC_BATTERY_TYPES.items()}
 
+# Controller battery type values. Same register as the DCC and the same codes for
+# the four chemistries; only "custom" differs, and it differs in a way that would
+# silently select the wrong profile if the DCC map were reused: 0 on a DCC means
+# custom, but on a controller the parser maps 5 to custom and 0 is not a valid
+# option at all.
+CONTROLLER_BATTERY_TYPES = {
+    1: "open",
+    2: "sealed",
+    3: "gel",
+    4: "lithium",
+    5: "custom",
+}
+
+# Reverse mapping for setting battery type on a controller
+CONTROLLER_BATTERY_TYPE_VALUES = {v: k for k, v in CONTROLLER_BATTERY_TYPES.items()}
+
 # DCC Max Charging Current options (in amps)
 # Device stores as centiamps, so 40A = 4000
 DCC_MAX_CURRENT_OPTIONS = [10, 20, 30, 40, 50, 60]
 
 # Mapping from amps to centiamps for writing
 DCC_MAX_CURRENT_TO_DEVICE = {amp: amp * 100 for amp in DCC_MAX_CURRENT_OPTIONS}
+
+# Keys that describe the device rather than measure it. They come from the low
+# device-info registers (12 and 26 on a controller), which the BT-TH module
+# answers unreliably, and renogy-ble clears its parsed data before every poll.
+# The coordinator carries these forward from the previous poll when a fresh poll
+# did not manage to read them, so a value that never changes does not flip to
+# unknown every time one register read times out. Measurements are never
+# carried: a stale reading presented as current is worse than an unknown.
+STATIC_DEVICE_INFO_KEYS: tuple[str, ...] = ("model", "device_id")
