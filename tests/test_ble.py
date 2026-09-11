@@ -1400,3 +1400,87 @@ def test_model_mismatch_silent_when_type_matches_or_model_unknown():
     logger.warning.reset_mock()
     coordinator._warn_if_model_mismatch()
     logger.warning.assert_not_called()
+
+
+def _coordinator_with_previous_poll(ble_module, previous: dict):
+    """Build a controller coordinator that already holds one successful poll."""
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=30,
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="AA:BB:CC:DD:EE:FF",
+        name="BT-TH-12345",
+        rssi=-60,
+    )
+    coordinator._update_device_from_service_info(service_info)
+    coordinator._ble_client.read_device = AsyncMock(
+        return_value=MagicMock(success=True, error=None)
+    )
+    coordinator.data = dict(previous)
+    return coordinator
+
+
+def test_static_device_info_survives_a_poll_that_could_not_read_it():
+    """The BT-TH module answers the device-info registers (12, 26) unreliably.
+
+    renogy-ble clears its parsed data at the start of every poll and skips any register
+    section that times out, so a poll where only the measurement registers answered
+    arrives here with no ``model`` and no ``device_id``. Replacing the coordinator's
+    data wholesale then flips both diagnostic sensors to ``unknown`` on every such poll
+    -- observed 209 times in 48 hours on a Rover -- for values that never change.
+    """
+    ble_module = _load_ble_module()
+    coordinator = _coordinator_with_previous_poll(
+        ble_module,
+        {"model": "RNG-CTRL-RVR", "device_id": 1, "battery_voltage": 13.4},
+    )
+    # This poll read the measurement registers but not the device-info ones.
+    coordinator.device.parsed_data = {"battery_voltage": 13.6}
+
+    assert asyncio.run(coordinator._read_device_data(None)) is True
+
+    assert coordinator.data["model"] == "RNG-CTRL-RVR"
+    assert coordinator.data["device_id"] == 1
+    assert coordinator.data["battery_voltage"] == 13.6
+
+
+def test_fresh_static_device_info_replaces_the_carried_value():
+    """A poll that DID read the device-info registers must win over the carried copy."""
+    ble_module = _load_ble_module()
+    coordinator = _coordinator_with_previous_poll(
+        ble_module, {"model": "STALE", "device_id": 9, "battery_voltage": 13.4}
+    )
+    coordinator.device.parsed_data = {
+        "model": "RNG-CTRL-RVR",
+        "device_id": 1,
+        "battery_voltage": 13.6,
+    }
+
+    assert asyncio.run(coordinator._read_device_data(None)) is True
+
+    assert coordinator.data["model"] == "RNG-CTRL-RVR"
+    assert coordinator.data["device_id"] == 1
+
+
+def test_missing_measurements_are_not_carried_forward():
+    """Only the static keys are carried. A measurement absent from a poll stays absent.
+
+    Carrying a reading like ``pv_power`` from a previous poll would present a stale
+    number as current, which is worse than reporting ``unknown``.
+    """
+    ble_module = _load_ble_module()
+    coordinator = _coordinator_with_previous_poll(
+        ble_module,
+        {"model": "RNG-CTRL-RVR", "device_id": 1, "pv_power": 22.0},
+    )
+    coordinator.device.parsed_data = {"battery_voltage": 13.6}
+
+    assert asyncio.run(coordinator._read_device_data(None)) is True
+
+    assert "pv_power" not in coordinator.data
+    assert coordinator.data["model"] == "RNG-CTRL-RVR"
