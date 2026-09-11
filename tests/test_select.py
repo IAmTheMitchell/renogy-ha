@@ -64,7 +64,9 @@ def test_controller_reads_the_parsers_string_and_its_own_int_codes() -> None:
     an int must decode through the CONTROLLER map, where 5 is custom."""
     select_module = _load_select_module()
     entity, _ = _battery_select(
-        select_module, select_module.DeviceType.CONTROLLER.value, {"battery_type": "gel"}
+        select_module,
+        select_module.DeviceType.CONTROLLER.value,
+        {"battery_type": "gel"},
     )
     assert entity.current_option == "Gel"
 
