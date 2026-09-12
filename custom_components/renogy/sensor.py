@@ -60,6 +60,11 @@ KEY_PV_VOLTAGE = "pv_voltage"
 KEY_PV_CURRENT = "pv_current"
 KEY_PV_POWER = "pv_power"
 KEY_MAX_CHARGING_POWER_TODAY = "max_charging_power_today"
+# The controller's own daily extremes (0x010B-0x010E); reset at midnight
+KEY_DAILY_MIN_BATTERY_VOLTAGE = "daily_min_battery_voltage"
+KEY_DAILY_MAX_BATTERY_VOLTAGE = "daily_max_battery_voltage"
+KEY_MAX_CHARGING_CURRENT_TODAY = "max_charging_current_today"
+KEY_MAX_DISCHARGING_CURRENT_TODAY = "max_discharging_current_today"
 KEY_POWER_GENERATION_TODAY = "power_generation_today"
 KEY_POWER_GENERATION_TOTAL = "power_generation_total"
 
@@ -286,6 +291,22 @@ BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         suggested_display_precision=1,
     ),
     RenogyBLESensorDescription(
+        key=KEY_DAILY_MIN_BATTERY_VOLTAGE,
+        name="Min Battery Voltage Today",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_MAX_BATTERY_VOLTAGE,
+        name="Max Battery Voltage Today",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    RenogyBLESensorDescription(
         key=KEY_BATTERY_CURRENT,
         name="Battery Current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
@@ -369,6 +390,22 @@ PV_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_MAX_CHARGING_CURRENT_TODAY,
+        name="Max Charging Current Today",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_MAX_DISCHARGING_CURRENT_TODAY,
+        name="Max Discharging Current Today",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
     ),
     RenogyBLESensorDescription(
         key=KEY_POWER_GENERATION_TODAY,
