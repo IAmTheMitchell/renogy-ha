@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [0.10.1](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.10.0...v0.10.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* scope device registry lookup to config entry ([#227](https://github.com/IAmTheMitchell/renogy-ha/issues/227)) ([ba04406](https://github.com/IAmTheMitchell/renogy-ha/commit/ba04406a5a8d6bc63f2192ba62b655b88ae05161))
+
 ## [0.10.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.9.0...v0.10.0) (2026-09-03)
 
 
