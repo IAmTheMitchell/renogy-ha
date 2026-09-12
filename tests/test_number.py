@@ -312,6 +312,55 @@ def test_inverter_numbers_cover_registers() -> None:
     )
 
 
+def test_riv4835_program_28_number_matches_validated_range() -> None:
+    """Expose only the hardware-validated RIV4835 Program 28 setpoint."""
+    number = _load_number_module()
+
+    assert len(number.RIV4835CSH1S_NUMBERS) == 1
+    description = number.RIV4835CSH1S_NUMBERS[0]
+    assert description.key == "inverter_ac_charge_current"
+    assert description.name == "Maximum AC Charging Current"
+    assert description.register == 0xE205
+    assert description.scale == 10.0
+    assert (
+        description.native_min_value,
+        description.native_max_value,
+        description.native_step,
+    ) == (0.0, 40.0, 5.0)
+
+
+def test_riv4835_program_28_writes_and_uses_live_readback() -> None:
+    """Write Program 28 through 0xE205 and prefer subsequent device readback."""
+    number = _load_number_module()
+    description = number.RIV4835CSH1S_NUMBERS[0]
+
+    coordinator = MagicMock()
+    coordinator.address = "F0:F8:F2:57:47:0D"
+    coordinator.device = None
+    coordinator.data = {}
+    coordinator.async_write_register = AsyncMock(return_value=True)
+
+    entity = number.RenogyNumberEntity(
+        coordinator=coordinator,
+        device=None,
+        description=description,
+        device_type=number.DeviceType.INVERTER.value,
+    )
+    entity.async_write_ha_state = MagicMock()
+
+    asyncio.run(entity.async_set_native_value(10.0))
+
+    coordinator.async_write_register.assert_awaited_once_with(
+        number.RIV4835CSH1SRegister.MAX_AC_CHARGING_CURRENT,
+        100,
+    )
+    assert entity.native_value == 10.0
+
+    coordinator.data = {"inverter_ac_charge_current": 5.0}
+    entity._handle_coordinator_update()
+    assert entity.native_value == 5.0
+
+
 def test_inverter_number_setup_creates_entities_for_inverter_device() -> None:
     """Ensure async_setup_entry wires up the inverter number descriptions."""
     number = _load_number_module()
@@ -339,6 +388,32 @@ def test_inverter_number_setup_creates_entities_for_inverter_device() -> None:
     assert {e.entity_description.key for e in created_entities} == {
         d.key for d in number.INVERTER_ALL_NUMBERS
     }
+
+
+def test_riv4835_number_setup_uses_model_profile() -> None:
+    """RIV4835 entries should expose only the validated Program 28 control."""
+    number = _load_number_module()
+
+    coordinator = MagicMock()
+    coordinator.device = None
+    hass = MagicMock()
+    hass.data = {number.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {
+        number.CONF_DEVICE_TYPE: number.DeviceType.INVERTER.value,
+        number.CONF_DEVICE_NAME: "BT-TH-F257470D",
+        number.CONF_INVERTER_PROFILE: number.RIV4835CSH1S_INVERTER_PROFILE,
+    }
+    async_add_entities = MagicMock()
+
+    asyncio.run(number.async_setup_entry(hass, config_entry, async_add_entities))
+
+    async_add_entities.assert_called_once()
+    (created_entities,) = async_add_entities.call_args.args
+    assert len(created_entities) == 1
+    assert created_entities[0].entity_description is number.RIV4835CSH1S_NUMBERS[0]
 
 
 def test_inverter_number_setup_skips_non_rego_inverters() -> None:

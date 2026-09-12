@@ -131,6 +131,12 @@ class InverterRegister:
     AC_INPUT_CURRENT_LIMIT = 0x1168
 
 
+class RIV4835CSH1SRegister:
+    """Hardware-validated RIV4835CSH1S setting registers."""
+
+    MAX_AC_CHARGING_CURRENT = 0xE205
+
+
 # DCC Battery Type Values
 DCC_BATTERY_TYPES = {
     0: "custom",

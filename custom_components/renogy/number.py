@@ -28,13 +28,17 @@ from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_INVERTER_PROFILE,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_INVERTER_PROFILE,
     DOMAIN,
     LOGGER,
     RENOGY_REGO_INVERTER_PREFIX,
+    RIV4835CSH1S_INVERTER_PROFILE,
     DCCRegister,
     DeviceType,
     InverterRegister,
+    RIV4835CSH1SRegister,
 )
 
 
@@ -334,6 +338,28 @@ INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
     ),
 )
 
+# RIV4835CSH1S Program 28: Maximum AC Charging Current.
+# Hardware validation confirmed register 0xE205 with 0.1 A scaling:
+# 0 A -> raw 0, 5 A -> raw 50, 10 A -> raw 100. Function 0x06 writes changed the
+# physical LCD in both directions, and 0 A disabled utility battery charging while
+# preserving AC bypass and solar charging. The RIV polling profile provides live
+# readback under the model-specific key below.
+RIV4835CSH1S_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
+    RenogyNumberEntityDescription(
+        key="inverter_ac_charge_current",
+        name="Maximum AC Charging Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=NumberDeviceClass.CURRENT,
+        native_min_value=0.0,
+        native_max_value=40.0,
+        native_step=5.0,
+        mode=NumberMode.BOX,
+        entity_category=EntityCategory.CONFIG,
+        register=RIV4835CSH1SRegister.MAX_AC_CHARGING_CURRENT,
+        scale=10.0,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -348,12 +374,20 @@ async def async_setup_entry(
     renogy_data = hass.data[DOMAIN][config_entry.entry_id]
     coordinator = renogy_data["coordinator"]
 
-    # Get device type from config
+    # Get device type and model-specific inverter profile from config.
     device_type = config_entry.data.get(CONF_DEVICE_TYPE, DEFAULT_DEVICE_TYPE)
+    inverter_profile = config_entry.data.get(
+        CONF_INVERTER_PROFILE, DEFAULT_INVERTER_PROFILE
+    )
 
-    # Select the number descriptions for this device type
+    # Select the number descriptions for this device type/profile.
     if device_type == DeviceType.DCC.value:
         descriptions = DCC_ALL_NUMBERS
+    elif (
+        device_type == DeviceType.INVERTER.value
+        and inverter_profile == RIV4835CSH1S_INVERTER_PROFILE
+    ):
+        descriptions = RIV4835CSH1S_NUMBERS
     elif device_type == DeviceType.INVERTER.value and str(
         config_entry.data.get(CONF_DEVICE_NAME, "")
     ).startswith(RENOGY_REGO_INVERTER_PREFIX):
@@ -484,7 +518,8 @@ class RenogyNumberEntity(NumberEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        # Clear cached value to force a refresh
+        # Clear the optimistic local value so the coordinator's live device
+        # readback becomes authoritative after every refresh.
         self._attr_native_value = None
 
         # Update device reference if needed
