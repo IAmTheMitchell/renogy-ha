@@ -47,9 +47,20 @@ class RenogyHubBankState:
     battery_remaining_capacity: float | None
     battery_capacity: float | None
     battery_percentage: float | None
+    battery_percentage_min: float | None = None
+    battery_percentage_min_slave_id: int | None = None
+    battery_percentage_max: float | None = None
+    battery_percentage_max_slave_id: int | None = None
+    battery_percentage_spread: float | None = None
+    battery_voltage_min: float | None = None
+    battery_voltage_min_slave_id: int | None = None
+    battery_voltage_max: float | None = None
+    battery_voltage_max_slave_id: int | None = None
+    battery_voltage_spread: float | None = None
+    battery_current_spread: float | None = None
 
     def as_dict(self) -> dict[str, float | int | None]:
-        """Return derived communicating-bank telemetry."""
+        """Return primary communicating-bank aggregate telemetry."""
         return {
             "communicating_battery_count": self.communicating_battery_count,
             "discovered_battery_count": self.discovered_battery_count,
@@ -59,6 +70,17 @@ class RenogyHubBankState:
             "battery_capacity": self.battery_capacity,
             "battery_percentage": self.battery_percentage,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class _HubRange:
+    """Complete min/max/spread telemetry for one battery field."""
+
+    minimum: float | None
+    minimum_slave_id: int | None
+    maximum: float | None
+    maximum_slave_id: int | None
+    spread: float | None
 
 
 def hub_battery_identifier(address: str, slave_id: int) -> str:
@@ -109,6 +131,15 @@ class RenogyHubBatteryManager:
             communicating, "battery_remaining_capacity", precision=3
         )
         nominal_capacity = _sum_complete(communicating, "battery_capacity", precision=3)
+        percentage_range = _range_complete(
+            communicating, "battery_percentage", precision=1
+        )
+        voltage_range = _range_complete(
+            communicating, "battery_voltage", precision=1
+        )
+        current_range = _range_complete(
+            communicating, "battery_current", precision=2
+        )
 
         percentage: float | None = None
         if (
@@ -128,6 +159,17 @@ class RenogyHubBatteryManager:
             battery_remaining_capacity=remaining_capacity,
             battery_capacity=nominal_capacity,
             battery_percentage=percentage,
+            battery_percentage_min=percentage_range.minimum,
+            battery_percentage_min_slave_id=percentage_range.minimum_slave_id,
+            battery_percentage_max=percentage_range.maximum,
+            battery_percentage_max_slave_id=percentage_range.maximum_slave_id,
+            battery_percentage_spread=percentage_range.spread,
+            battery_voltage_min=voltage_range.minimum,
+            battery_voltage_min_slave_id=voltage_range.minimum_slave_id,
+            battery_voltage_max=voltage_range.maximum,
+            battery_voltage_max_slave_id=voltage_range.maximum_slave_id,
+            battery_voltage_spread=voltage_range.spread,
+            battery_current_spread=current_range.spread,
         )
 
     def get_battery(self, slave_id: int) -> RenogyHubBatteryState | None:
@@ -191,6 +233,34 @@ def _sum_complete(
             return None
         values.append(float(value))
     return round(sum(values), precision)
+
+
+def _range_complete(
+    batteries: tuple[RenogyHubBatteryState, ...],
+    field: str,
+    *,
+    precision: int,
+) -> _HubRange:
+    """Return min/max/spread only when every communicating battery has the field."""
+    if not batteries:
+        return _HubRange(None, None, None, None, None)
+
+    values: list[tuple[RenogyHubBatteryState, float]] = []
+    for battery in batteries:
+        value = getattr(battery, field)
+        if value is None:
+            return _HubRange(None, None, None, None, None)
+        values.append((battery, float(value)))
+
+    minimum_battery, minimum_value = min(values, key=lambda item: item[1])
+    maximum_battery, maximum_value = max(values, key=lambda item: item[1])
+    return _HubRange(
+        minimum=round(minimum_value, precision),
+        minimum_slave_id=minimum_battery.slave_id,
+        maximum=round(maximum_value, precision),
+        maximum_slave_id=maximum_battery.slave_id,
+        spread=round(maximum_value - minimum_value, precision),
+    )
 
 
 def _optional_float(value: Any) -> float | None:

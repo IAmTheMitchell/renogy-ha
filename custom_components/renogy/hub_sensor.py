@@ -85,6 +85,13 @@ HUB_BANK_COUNT_KEYS = frozenset(
     {"communicating_battery_count", "discovered_battery_count"}
 )
 
+HUB_BANK_EXTREME_SLAVE_ID_KEYS = {
+    "battery_percentage_min": "battery_percentage_min_slave_id",
+    "battery_percentage_max": "battery_percentage_max_slave_id",
+    "battery_voltage_min": "battery_voltage_min_slave_id",
+    "battery_voltage_max": "battery_voltage_max_slave_id",
+}
+
 HUB_BANK_SENSORS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="communicating_battery_count",
@@ -136,6 +143,72 @@ HUB_BANK_SENSORS: tuple[SensorEntityDescription, ...] = (
     ),
 )
 
+HUB_BANK_DIAGNOSTIC_SENSORS: tuple[SensorEntityDescription, ...] = (
+    SensorEntityDescription(
+        key="battery_percentage_min",
+        name="Minimum State of Charge",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="battery_percentage_max",
+        name="Maximum State of Charge",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="battery_percentage_spread",
+        name="SOC Spread",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="battery_voltage_min",
+        name="Minimum Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="battery_voltage_max",
+        name="Maximum Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="battery_voltage_spread",
+        name="Voltage Spread",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="battery_current_spread",
+        name="Current Spread",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+    ),
+)
+
+
+def _bank_supports_diagnostics(bank: Any) -> bool:
+    """Return whether the bank state carries the Phase 2B diagnostic fields."""
+    return all(
+        hasattr(bank, description.key)
+        for description in HUB_BANK_DIAGNOSTIC_SENSORS
+    )
+
 
 def setup_hub_battery_sensors(
     config_entry: ConfigEntry,
@@ -169,12 +242,15 @@ def setup_hub_battery_sensors(
 
         if not bank_initialized and coordinator.hub_bank is not None:
             bank_initialized = True
+            bank_descriptions = HUB_BANK_SENSORS
+            if _bank_supports_diagnostics(coordinator.hub_bank):
+                bank_descriptions += HUB_BANK_DIAGNOSTIC_SENSORS
             new_entities.extend(
                 RenogyHubBankSensor(
                     coordinator=coordinator,
                     description=description,
                 )
-                for description in HUB_BANK_SENSORS
+                for description in bank_descriptions
             )
 
         if new_entities:
@@ -315,3 +391,20 @@ class RenogyHubBankSensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         if key in HUB_BANK_COUNT_KEYS:
             return int(value)
         return float(value)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Expose the battery producing a bank minimum or maximum."""
+        bank = self._bank
+        key = self.entity_description.key
+        if bank is None or key is None:
+            return {}
+
+        slave_id_key = HUB_BANK_EXTREME_SLAVE_ID_KEYS.get(key)
+        if slave_id_key is None:
+            return {}
+
+        slave_id = getattr(bank, slave_id_key, None)
+        if slave_id is None:
+            return {}
+        return {"slave_id": f"0x{int(slave_id):02X}"}
