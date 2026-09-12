@@ -251,8 +251,13 @@ async def update_device_registry(
             else device.device_type.capitalize()
         )
 
-        # Find the device in the registry using the domain and device address
-        device_entry = device_registry.async_get_device({(DOMAIN, device.address)})
+        # Scope identifiers to this config entry on HA 2026.8 and newer.
+        # Retain the legacy lookup for the supported HA 2026.3 minimum.
+        lookup = getattr(device_registry, "async_get_device_by_identifier", None)
+        if lookup is not None:
+            device_entry = lookup((DOMAIN, device.address), entry.entry_id)
+        else:
+            device_entry = device_registry.async_get_device({(DOMAIN, device.address)})
 
         if device_entry:
             # Update the device name
