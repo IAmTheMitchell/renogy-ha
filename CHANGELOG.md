@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## [0.11.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.10.0...v0.11.0) (2026-09-12)
+
+
+### Features
+
+* add RIV4835CSH1S maximum AC charging current control ([#223](https://github.com/IAmTheMitchell/renogy-ha/issues/223)) ([b1f952f](https://github.com/IAmTheMitchell/renogy-ha/commit/b1f952f37c1c5185c98b21435b396b413e05708a))
+* bump renogy-ble to 2.7.0 for Program 28 readback and metadata timeout backoff ([#231](https://github.com/IAmTheMitchell/renogy-ha/issues/231)) ([fa292ed](https://github.com/IAmTheMitchell/renogy-ha/commit/fa292edd91af114d144be0148bf32e317898da2e))
+
+
+### Bug Fixes
+
+* scope device registry lookup to config entry ([#227](https://github.com/IAmTheMitchell/renogy-ha/issues/227)) ([ba04406](https://github.com/IAmTheMitchell/renogy-ha/commit/ba04406a5a8d6bc63f2192ba62b655b88ae05161))
+
 ## [0.10.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.9.0...v0.10.0) (2026-09-03)
 
 
