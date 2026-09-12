@@ -100,6 +100,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             non_shunt_connection_mode=non_shunt_connection_mode,
             max_failures=max_failures,
             unavailable_retry_interval=unavailable_retry_interval,
+            # The entry title is the name the device was discovered
+            # under, so it survives restarts even when no advertisement
+            # carries a local name.
+            device_name=entry.title,
             device_data_callback=device_data_callback,
             communication_hub_enabled=True,
             model_hint=model_hint,
@@ -115,6 +119,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             non_shunt_connection_mode=non_shunt_connection_mode,
             max_failures=max_failures,
             unavailable_retry_interval=unavailable_retry_interval,
+            # The entry title is the name the device was discovered
+            # under, so it survives restarts even when no advertisement
+            # carries a local name.
+            device_name=entry.title,
             device_data_callback=device_data_callback,
             model_hint=model_hint,
         )
@@ -235,7 +243,7 @@ async def _handle_device_update(
 
         # Update the device name in the Home Assistant device registry
         # This will ensure the device name is updated in the UI
-        if has_real_device_name(device.name):
+        if has_real_device_name(device.name, device.address):
             await update_device_registry(hass, entry, device)
 
 

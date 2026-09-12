@@ -116,6 +116,7 @@ class RenogyActiveBluetoothCoordinator(
         max_failures: int = DEFAULT_MAX_FAILURES,
         unavailable_retry_interval: int = DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
         model_hint: str | None = None,
+        device_name: str | None = None,
         device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
         | None = None,
     ):
@@ -130,6 +131,14 @@ class RenogyActiveBluetoothCoordinator(
             connectable=True,
         )
         self.device: RenogyBLEDevice | None = None
+        # The name resolved when the device was added, kept across restarts by
+        # the config entry. Advertisements are an unreliable source for it: the
+        # local name rides in the scan response only, so it is absent under
+        # passive scanning and merely intermittent under active scanning, which
+        # connection attempts keep suspending.
+        self.configured_name = (
+            device_name if has_real_device_name(device_name, address) else None
+        )
         self.scan_interval = scan_interval
         self.shunt_connection_mode = shunt_connection_mode
         self.non_shunt_connection_mode = non_shunt_connection_mode
@@ -430,6 +439,34 @@ class RenogyActiveBluetoothCoordinator(
         if callable(close_client):
             await close_client()
 
+    def _resolve_name(self, service_info: BluetoothServiceInfoBleak) -> str | None:
+        """Best available name for the device, or None if we have none.
+
+        Three sources, in descending order of freshness:
+
+        1. the advertisement. A Renogy device puts its local name in the scan
+           response only, so this is empty under passive scanning and merely
+           intermittent under active scanning, which connection attempts keep
+           suspending;
+        2. BlueZ, via ``BLEDevice.name`` (its ``Alias``/``Name`` property).
+           BlueZ persists this in ``/var/lib/bluetooth/<adapter>/cache/`` and
+           serves it whether or not anything is scanning, so it is the source
+           that actually works on a passive-only host. It is empty for a short
+           while after a restart, until BlueZ re-materialises the device;
+        3. the name the device was added under, kept in the config entry.
+
+        Anything that is really just a BD address is not a name -- see
+        has_real_device_name().
+        """
+        for candidate in (
+            service_info.name,
+            getattr(service_info.device, "name", None),
+            self.configured_name,
+        ):
+            if has_real_device_name(candidate, service_info.address):
+                return clean_device_name(candidate)
+        return None
+
     def _update_device_from_service_info(
         self, service_info: BluetoothServiceInfoBleak
     ) -> RenogyBLEDevice:
@@ -438,10 +475,12 @@ class RenogyActiveBluetoothCoordinator(
         if not manufacturer_data and self.device is not None:
             # Some follow-up advertisements omit manufacturer data entirely.
             manufacturer_data = self.device.manufacturer_data
+        resolved_name = self._resolve_name(service_info)
         detected_type = detect_device_type_from_ble_name(
-            service_info.name,
+            resolved_name,
             self.device_type,
             manufacturer_data=manufacturer_data,
+            address=service_info.address,
         )
         if self.device_type != detected_type:
             self.logger.debug(
@@ -466,19 +505,35 @@ class RenogyActiveBluetoothCoordinator(
                 unavailable_retry_interval=self.unavailable_retry_interval,
                 model_hint=self.model_hint,
             )
+            # RenogyBLEDevice takes its name from the BLEDevice, which carries
+            # the address when no advertisement has supplied a local name. Put
+            # the remembered name back so battery variant detection -- which
+            # matches on the name prefix -- works on the very first poll after
+            # a restart instead of failing until a scan response happens to
+            # land. RenogyBLEDevice.battery_variant is re-derived from the name
+            # on each read when it is still None, so fixing the name is enough.
+            if resolved_name and not has_real_device_name(
+                self.device.name, self.address
+            ):
+                self.device.name = resolved_name
         else:
             old_name = self.device.name
             self.device.ble_device = service_info.device
             self.device.manufacturer_data = dict(manufacturer_data)
-            if has_real_device_name(service_info.name):
-                cleaned_name = clean_device_name(service_info.name)
-                if old_name != cleaned_name:
-                    self.device.name = cleaned_name
-                    self.logger.debug(
-                        "Updated device name from '%s' to '%s'",
-                        old_name,
-                        cleaned_name,
-                    )
+            # Only fill in a name we do not have. A completed read replaces
+            # device.name with the name the hardware reports for itself
+            # (renogy_ble sets it from the device_name register, e.g.
+            # "RBT12500LFP-SHBT"), which is what the device registry shows and
+            # is better than anything on air. Overwriting it from every
+            # advertisement would flip the name back and forth for as long as
+            # the integration runs.
+            if resolved_name and not has_real_device_name(old_name, self.address):
+                self.device.name = resolved_name
+                self.logger.debug(
+                    "Updated device name from '%s' to '%s'",
+                    old_name,
+                    resolved_name,
+                )
 
             self.device.rssi = (
                 service_info.advertisement.rssi

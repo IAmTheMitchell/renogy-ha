@@ -166,3 +166,55 @@ def test_btric_inverter_name_ready():
     assert device_name_module.is_device_name_ready(
         "BTRIC130000029", const_module.DeviceType.INVERTER.value
     )
+
+
+def test_bare_address_is_not_a_real_name() -> None:
+    """A BD address reaching us as a "name" must not be trusted.
+
+    Observed on a Pi with only its built-in adapter: Home Assistant's default
+    ``auto`` scanning mode resolves to passive, no advertisement then carries a
+    local name, and HA names each one after its address. That string was
+    accepted as real, overwrote the cached name, and battery variant detection
+    -- which matches the RNGPRO/RBT prefix -- failed with
+    "Unable to determine Renogy battery variant for 14:9C:EF:03:68:81".
+    """
+    device_name_module = _load_device_name_module()
+
+    # The habluetooth fallback: name is the address, verbatim.
+    assert not device_name_module.has_real_device_name(
+        "14:9C:EF:03:68:81", "14:9C:EF:03:68:81"
+    )
+    # Case must not matter -- BlueZ upper-cases, some backends do not.
+    assert not device_name_module.has_real_device_name(
+        "c4:d3:6a:8c:b5:38", "C4:D3:6A:8C:B5:38"
+    )
+    # The BlueZ Alias fallback: address with ":" replaced by "-". bleak
+    # normalises this away before it reaches us; checked anyway.
+    assert not device_name_module.has_real_device_name(
+        "C4-D3-6A-8C-B5-38", "C4:D3:6A:8C:B5:38"
+    )
+    assert not device_name_module.has_real_device_name(
+        "  14:9C:EF:03:68:81  ", "14:9C:EF:03:68:81"
+    )
+
+
+def test_a_macos_uuid_address_is_not_a_real_name() -> None:
+    """BLEDevice.address is a UUID on macOS, so no MAC-shaped pattern can spot
+    the placeholder there. Comparing against the address does."""
+    device_name_module = _load_device_name_module()
+
+    uuid = "B9EA5233-37EF-4DD6-87A8-2A875E821C46"
+    assert not device_name_module.has_real_device_name(uuid, uuid)
+
+
+def test_real_names_still_pass() -> None:
+    """The tightening must not reject anything that is actually a name."""
+    device_name_module = _load_device_name_module()
+
+    address = "14:9C:EF:03:68:81"
+    assert device_name_module.has_real_device_name("RNGPRO125BAT-EF036881", address)
+    assert device_name_module.has_real_device_name("BT-TH-6A8CB538", address)
+    # A name that merely looks address-shaped is still a name: only the
+    # device's own address is a placeholder.
+    assert device_name_module.has_real_device_name("C4:D3:6A:8C:B5:38", address)
+    assert device_name_module.has_real_device_name("14:9C:EF")
