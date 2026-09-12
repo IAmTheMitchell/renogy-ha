@@ -435,3 +435,115 @@ def test_inverter_number_setup_skips_non_rego_inverters() -> None:
     asyncio.run(number.async_setup_entry(hass, config_entry, async_add_entities))
 
     async_add_entities.assert_not_called()
+
+
+CONTROLLER_PARAMETER_KEYS = {
+    "overvoltage_threshold",
+    "charging_limit_voltage",
+    "equalization_voltage",
+    "boost_voltage",
+    "float_voltage",
+    "boost_return_voltage",
+    "overdischarge_return_voltage",
+    "undervoltage_warning",
+    "overdischarge_voltage",
+    "discharge_limit_voltage",
+    "overdischarge_delay",
+    "equalization_time",
+    "boost_time",
+    "equalization_interval",
+    "temperature_compensation",
+}
+
+
+def test_controller_numbers_are_the_shared_parameter_block() -> None:
+    """A charge controller programs the same 0xE005-0xE014 block as a DCC."""
+    number = _load_number_module()
+
+    by_key = {d.key: d for d in number.CONTROLLER_ALL_NUMBERS}
+    assert set(by_key) == CONTROLLER_PARAMETER_KEYS
+    # the alternator-side DCC settings have no meaning on a solar controller
+    assert "reverse_charging_voltage" not in by_key
+    assert "solar_cutoff_current" not in by_key
+
+    assert by_key["equalization_voltage"].register == 0xE007
+    assert (
+        by_key["equalization_voltage"].register
+        == number.ControllerRegister.EQUALIZATION_VOLTAGE
+    )
+    assert by_key["equalization_voltage"].scale == 10.0
+    assert by_key["float_voltage"].register == 0xE009
+    assert by_key["equalization_interval"].register == 0xE013
+    assert by_key["equalization_interval"].scale == 1.0
+    assert by_key["temperature_compensation"].register == 0xE014
+
+
+def test_controller_number_setup_creates_entities_for_controller_device() -> None:
+    """A controller entry gets one number per parameter in the block."""
+    number = _load_number_module()
+
+    coordinator = MagicMock()
+    coordinator.device = None
+    hass = MagicMock()
+    hass.data = {number.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {number.CONF_DEVICE_TYPE: number.DeviceType.CONTROLLER.value}
+    async_add_entities = MagicMock()
+
+    asyncio.run(number.async_setup_entry(hass, config_entry, async_add_entities))
+
+    async_add_entities.assert_called_once()
+    (created_entities,) = async_add_entities.call_args.args
+    assert {e.entity_description.key for e in created_entities} == (
+        CONTROLLER_PARAMETER_KEYS
+    )
+
+
+def test_controller_number_reads_the_value_the_library_parsed() -> None:
+    """The number shows the parameter renogy-ble decoded from the block."""
+    number = _load_number_module()
+    description = next(
+        d for d in number.CONTROLLER_ALL_NUMBERS if d.key == "equalization_voltage"
+    )
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.data = {"equalization_voltage": 14.6}
+
+    entity = number.RenogyNumberEntity(
+        coordinator=coordinator,
+        device=None,
+        description=description,
+        device_type=number.DeviceType.CONTROLLER.value,
+    )
+
+    assert entity.native_value == 14.6
+
+
+def test_controller_float_voltage_writes_tenths_of_a_volt() -> None:
+    """A float voltage in volts is written to 0xE009 in tenths."""
+    number = _load_number_module()
+    description = next(
+        d for d in number.CONTROLLER_ALL_NUMBERS if d.key == "float_voltage"
+    )
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.async_write_register = AsyncMock(return_value=True)
+
+    entity = number.RenogyNumberEntity(
+        coordinator=coordinator,
+        device=None,
+        description=description,
+        device_type=number.DeviceType.CONTROLLER.value,
+    )
+    entity.async_write_ha_state = MagicMock()
+
+    asyncio.run(entity.async_set_native_value(13.8))
+
+    coordinator.async_write_register.assert_awaited_once_with(
+        number.ControllerRegister.FLOAT_VOLTAGE, 138
+    )
+    assert entity.native_value == 13.8

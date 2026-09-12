@@ -266,6 +266,15 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
 # DCC parameter keys exposed as sensors.
 KEY_SYSTEM_VOLTAGE = "system_voltage"
 
+# Charge-controller parameter keys exposed as sensors (the block's read-only
+# members; the writable ones are number entities).
+KEY_END_OF_CHARGE_SOC = "end_of_charge_soc"
+KEY_END_OF_DISCHARGE_SOC = "end_of_discharge_soc"
+KEY_LOAD_WORKING_MODE = "load_working_mode"
+
+# 0xFF in the system-voltage byte means the controller auto-detects the bank.
+SYSTEM_VOLTAGE_AUTO = 255
+
 
 BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
@@ -452,6 +461,46 @@ CONTROLLER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
+    ),
+)
+
+# Charge-controller charging parameters that are not worth a number entity.
+# They ride along in the same 0xE003-0xE014 read as the writable ones.
+CONTROLLER_PARAMETER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_SYSTEM_VOLTAGE,
+        name="System Voltage",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # "auto" or the nominal bank voltage; a string state rules out a
+        # voltage device class here
+        value_fn=lambda data: (
+            "auto"
+            if data.get(KEY_SYSTEM_VOLTAGE) == SYSTEM_VOLTAGE_AUTO
+            else data.get(KEY_SYSTEM_VOLTAGE)
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_END_OF_CHARGE_SOC,
+        name="End of Charge SOC",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_END_OF_DISCHARGE_SOC,
+        name="End of Discharge SOC",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_LOAD_WORKING_MODE,
+        name="Load Working Mode",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
 
@@ -988,6 +1037,7 @@ SENSORS_BY_DEVICE_TYPE = {
         "PV": PV_SENSORS,
         "Load": LOAD_SENSORS,
         "Controller": CONTROLLER_SENSORS,
+        "Parameters": CONTROLLER_PARAMETER_SENSORS,
     },
     DeviceType.DCC.value: {
         "Battery": DCC_BATTERY_SENSORS,

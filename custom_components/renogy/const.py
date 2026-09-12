@@ -122,9 +122,30 @@ class DCCRegister:
 
 
 class ControllerRegister:
-    """Modbus register addresses for charge-controller (Rover/Wanderer) parameters."""
+    """Modbus register addresses for charge-controller (Rover/Wanderer) parameters.
+
+    The charging parameters live in the same 0xE005-0xE014 block as on a DCC and
+    are written the same way (function 0x06, voltages in tenths of a volt). The
+    alternator-side DCC settings (0xE020, 0xE038) do not exist on a solar controller.
+    """
 
     BATTERY_TYPE = 0xE004
+    OVERVOLTAGE_THRESHOLD = 0xE005
+    CHARGING_LIMIT_VOLTAGE = 0xE006
+    EQUALIZATION_VOLTAGE = 0xE007
+    BOOST_VOLTAGE = 0xE008
+    FLOAT_VOLTAGE = 0xE009
+    BOOST_RETURN_VOLTAGE = 0xE00A
+    OVERDISCHARGE_RETURN_VOLTAGE = 0xE00B
+    UNDERVOLTAGE_WARNING = 0xE00C
+    OVERDISCHARGE_VOLTAGE = 0xE00D
+    DISCHARGE_LIMIT_VOLTAGE = 0xE00E
+    OVERDISCHARGE_DELAY = 0xE010
+    EQUALIZATION_TIME = 0xE011
+    BOOST_TIME = 0xE012
+    EQUALIZATION_INTERVAL = 0xE013
+    TEMPERATURE_COMPENSATION = 0xE014
+    LOAD_WORKING_MODE = 0xE01D
 
 
 # REGO-series inverter setting registers (for write operations).
