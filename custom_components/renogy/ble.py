@@ -116,6 +116,7 @@ class RenogyActiveBluetoothCoordinator(
         max_failures: int = DEFAULT_MAX_FAILURES,
         unavailable_retry_interval: int = DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
         model_hint: str | None = None,
+        device_name: str | None = None,
         device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
         | None = None,
     ):
@@ -130,6 +131,15 @@ class RenogyActiveBluetoothCoordinator(
             connectable=True,
         )
         self.device: RenogyBLEDevice | None = None
+        self._last_advertised_name: str | None = None
+        # The name resolved when the device was added, kept across restarts by
+        # the config entry. Advertisements are an unreliable source for it: the
+        # local name rides in the scan response only, so it is absent under
+        # passive scanning and merely intermittent under active scanning, which
+        # connection attempts keep suspending.
+        self.configured_name = (
+            device_name if has_real_device_name(device_name, address) else None
+        )
         self.scan_interval = scan_interval
         self.shunt_connection_mode = shunt_connection_mode
         self.non_shunt_connection_mode = non_shunt_connection_mode
@@ -430,6 +440,26 @@ class RenogyActiveBluetoothCoordinator(
         if callable(close_client):
             await close_client()
 
+    def _resolve_name(self, service_info: BluetoothServiceInfoBleak) -> str | None:
+        """Prefer the last actual local name over OS and configuration fallbacks.
+
+        Home Assistant's service-info name may itself be an OS alias. Cache
+        only AdvertisementData.local_name so nameless packets cannot replace
+        a confirmed protocol name with that alias or an older configured name.
+        """
+        local_name = getattr(service_info.advertisement, "local_name", None)
+        if has_real_device_name(local_name, service_info.address):
+            self._last_advertised_name = clean_device_name(local_name)
+        for candidate in (
+            self._last_advertised_name,
+            service_info.name,
+            getattr(service_info.device, "name", None),
+            self.configured_name,
+        ):
+            if has_real_device_name(candidate, service_info.address):
+                return clean_device_name(candidate)
+        return None
+
     def _update_device_from_service_info(
         self, service_info: BluetoothServiceInfoBleak
     ) -> RenogyBLEDevice:
@@ -438,10 +468,12 @@ class RenogyActiveBluetoothCoordinator(
         if not manufacturer_data and self.device is not None:
             # Some follow-up advertisements omit manufacturer data entirely.
             manufacturer_data = self.device.manufacturer_data
+        resolved_name = self._resolve_name(service_info)
         detected_type = detect_device_type_from_ble_name(
-            service_info.name,
+            resolved_name,
             self.device_type,
             manufacturer_data=manufacturer_data,
+            address=service_info.address,
         )
         if self.device_type != detected_type:
             self.logger.debug(
@@ -462,23 +494,35 @@ class RenogyActiveBluetoothCoordinator(
                 service_info.advertisement.rssi,
                 device_type=detected_type,
                 manufacturer_data=manufacturer_data,
+                advertisement_name=resolved_name,
                 max_failures=self.max_failures,
                 unavailable_retry_interval=self.unavailable_retry_interval,
                 model_hint=self.model_hint,
             )
+            # Apply the same precedence to the initial display name and the
+            # advertisement name used by the library for protocol selection.
+            if resolved_name:
+                self.device.name = resolved_name
         else:
             old_name = self.device.name
             self.device.ble_device = service_info.device
             self.device.manufacturer_data = dict(manufacturer_data)
-            if has_real_device_name(service_info.name):
-                cleaned_name = clean_device_name(service_info.name)
-                if old_name != cleaned_name:
-                    self.device.name = cleaned_name
-                    self.logger.debug(
-                        "Updated device name from '%s' to '%s'",
-                        old_name,
-                        cleaned_name,
-                    )
+            # Keep names read from hardware stable, but allow a real
+            # advertisement to replace an unconfirmed OS or configured name.
+            hardware_name = self.device.parsed_data.get("device_name")
+            if resolved_name:
+                self.device.advertised_name = resolved_name
+            if (
+                resolved_name
+                and not has_real_device_name(hardware_name, self.address)
+                and old_name != resolved_name
+            ):
+                self.device.name = resolved_name
+                self.logger.debug(
+                    "Updated device name from '%s' to '%s'",
+                    old_name,
+                    resolved_name,
+                )
 
             self.device.rssi = (
                 service_info.advertisement.rssi
