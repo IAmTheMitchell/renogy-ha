@@ -226,3 +226,90 @@ def test_hub_bank_diagnostics_require_complete_communicating_fields() -> None:
     assert bank.battery_voltage_max is None
     assert bank.battery_voltage_spread is None
     assert bank.battery_current_spread is None
+
+
+def test_bank_diagnostic_entities_follow_cached_telemetry() -> None:
+    """Exercise discovery and availability with the production bank state."""
+    from tests.test_hub_sensor import (
+        _ConfigEntry,
+        _Coordinator,
+        _load_hub_sensor_module,
+    )
+
+    hub_module = _load_hub_module()
+    manager = _manager(
+        hub_module,
+        [
+            _FakeResult(
+                True,
+                [
+                    _battery(
+                        0x33,
+                        battery_voltage=50.2,
+                        battery_current=2.0,
+                        battery_percentage=92.0,
+                    ),
+                    _battery(
+                        0x30,
+                        battery_voltage=50.2,
+                        battery_current=-1.0,
+                        battery_percentage=88.0,
+                    ),
+                ],
+            ),
+            _FakeResult(
+                True, [_battery(0x30, battery_voltage=50.1, battery_current=1.0)]
+            ),
+        ],
+    )
+    sensor_module = _load_hub_sensor_module()
+    coordinator = _Coordinator()
+    config_entry = _ConfigEntry()
+    entities: list[Any] = []
+    sensor_module.setup_hub_battery_sensors(config_entry, coordinator, entities.extend)
+    assert entities == []
+
+    asyncio.run(manager.async_update(object()))
+    coordinator.hub_bank = manager.bank
+    coordinator.notify()
+    assert len(entities) == 14
+    by_key = {entity.entity_description.key: entity for entity in entities}
+    expected = {
+        "battery_percentage_min": (88.0, {"slave_id": "0x30"}),
+        "battery_percentage_max": (92.0, {"slave_id": "0x33"}),
+        "battery_percentage_spread": (4.0, {}),
+        "battery_voltage_min": (50.2, {"slave_id": "0x30"}),
+        "battery_voltage_max": (50.2, {"slave_id": "0x30"}),
+        "battery_voltage_spread": (0.0, {}),
+        "battery_current_spread": (3.0, {}),
+    }
+    for key, (value, attributes) in expected.items():
+        entity = by_key[key]
+        assert entity.available is True
+        assert entity.native_value == value
+        assert entity.extra_state_attributes == attributes
+        assert entity._attr_unique_id == f"{coordinator.address}:hub:bank_{key}"
+        assert entity._attr_device_info["identifiers"] == {
+            ("renogy", f"{coordinator.address}:hub:bank")
+        }
+    coordinator.notify()
+    assert len(entities) == 14
+
+    asyncio.run(manager.async_update(object()))
+    coordinator.hub_bank = manager.bank
+    assert by_key["battery_percentage_min"].available is False
+    assert by_key["battery_percentage_min"].native_value is None
+    assert by_key["battery_percentage_min"].extra_state_attributes == {}
+    assert by_key["battery_voltage_min"].native_value == 50.1
+    assert by_key["battery_current_spread"].native_value == 0.0
+
+    manager.mark_unavailable(TimeoutError())
+    coordinator.hub_bank = manager.bank
+    for key in expected:
+        assert by_key[key].available is False
+        assert by_key[key].native_value is None
+        assert by_key[key].extra_state_attributes == {}
+    assert by_key["communicating_battery_count"].native_value == 0
+    assert by_key["communicating_battery_count"].available is True
+    coordinator.device.is_available = False
+    assert all(entity.available is False for entity in entities)

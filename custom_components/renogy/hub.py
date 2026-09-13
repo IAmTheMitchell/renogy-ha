@@ -134,12 +134,8 @@ class RenogyHubBatteryManager:
         percentage_range = _range_complete(
             communicating, "battery_percentage", precision=1
         )
-        voltage_range = _range_complete(
-            communicating, "battery_voltage", precision=1
-        )
-        current_range = _range_complete(
-            communicating, "battery_current", precision=2
-        )
+        voltage_range = _range_complete(communicating, "battery_voltage", precision=1)
+        current_range = _range_complete(communicating, "battery_current", precision=2)
 
         percentage: float | None = None
         if (

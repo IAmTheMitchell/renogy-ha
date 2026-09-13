@@ -205,8 +205,7 @@ HUB_BANK_DIAGNOSTIC_SENSORS: tuple[SensorEntityDescription, ...] = (
 def _bank_supports_diagnostics(bank: Any) -> bool:
     """Return whether the bank state carries the Phase 2B diagnostic fields."""
     return all(
-        hasattr(bank, description.key)
-        for description in HUB_BANK_DIAGNOSTIC_SENSORS
+        hasattr(bank, description.key) for description in HUB_BANK_DIAGNOSTIC_SENSORS
     )
 
 
