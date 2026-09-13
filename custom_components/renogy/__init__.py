@@ -12,6 +12,7 @@ from homeassistant.helpers.device_registry import async_get as async_get_device_
 
 from .const import (
     CONF_COMMUNICATION_HUB_ENABLED,
+    CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
     CONF_INVERTER_PROFILE,
     CONF_MAX_FAILURES,
@@ -100,10 +101,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             non_shunt_connection_mode=non_shunt_connection_mode,
             max_failures=max_failures,
             unavailable_retry_interval=unavailable_retry_interval,
-            # The entry title is the name the device was discovered
-            # under, so it survives restarts even when no advertisement
-            # carries a local name.
-            device_name=entry.title,
+            # Preserve the discovery name independently of the editable title.
+            device_name=entry.data.get(CONF_DEVICE_NAME),
             device_data_callback=device_data_callback,
             communication_hub_enabled=True,
             model_hint=model_hint,
@@ -119,10 +118,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             non_shunt_connection_mode=non_shunt_connection_mode,
             max_failures=max_failures,
             unavailable_retry_interval=unavailable_retry_interval,
-            # The entry title is the name the device was discovered
-            # under, so it survives restarts even when no advertisement
-            # carries a local name.
-            device_name=entry.title,
+            # Preserve the discovery name independently of the editable title.
+            device_name=entry.data.get(CONF_DEVICE_NAME),
             device_data_callback=device_data_callback,
             model_hint=model_hint,
         )

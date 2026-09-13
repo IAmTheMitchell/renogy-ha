@@ -8,7 +8,9 @@ import sys
 import types
 from enum import Enum
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 def _install_module_stubs(*, install_ble: bool = True) -> type | None:
@@ -340,6 +342,35 @@ def test_async_unload_entry_schedules_shutdown() -> None:
     hass.async_create_task.assert_called_once()
     shutdown_coro = hass.async_create_task.call_args.args[0]
     shutdown_coro.close()
+
+
+@pytest.mark.parametrize("hub_enabled", [False, True])
+@pytest.mark.parametrize("stored_name", ["RNGPRO125BAT-EF036881", None])
+def test_setup_uses_stored_discovery_name_not_edited_title(
+    hub_enabled: bool, stored_name: str | None
+) -> None:
+    """An editable entry title must never become a battery protocol name."""
+    init_module, coordinator_class = _load_init_module()
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    hass.async_create_task = lambda coro: asyncio.get_running_loop().create_task(coro)
+    entry = MagicMock()
+    entry.entry_id = "renamed-battery"
+    entry.title = "House battery"
+    entry.data = {
+        "address": "14:9C:EF:03:68:81",
+        init_module.CONF_DEVICE_TYPE: "battery",
+        init_module.CONF_COMMUNICATION_HUB_ENABLED: hub_enabled,
+    }
+    if stored_name is not None:
+        entry.data["device_name"] = stored_name
+    entry.options = {init_module.CONF_COMMUNICATION_HUB_ENABLED: hub_enabled}
+    hub_module = cast(Any, types.ModuleType("custom_components.renogy.hub_coordinator"))
+    hub_module.RenogyHubBluetoothCoordinator = coordinator_class
+    with patch.dict(sys.modules, {hub_module.__name__: hub_module}):
+        assert asyncio.run(init_module.async_setup_entry(hass, entry)) is True
+    assert coordinator_class.last_init["device_name"] == stored_name
 
 
 def test_async_shutdown_coordinator_times_out() -> None:
