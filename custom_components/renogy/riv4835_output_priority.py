@@ -117,9 +117,9 @@ async def _write_to_session(
     target: int,
 ) -> None:
     """Issue exactly one F06 write to Program 01 on the active locked session."""
-    if target not in {1, 2}:
+    if target not in OUTPUT_PRIORITY_BY_RAW:
         raise HomeAssistantError(
-            "Program 01 write is limited to hardware-validated values 1=UTI and 2=SBU."
+            "Program 01 write target must be one of 0=SOL, 1=UTI, or 2=SBU."
         )
 
     reset_notifications = getattr(client, "_reset_notifications", None)
@@ -186,10 +186,10 @@ async def _close_session_if_needed(client: Any, device: Any, session: Any) -> No
 
 
 async def _run_transaction(coordinator: Any, target: int | None) -> int:
-    """Run one locked read or hardware-validated write/readback transaction."""
-    if target is not None and target not in {1, 2}:
+    """Run one locked Program 01 read or write/readback transaction."""
+    if target is not None and target not in OUTPUT_PRIORITY_BY_RAW:
         raise HomeAssistantError(
-            "Program 01 write is limited to hardware-validated values 1=UTI and 2=SBU."
+            "Program 01 write target must be one of 0=SOL, 1=UTI, or 2=SBU."
         )
 
     if getattr(coordinator, "_connection_in_progress", False):
@@ -213,16 +213,11 @@ async def _run_transaction(coordinator: Any, target: int | None) -> int:
                 if target is None or current == target:
                     return current
 
-                # The only hardware-validated F06 transitions are UTI->SBU and
-                # SBU->UTI. If the LCD was manually put in SOL, represent that
-                # truthfully but require a manual return to UTI before writes resume.
-                if (current, target) not in {(1, 2), (2, 1)}:
-                    raise HomeAssistantError(
-                        "Refusing unvalidated Program 01 transition: "
-                        f"{OUTPUT_PRIORITY_BY_RAW[current]} -> "
-                        f"{OUTPUT_PRIORITY_BY_RAW[target]}. Return Program 01 to UTI "
-                        "manually if the inverter is currently in SOL."
-                    )
+                LOGGER.info(
+                    "RIV4835 Program 01 transition %s -> %s",
+                    OUTPUT_PRIORITY_BY_RAW[current],
+                    OUTPUT_PRIORITY_BY_RAW[target],
+                )
 
                 await _write_to_session(client, device, session, target)
                 await asyncio.sleep(1.0)
@@ -254,5 +249,5 @@ async def async_read_output_priority(coordinator: Any) -> int:
 
 
 async def async_write_output_priority(coordinator: Any, target: int) -> int:
-    """Write UTI/SBU and return only the independently verified readback."""
+    """Write Program 01 and return only the independently verified readback."""
     return await _run_transaction(coordinator, target=target)
