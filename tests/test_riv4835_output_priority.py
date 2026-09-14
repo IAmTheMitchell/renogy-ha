@@ -76,6 +76,14 @@ def test_all_program01_options_are_writable() -> None:
     """Pass SOL, UTI, and SBU through to the verified transaction helper."""
     select = _load_select_module()
 
+    exceptions_module = types.ModuleType("homeassistant.exceptions")
+
+    class HomeAssistantError(Exception):
+        """Stub Home Assistant service error."""
+
+    exceptions_module.HomeAssistantError = HomeAssistantError
+    sys.modules["homeassistant.exceptions"] = exceptions_module
+
     coordinator = MagicMock()
     coordinator.device = None
     coordinator.address = "F0:F8:F2:57:47:0D"
