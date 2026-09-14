@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+import sys
+import types
+from unittest.mock import AsyncMock, MagicMock, call
 
 from tests.test_number import _load_select_module
 
@@ -68,3 +70,40 @@ def test_program01_mapping_matches_hardware_validation() -> None:
 
     assert select.RIV_OUTPUT_PRIORITY_BY_RAW == {0: "SOL", 1: "UTI", 2: "SBU"}
     assert select.RIV_OUTPUT_PRIORITY_TO_RAW == {"SOL": 0, "UTI": 1, "SBU": 2}
+
+
+def test_all_program01_options_are_writable() -> None:
+    """Pass SOL, UTI, and SBU through to the verified transaction helper."""
+    select = _load_select_module()
+
+    coordinator = MagicMock()
+    coordinator.device = None
+    coordinator.address = "F0:F8:F2:57:47:0D"
+
+    entity = select.RenogyOutputPrioritySelect(
+        coordinator=coordinator,
+        device=None,
+        description=select.RIV_SELECT_ENTITIES[0],
+        device_type=select.DeviceType.INVERTER.value,
+    )
+    entity.async_write_ha_state = MagicMock()
+
+    transaction_module = types.ModuleType(
+        "custom_components.renogy.riv4835_output_priority"
+    )
+    transaction_module.async_write_output_priority = AsyncMock(
+        side_effect=lambda _coordinator, target: target
+    )
+    sys.modules[
+        "custom_components.renogy.riv4835_output_priority"
+    ] = transaction_module
+
+    for option in ("SOL", "UTI", "SBU"):
+        asyncio.run(entity.async_select_option(option))
+        assert entity.current_option == option
+
+    assert transaction_module.async_write_output_priority.await_args_list == [
+        call(coordinator, 0),
+        call(coordinator, 1),
+        call(coordinator, 2),
+    ]
