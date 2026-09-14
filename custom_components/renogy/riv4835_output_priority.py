@@ -30,7 +30,11 @@ async def _prepare_locked_session(coordinator: Any) -> tuple[Any, Any, Any]:
     service_info = service_info_fn() if callable(service_info_fn) else None
 
     if service_info is not None:
-        update_device_fn = getattr(coordinator, "_update_device_from_service_info", None)
+        update_device_fn = getattr(
+            coordinator,
+            "_update_device_from_service_info",
+            None,
+        )
         if not callable(update_device_fn):
             raise HomeAssistantError(
                 "Renogy coordinator cannot refresh BLE device context."
@@ -41,7 +45,8 @@ async def _prepare_locked_session(coordinator: Any) -> tuple[Any, Any, Any]:
 
     if device is None:
         raise HomeAssistantError(
-            "Renogy inverter has not been discovered yet. Wait for a normal poll and retry."
+            "Renogy inverter has not been discovered yet. "
+            "Wait for a normal poll and retry."
         )
 
     prepare_session = getattr(client, "_prepare_session", None)
@@ -194,7 +199,8 @@ async def _run_transaction(coordinator: Any, target: int | None) -> int:
 
     if getattr(coordinator, "_connection_in_progress", False):
         raise HomeAssistantError(
-            "Renogy coordinator is busy. Wait for the current poll to finish and retry."
+            "Renogy coordinator is busy. "
+            "Wait for the current poll to finish and retry."
         )
 
     connection_lock = getattr(coordinator, "_connection_lock", None)
@@ -224,13 +230,15 @@ async def _run_transaction(coordinator: Any, target: int | None) -> int:
                 verified = await _read_from_session(client, device, session)
                 if verified != target:
                     raise HomeAssistantError(
-                        "Program 01 write was acknowledged but live readback did not match: "
+                        "Program 01 write was acknowledged but live readback "
+                        "did not match: "
                         f"target={target}/{OUTPUT_PRIORITY_BY_RAW[target]}, "
                         f"readback={verified}/{OUTPUT_PRIORITY_BY_RAW[verified]}."
                     )
 
                 LOGGER.info(
-                    "RIV4835 Program 01 verified write register=0x1159 raw=%d decoded=%s",
+                    "RIV4835 Program 01 verified write register=0x1159 "
+                    "raw=%d decoded=%s",
                     verified,
                     OUTPUT_PRIORITY_BY_RAW[verified],
                 )
