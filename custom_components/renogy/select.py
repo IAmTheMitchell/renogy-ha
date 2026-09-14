@@ -46,9 +46,8 @@ BATTERY_TYPE_DISPLAY_NAMES = {
 MAX_CURRENT_OPTIONS = [f"{amp}A" for amp in DCC_MAX_CURRENT_OPTIONS]
 MAX_CURRENT_DISPLAY_TO_AMPS = {f"{amp}A": amp for amp in DCC_MAX_CURRENT_OPTIONS}
 
-# Program 01 values 0/1/2 were hardware-validated for readback. Only the UTI/SBU
-# F06 writes have been hardware-validated so far; SOL remains visible for truthful
-# live state but is intentionally blocked as a write target.
+# Program 01 values 0/1/2 and all transitions between SOL, UTI, and SBU were
+# hardware-validated on an RIV4835CSH1S. Live readback remains authoritative.
 RIV_OUTPUT_PRIORITY_BY_RAW = {0: "SOL", 1: "UTI", 2: "SBU"}
 RIV_OUTPUT_PRIORITY_TO_RAW = {
     value: key for key, value in RIV_OUTPUT_PRIORITY_BY_RAW.items()
@@ -242,19 +241,13 @@ class RenogyOutputPrioritySelect(SelectEntity):
         self._attr_current_option = RIV_OUTPUT_PRIORITY_BY_RAW[raw]
 
     async def async_select_option(self, option: str) -> None:
-        """Write UTI/SBU and accept state only after authoritative readback."""
+        """Write Program 01 and accept state only after authoritative readback."""
         from homeassistant.exceptions import HomeAssistantError
 
         from .riv4835_output_priority import async_write_output_priority
 
         if option not in self._attr_options:
             raise HomeAssistantError(f"Unknown Output Priority option: {option}")
-
-        if option == "SOL":
-            raise HomeAssistantError(
-                "SOL write is intentionally disabled because Program 01 raw=0 has not "
-                "yet been hardware-validated with F06."
-            )
 
         target = RIV_OUTPUT_PRIORITY_TO_RAW[option]
         verified = await async_write_output_priority(self.coordinator, target)
@@ -490,7 +483,7 @@ class RenogyMaxCurrentSelect(SelectEntity):
                 display = f"{current_int}A"
                 self._attr_current_option = display
                 return display
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             pass
 
         return None
