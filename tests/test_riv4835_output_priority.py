@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import types
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
 from tests.test_number import _load_select_module
@@ -76,7 +77,7 @@ def test_all_program01_options_are_writable() -> None:
     """Pass SOL, UTI, and SBU through to the verified transaction helper."""
     select = _load_select_module()
 
-    exceptions_module = types.ModuleType("homeassistant.exceptions")
+    exceptions_module = cast(Any, types.ModuleType("homeassistant.exceptions"))
 
     class HomeAssistantError(Exception):
         """Stub Home Assistant service error."""
@@ -96,8 +97,8 @@ def test_all_program01_options_are_writable() -> None:
     )
     entity.async_write_ha_state = MagicMock()
 
-    transaction_module = types.ModuleType(
-        "custom_components.renogy.riv4835_output_priority"
+    transaction_module = cast(
+        Any, types.ModuleType("custom_components.renogy.riv4835_output_priority")
     )
     transaction_module.async_write_output_priority = AsyncMock(
         side_effect=lambda _coordinator, target: target
