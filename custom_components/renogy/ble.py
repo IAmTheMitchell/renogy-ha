@@ -971,7 +971,12 @@ class RenogyActiveBluetoothCoordinator(
 
                 # Update coordinator data if successful
                 if success and device.parsed_data:
-                    self.data = self._merge_static_device_info(dict(device.parsed_data))
+                    # Sensors and registry callbacks read the device directly.
+                    # The Bluetooth poll also returns this data to Home Assistant.
+                    device.parsed_data = self._merge_static_device_info(
+                        dict(device.parsed_data)
+                    )
+                    self.data = dict(device.parsed_data)
                     self.logger.debug("Updated coordinator data: %s", self.data)
                     self._warn_if_model_mismatch()
 
