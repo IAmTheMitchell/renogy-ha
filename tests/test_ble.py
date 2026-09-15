@@ -1764,3 +1764,52 @@ def test_missing_measurements_are_not_carried_forward():
 
     assert "pv_power" not in coordinator.data
     assert coordinator.data["model"] == "RNG-CTRL-RVR"
+
+
+@pytest.mark.parametrize("refresh_path", ["bluetooth", "manual"])
+def test_static_device_info_reaches_sensors_after_partial_polls(refresh_path):
+    """Preserved identity must reach sensors and the Bluetooth poll result."""
+    from tests.test_sensor_setup import _load_sensor_module
+
+    ble_module = _load_ble_module()
+    coordinator = _coordinator_with_previous_poll(
+        ble_module, {"model": "RNG-CTRL-RVR", "device_id": 1, "pv_power": 22.0}
+    )
+    sensor_module = _load_sensor_module()
+    sensors = {
+        key: sensor_module.RenogyBLESensor(
+            coordinator,
+            coordinator.device,
+            sensor_module.RenogyBLESensorDescription(key=key, name=key),
+        )
+        for key in ("model", "device_id", "pv_power")
+    }
+    callback_data = []
+
+    async def record_device(device):
+        callback_data.append(dict(device.parsed_data))
+
+    coordinator.device_data_callback = record_device
+    coordinator._service_info_for_operation = lambda: None
+
+    async def poll():
+        for voltage in (13.6, 13.7):
+            coordinator.device.parsed_data = {"battery_voltage": voltage}
+            if refresh_path == "bluetooth":
+                # Home Assistant assigns the poll method's return value to data.
+                coordinator.data = await coordinator._async_poll_device(None)
+            else:
+                await coordinator.async_request_refresh()
+            assert sensors["model"].native_value == "RNG-CTRL-RVR"
+            assert sensors["device_id"].native_value == 1
+            assert sensors["pv_power"].native_value is None
+            assert coordinator.data == {
+                "model": "RNG-CTRL-RVR",
+                "device_id": 1,
+                "battery_voltage": voltage,
+            }
+            assert callback_data[-1] == coordinator.data
+            for sensor in sensors.values():
+                sensor._attr_native_value = None
+
+    asyncio.run(poll())
