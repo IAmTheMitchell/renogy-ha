@@ -8,7 +8,9 @@ import sys
 import types
 from enum import Enum
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 def _install_module_stubs(*, install_ble: bool = True) -> type | None:
@@ -342,6 +344,35 @@ def test_async_unload_entry_schedules_shutdown() -> None:
     shutdown_coro.close()
 
 
+@pytest.mark.parametrize("hub_enabled", [False, True])
+@pytest.mark.parametrize("stored_name", ["RNGPRO125BAT-EF036881", None])
+def test_setup_uses_stored_discovery_name_not_edited_title(
+    hub_enabled: bool, stored_name: str | None
+) -> None:
+    """An editable entry title must never become a battery protocol name."""
+    init_module, coordinator_class = _load_init_module()
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries.async_forward_entry_setups = AsyncMock()
+    hass.async_create_task = lambda coro: asyncio.get_running_loop().create_task(coro)
+    entry = MagicMock()
+    entry.entry_id = "renamed-battery"
+    entry.title = "House battery"
+    entry.data = {
+        "address": "14:9C:EF:03:68:81",
+        init_module.CONF_DEVICE_TYPE: "battery",
+        init_module.CONF_COMMUNICATION_HUB_ENABLED: hub_enabled,
+    }
+    if stored_name is not None:
+        entry.data["device_name"] = stored_name
+    entry.options = {init_module.CONF_COMMUNICATION_HUB_ENABLED: hub_enabled}
+    hub_module = cast(Any, types.ModuleType("custom_components.renogy.hub_coordinator"))
+    hub_module.RenogyHubBluetoothCoordinator = coordinator_class
+    with patch.dict(sys.modules, {hub_module.__name__: hub_module}):
+        assert asyncio.run(init_module.async_setup_entry(hass, entry)) is True
+    assert coordinator_class.last_init["device_name"] == stored_name
+
+
 def test_async_shutdown_coordinator_times_out() -> None:
     """Ensure coordinator shutdown timeouts are logged and do not raise."""
     init_module, _ = _load_init_module()
@@ -356,3 +387,61 @@ def test_async_shutdown_coordinator_times_out() -> None:
 
     coordinator.async_shutdown.assert_awaited_once()
     init_module.LOGGER.warning.assert_called_once()
+
+
+def test_registry_update_scopes_lookup_to_config_entry() -> None:
+    """Duplicate identifiers across entries must resolve to the owning entry."""
+    module, _ = _load_init_module()
+    registry = MagicMock()
+    module.async_get_device_registry.return_value = registry
+    entry = types.SimpleNamespace(entry_id="renogy-entry")
+    device = types.SimpleNamespace(
+        address="AA:BB", name="Controller", device_type="controller", parsed_data={}
+    )
+    registry.async_get_device_by_identifier.return_value = types.SimpleNamespace(
+        id="owned"
+    )
+
+    asyncio.run(module.update_device_registry(MagicMock(), entry, device))
+
+    registry.async_get_device_by_identifier.assert_called_once_with(
+        (module.DOMAIN, "AA:BB"), "renogy-entry"
+    )
+    registry.async_get_device.assert_not_called()
+    registry.async_update_device.assert_called_once_with(
+        "owned", name="Controller", model="Controller"
+    )
+
+
+def test_registry_update_supports_legacy_home_assistant() -> None:
+    """The supported HA minimum has no scoped lookup method."""
+    module, _ = _load_init_module()
+    registry = MagicMock(spec=["async_get_device", "async_update_device"])
+    module.async_get_device_registry.return_value = registry
+    registry.async_get_device.return_value = types.SimpleNamespace(id="legacy")
+    device = types.SimpleNamespace(
+        address="AA:BB", name="Controller", device_type="controller", parsed_data={}
+    )
+
+    asyncio.run(module.update_device_registry(MagicMock(), MagicMock(), device))
+
+    registry.async_get_device.assert_called_once_with({(module.DOMAIN, "AA:BB")})
+    registry.async_update_device.assert_called_once_with(
+        "legacy", name="Controller", model="Controller"
+    )
+
+
+def test_registry_update_does_not_fall_back_when_scoped_lookup_misses() -> None:
+    """A missing owned device must not update another entry's device."""
+    module, _ = _load_init_module()
+    registry = MagicMock()
+    module.async_get_device_registry.return_value = registry
+    registry.async_get_device_by_identifier.return_value = None
+    device = types.SimpleNamespace(
+        address="AA:BB", name="Controller", device_type="controller", parsed_data={}
+    )
+
+    asyncio.run(module.update_device_registry(MagicMock(), MagicMock(), device))
+
+    registry.async_get_device.assert_not_called()
+    registry.async_update_device.assert_not_called()

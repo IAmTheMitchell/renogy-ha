@@ -1,9 +1,12 @@
 """Tests for Renogy BLE coordinator error handling."""
 
 import asyncio
+import subprocess
 import sys
 import types
 from enum import Enum
+from pathlib import Path
+from textwrap import dedent
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -137,6 +140,7 @@ def _install_module_stubs() -> None:
             advertisement_rssi,
             device_type=None,
             manufacturer_data=None,
+            advertisement_name=None,
             max_failures=3,
             unavailable_retry_interval=10,
             model_hint=None,
@@ -144,6 +148,7 @@ def _install_module_stubs() -> None:
             self.ble_device = ble_device
             self.address = ble_device.address
             self.name = ble_device.name or "Unknown Renogy Device"
+            self.advertised_name = advertisement_name or ble_device.name
             self.rssi = advertisement_rssi
             self.device_type = device_type
             self.manufacturer_data = manufacturer_data or {}
@@ -1400,6 +1405,281 @@ def test_model_mismatch_silent_when_type_matches_or_model_unknown():
     logger.warning.reset_mock()
     coordinator._warn_if_model_mismatch()
     logger.warning.assert_not_called()
+
+
+def test_nameless_advertisement_falls_back_to_the_configured_name() -> None:
+    """A restart with no local name on air must still identify the battery.
+
+    The local name rides in the scan response only, so a Pi's built-in adapter
+    under Home Assistant's default `auto` (== passive) scanning never sees one,
+    and HA labels the advertisement with its address. Before this fallback the
+    address became the device name, `detect_battery_variant()` found no
+    RNGPRO/RBT prefix, and every poll failed with "Unable to determine Renogy
+    battery variant" until a scan response happened to land.
+    """
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="14:9C:EF:03:68:81",
+        scan_interval=30,
+        device_type="battery",
+        device_name="RNGPRO125BAT-EF036881",
+    )
+    # What HA hands over when nothing has supplied a local name.
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="14:9C:EF:03:68:81",
+        name="14:9C:EF:03:68:81",
+        rssi=-36,
+    )
+
+    device = coordinator._update_device_from_service_info(service_info)
+
+    assert device.name == "RNGPRO125BAT-EF036881"
+    assert device.advertised_name == "RNGPRO125BAT-EF036881"
+
+
+def test_a_real_advertised_name_still_wins() -> None:
+    """The fallback must not pin a stale name when the device does send one."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="14:9C:EF:03:68:81",
+        scan_interval=30,
+        device_type="battery",
+        device_name="RNGPRO125BAT-OLDNAME",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="14:9C:EF:03:68:81",
+        name="RNGPRO125BAT-EF036881",
+        rssi=-36,
+    )
+
+    device = coordinator._update_device_from_service_info(service_info)
+
+    assert device.name == "RNGPRO125BAT-EF036881"
+    assert device.advertised_name == "RNGPRO125BAT-EF036881"
+
+
+def test_bluez_cached_name_beats_a_nameless_advertisement() -> None:
+    """BlueZ is the source that works on a passive-only host.
+
+    It keeps the name in /var/lib/bluetooth/<adapter>/cache/ and serves it as
+    Device1.Alias whether or not anything is scanning, so bleak's
+    BLEDevice.name has it even when the advertisement does not. The
+    integration already receives that BLEDevice; it just was not consulted.
+    """
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="14:9C:EF:03:68:81",
+        scan_interval=30,
+        device_type="battery",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address="14:9C:EF:03:68:81",
+        name="14:9C:EF:03:68:81",
+        rssi=-36,
+    )
+    service_info.device.name = "RNGPRO125BAT-EF036881"
+
+    device = coordinator._update_device_from_service_info(service_info)
+
+    assert device.name == "RNGPRO125BAT-EF036881"
+    assert device.advertised_name == "RNGPRO125BAT-EF036881"
+    # No configured name was supplied, so this came from BlueZ alone.
+    assert coordinator.configured_name is None
+
+
+def test_bluez_cached_name_rescues_a_device_already_holding_its_address() -> None:
+    """The update path is where the address actually has to be displaced.
+
+    On a passive-only host the first advertisements carry no name at all, so
+    the device ends up holding its own address. BlueZ re-materialises the
+    cached name a moment later, and the update path -- not just construction --
+    has to pick it up, or the address stays until a restart.
+    """
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="14:9C:EF:03:68:81",
+        scan_interval=30,
+        device_type="battery",
+    )
+    # Nothing knows a name yet: the advertisement has none and BlueZ has not
+    # re-materialised the device, so every source is the address.
+    nameless = ble_module.BluetoothServiceInfoBleak(
+        address="14:9C:EF:03:68:81", name="14:9C:EF:03:68:81", rssi=-36
+    )
+    device = coordinator._update_device_from_service_info(nameless)
+    assert not ble_module.has_real_device_name(device.name, "14:9C:EF:03:68:81")
+
+    # BlueZ now serves the cached Alias; the advertisement is still nameless.
+    cached = ble_module.BluetoothServiceInfoBleak(
+        address="14:9C:EF:03:68:81", name="14:9C:EF:03:68:81", rssi=-40
+    )
+    cached.device.name = "RNGPRO125BAT-EF036881"
+    device = coordinator._update_device_from_service_info(cached)
+
+    assert device.name == "RNGPRO125BAT-EF036881"
+    assert device.advertised_name == "RNGPRO125BAT-EF036881"
+
+
+def test_a_name_read_from_the_device_is_not_overwritten() -> None:
+    """A completed read renames the device to what the hardware calls itself.
+
+    renogy_ble sets device.name from the device_name register once a read
+    succeeds -- "RBT12500LFP-SHBT" for this battery, which is what the device
+    registry shows. Re-applying the BLE name on every advertisement would flip
+    the registry name back and forth forever.
+    """
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="14:9C:EF:03:68:81",
+        scan_interval=30,
+        device_type="battery",
+        device_name="RNGPRO125BAT-EF036881",
+    )
+    first = ble_module.BluetoothServiceInfoBleak(
+        address="14:9C:EF:03:68:81", name="RNGPRO125BAT-EF036881", rssi=-36
+    )
+    device = coordinator._update_device_from_service_info(first)
+    # What a successful battery read does.
+    device.name = "RBT12500LFP-SHBT"
+    device.parsed_data["device_name"] = device.name
+
+    later = ble_module.BluetoothServiceInfoBleak(
+        address="14:9C:EF:03:68:81", name="RNGPRO125BAT-EF036881", rssi=-40
+    )
+    device = coordinator._update_device_from_service_info(later)
+
+    assert device.name == "RBT12500LFP-SHBT"
+
+
+@pytest.mark.parametrize("cached_name", ["House battery", "Battery"])
+def test_advertisement_replaces_unconfirmed_cached_name(cached_name: str) -> None:
+    """A fresh local name must recover a stale OS name before a hardware read."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="14:9C:EF:03:68:81",
+        device_type="battery",
+    )
+    first = ble_module.BluetoothServiceInfoBleak(
+        address=coordinator.address,
+        name=cached_name,
+    )
+    coordinator._update_device_from_service_info(first)
+    later = ble_module.BluetoothServiceInfoBleak(
+        address=coordinator.address,
+        name="RNGPRO125BAT-EF036881",
+    )
+    later.device.name = cached_name
+    device = coordinator._update_device_from_service_info(later)
+    assert device.name == "RNGPRO125BAT-EF036881"
+    assert device.advertised_name == "RNGPRO125BAT-EF036881"
+
+
+def test_initial_advertisement_beats_cached_os_name() -> None:
+    """Construction must use the same name precedence as later updates."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="14:9C:EF:03:68:81",
+        device_type="battery",
+    )
+    service_info = ble_module.BluetoothServiceInfoBleak(
+        address=coordinator.address,
+        name="RNGPRO125BAT-EF036881",
+    )
+    service_info.device.name = "House battery"
+    device = coordinator._update_device_from_service_info(service_info)
+    assert device.name == "RNGPRO125BAT-EF036881"
+    assert device.advertised_name == "RNGPRO125BAT-EF036881"
+
+
+def test_real_library_uses_resolved_name_for_battery_protocol() -> None:
+    """Verify the dependency contract outside the suite's global module stubs."""
+    script = dedent(
+        """
+        from unittest.mock import MagicMock
+        from renogy_ble.ble import RenogyBLEDevice
+        from renogy_ble.battery import detect_battery_variant
+        from tests.test_ble import _load_ble_module
+
+        module = _load_ble_module()
+        module.RenogyBLEDevice = RenogyBLEDevice
+        address = "14:9C:EF:03:68:81"
+        name = "RNGPRO125BAT-EF036881"
+        coordinator = module.RenogyActiveBluetoothCoordinator(
+            hass=MagicMock(), logger=MagicMock(), address=address,
+            device_type="battery", device_name=name,
+        )
+        info = module.BluetoothServiceInfoBleak(address=address, name=address)
+        info.advertisement.manufacturer_data = {0xE14C: b""}
+        device = coordinator._update_device_from_service_info(info)
+        assert device.battery_variant == "rngpro"
+        assert device.advertised_name == name
+
+        coordinator = module.RenogyActiveBluetoothCoordinator(
+            hass=MagicMock(), logger=MagicMock(), address=address,
+            device_type="battery",
+        )
+        info.advertisement.manufacturer_data = {}
+        device = coordinator._update_device_from_service_info(info)
+        assert device.battery_variant is None
+        info.name = name
+        coordinator._update_device_from_service_info(info)
+        assert detect_battery_variant(device.name) == "rngpro"
+        assert device.advertised_name == name
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("fallback", ["House battery", "RNGPRO-OLD", None])
+def test_nameless_packet_keeps_confirmed_protocol_name(fallback: str | None) -> None:
+    """Lower-priority names cannot replace a confirmed RNGRBP local name."""
+    ble_module = _load_ble_module()
+    coordinator = ble_module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="14:9C:EF:03:68:81",
+        device_type="battery",
+        device_name="RNGPRO-OLD",
+    )
+    first = ble_module.BluetoothServiceInfoBleak(
+        address=coordinator.address,
+        name="RNGRBP123456",
+    )
+    first.advertisement.local_name = "RNGRBP123456"
+    device = coordinator._update_device_from_service_info(first)
+    device.name = "Hardware battery"
+    device.parsed_data["device_name"] = device.name
+    later = ble_module.BluetoothServiceInfoBleak(
+        address=coordinator.address,
+        name=fallback or coordinator.address,
+    )
+    later.advertisement.local_name = None
+    later.device.name = fallback
+    coordinator._update_device_from_service_info(later)
+    assert device.name == "Hardware battery"
+    assert device.advertised_name == "RNGRBP123456"
 
 
 def _coordinator_with_previous_poll(ble_module, previous: dict):
