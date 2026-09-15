@@ -133,7 +133,7 @@ async def async_setup_entry(
 
     for description in descriptions:
         if description.key == "battery_type":
-            type_config = BATTERY_TYPE_CONFIG.get(device_type)
+            type_config = BATTERY_TYPE_PROFILES.get(device_type)
             if type_config is None:
                 continue
             type_map, value_map = type_config
