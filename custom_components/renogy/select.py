@@ -16,9 +16,9 @@ from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
+    CONF_INVERTER_PROFILE,
     CONTROLLER_BATTERY_TYPE_VALUES,
     CONTROLLER_BATTERY_TYPES,
-    CONF_INVERTER_PROFILE,
     DCC_BATTERY_TYPE_VALUES,
     DCC_BATTERY_TYPES,
     DCC_MAX_CURRENT_OPTIONS,
@@ -27,8 +27,8 @@ from .const import (
     DEFAULT_INVERTER_PROFILE,
     DOMAIN,
     LOGGER,
-    ControllerRegister,
     RIV4835CSH1S_INVERTER_PROFILE,
+    ControllerRegister,
     DCCRegister,
     DeviceType,
 )
@@ -142,8 +142,11 @@ async def async_setup_entry(
                 device_type,
             )
         elif description.key == "max_charging_current":
-            entity = RenogyMaxChargingCurrentSelect(
-                coordinator, device, description
+            entity = RenogyMaxCurrentSelect(
+                coordinator=coordinator,
+                device=device,
+                description=description,
+                device_type=device_type,
             )
         elif description.key == "output_priority":
             entity = RenogyOutputPrioritySelect(
