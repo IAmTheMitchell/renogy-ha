@@ -121,13 +121,13 @@ class DCCRegister:
     SOLAR_CUTOFF_CURRENT = 0xE038
 
 
-# REGO-series inverter setting registers (for write operations)
 class ControllerRegister:
     """Modbus register addresses for charge-controller (Rover/Wanderer) parameters."""
 
     BATTERY_TYPE = 0xE004
 
 
+# REGO-series inverter setting registers (for write operations).
 class InverterRegister:
     """Modbus registers for REGO-series inverter settings (function 0x06, value x10)."""
 

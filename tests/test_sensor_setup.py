@@ -863,3 +863,50 @@ def test_line_charging_current_only_created_for_riv_profile() -> None:
     assert "line_charging_current" in {
         entity.entity_description.key for entity in riv_entities
     }
+
+
+def test_static_diagnostics_use_preserved_metadata_after_partial_poll() -> None:
+    """Partial device data must not hide metadata retained by the coordinator."""
+    sensor_module = _load_sensor_module()
+    device = MagicMock(address="AA:BB:CC:DD:EE:FF")
+    device.name = "Rover"
+    device.parsed_data = {"battery_voltage": 13.6}
+    coordinator = MagicMock(address=device.address, device=device)
+    coordinator.data = {
+        "model": "RNG-CTRL-RVR",
+        "device_id": 1,
+        "battery_voltage": 13.6,
+        "pv_power": 22.0,
+    }
+    descriptions = {
+        d.key: d
+        for group in (
+            sensor_module.CONTROLLER_SENSORS,
+            sensor_module.BATTERY_SENSORS,
+            sensor_module.PV_SENSORS,
+        )
+        for d in group
+    }
+    entities = {
+        key: sensor_module.RenogyBLESensor(
+            coordinator, device, descriptions[key], device_type="controller"
+        )
+        for key in ("model", "device_id", "battery_voltage", "pv_power")
+    }
+    assert entities["model"].native_value == "RNG-CTRL-RVR"
+    assert entities["device_id"].native_value == 1
+    assert entities["battery_voltage"].native_value == 13.6
+    assert entities["pv_power"].native_value is None
+
+    # Fresh device metadata wins over the retained values.
+    device.parsed_data = {"battery_voltage": 13.6, "model": "NEW-MODEL", "device_id": 2}
+    for key, expected in (("model", "NEW-MODEL"), ("device_id", 2)):
+        entities[key]._handle_coordinator_update()
+        assert entities[key].native_value == expected
+
+    # Metadata never observed by either source remains unknown.
+    device.parsed_data = {"battery_voltage": 13.7}
+    coordinator.data = dict(device.parsed_data)
+    for key in ("model", "device_id"):
+        entities[key]._handle_coordinator_update()
+        assert entities[key].native_value is None

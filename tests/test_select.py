@@ -25,8 +25,17 @@ def _battery_select(select_module, device_type: str, data: dict | None = None):
 def test_controller_gets_a_battery_type_select_but_not_max_current() -> None:
     """A Rover exposes the battery profile; max charging current is DCC-only."""
     select_module = _load_select_module()
-    keys = [d.key for d in select_module.CONTROLLER_SELECT_ENTITIES]
-    assert keys == ["battery_type"]
+    coordinator = MagicMock(address="AA:BB:CC:DD:EE:FF", device=None)
+    entry = MagicMock(entry_id="controller", data={"device_type": "controller"})
+    hass = MagicMock()
+    hass.data = {select_module.DOMAIN: {entry.entry_id: {"coordinator": coordinator}}}
+    add_entities = MagicMock()
+
+    asyncio.run(select_module.async_setup_entry(hass, entry, add_entities))
+
+    entities = add_entities.call_args.args[0]
+    assert [entity.entity_description.key for entity in entities] == ["battery_type"]
+    assert isinstance(entities[0], select_module.RenogyBatteryTypeSelect)
 
 
 def test_controller_sealed_writes_2_to_register_e004() -> None:

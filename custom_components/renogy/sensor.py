@@ -41,6 +41,7 @@ from .const import (
     DOMAIN,
     LOGGER,
     RIV4835CSH1S_INVERTER_PROFILE,
+    STATIC_DEVICE_INFO_KEYS,
     DeviceType,
 )
 from .hub_sensor import setup_hub_battery_sensors
@@ -1257,6 +1258,14 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
         if device and device.parsed_data:
             data = device.parsed_data
         elif self.coordinator.data:
+            data = self.coordinator.data
+
+        # Partial polls retain static metadata only in the coordinator snapshot.
+        if (
+            self.entity_description.key in STATIC_DEVICE_INFO_KEYS
+            and (not data or self.entity_description.key not in data)
+            and self.coordinator.data
+        ):
             data = self.coordinator.data
 
         if not data:
