@@ -121,7 +121,13 @@ class DCCRegister:
     SOLAR_CUTOFF_CURRENT = 0xE038
 
 
-# REGO-series inverter setting registers (for write operations)
+class ControllerRegister:
+    """Modbus register addresses for charge-controller (Rover/Wanderer) parameters."""
+
+    BATTERY_TYPE = 0xE004
+
+
+# REGO-series inverter setting registers (for write operations).
 class InverterRegister:
     """Modbus registers for REGO-series inverter settings (function 0x06, value x10)."""
 
@@ -129,6 +135,12 @@ class InverterRegister:
     LOW_VOLTAGE_WARN = 0x114E
     BATTERY_OVER_VOLTAGE = 0x1164
     AC_INPUT_CURRENT_LIMIT = 0x1168
+
+
+class RIV4835CSH1SRegister:
+    """Hardware-validated RIV4835CSH1S setting registers."""
+
+    MAX_AC_CHARGING_CURRENT = 0xE205
 
 
 # DCC Battery Type Values
@@ -142,6 +154,22 @@ DCC_BATTERY_TYPES = {
 
 # Reverse mapping for setting battery type
 DCC_BATTERY_TYPE_VALUES = {v: k for k, v in DCC_BATTERY_TYPES.items()}
+
+# Controller battery type values. Same register as the DCC and the same codes for
+# the four chemistries; only "custom" differs, and it differs in a way that would
+# silently select the wrong profile if the DCC map were reused: 0 on a DCC means
+# custom, but on a controller the parser maps 5 to custom and 0 is not a valid
+# option at all.
+CONTROLLER_BATTERY_TYPES = {
+    1: "open",
+    2: "sealed",
+    3: "gel",
+    4: "lithium",
+    5: "custom",
+}
+
+# Reverse mapping for setting battery type on a controller
+CONTROLLER_BATTERY_TYPE_VALUES = {v: k for k, v in CONTROLLER_BATTERY_TYPES.items()}
 
 # DCC Max Charging Current options (in amps)
 # Device stores as centiamps, so 40A = 4000

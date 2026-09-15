@@ -61,12 +61,12 @@ async def async_setup_entry(
         return
 
     if not coordinator.device or not is_device_name_ready(
-        coordinator.device.name, device_type
+        coordinator.device.name, device_type, coordinator.device.address
     ):
         LOGGER.debug("Creating switches without waiting for a resolved device name")
 
     device = coordinator.device
-    if device and not is_device_name_ready(device.name, device_type):
+    if device and not is_device_name_ready(device.name, device_type, device.address):
         device = None
 
     async_add_entities([RenogyLoadSwitch(coordinator, device, device_type)])
