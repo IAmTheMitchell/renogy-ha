@@ -910,3 +910,81 @@ def test_static_diagnostics_use_preserved_metadata_after_partial_poll() -> None:
     for key in ("model", "device_id"):
         entities[key]._handle_coordinator_update()
         assert entities[key].native_value is None
+
+
+def test_controller_parameter_sensors_read_the_charging_block() -> None:
+    """The read-only members of the parameter block are diagnostic sensors."""
+    sensor_module = _load_sensor_module()
+
+    descriptions = {
+        description.key: description
+        for description in sensor_module.CONTROLLER_PARAMETER_SENSORS
+    }
+    assert set(descriptions) == {
+        sensor_module.KEY_SYSTEM_VOLTAGE,
+        sensor_module.KEY_END_OF_CHARGE_SOC,
+        sensor_module.KEY_END_OF_DISCHARGE_SOC,
+        sensor_module.KEY_LOAD_WORKING_MODE,
+    }
+    assert all(
+        description.entity_category == sensor_module.EntityCategory.DIAGNOSTIC
+        for description in descriptions.values()
+    )
+    assert (
+        sensor_module.SENSORS_BY_DEVICE_TYPE[sensor_module.DeviceType.CONTROLLER.value][
+            "Parameters"
+        ]
+        is sensor_module.CONTROLLER_PARAMETER_SENSORS
+    )
+
+    # the frame captured from an RNG-CTRL-RVR on 2026-09-12
+    data = {
+        sensor_module.KEY_SYSTEM_VOLTAGE: 255,
+        sensor_module.KEY_END_OF_CHARGE_SOC: 100,
+        sensor_module.KEY_END_OF_DISCHARGE_SOC: 50,
+        sensor_module.KEY_LOAD_WORKING_MODE: "always_on",
+    }
+
+    def read(key: str, sample: dict[str, Any] = data) -> Any:
+        return _read_sensor_value(sensor_module, descriptions[key], sample)
+
+    # 0xFF is "auto-detect", not 255 volts
+    assert read(sensor_module.KEY_SYSTEM_VOLTAGE) == "auto"
+    assert read(sensor_module.KEY_SYSTEM_VOLTAGE, {"system_voltage": 12}) == 12
+    assert read(sensor_module.KEY_END_OF_CHARGE_SOC) == 100
+    assert read(sensor_module.KEY_END_OF_DISCHARGE_SOC) == 50
+    assert read(sensor_module.KEY_LOAD_WORKING_MODE) == "always_on"
+
+
+def test_controller_daily_extreme_sensors_use_library_field_names() -> None:
+    """The day's battery-voltage and current extremes map to library fields."""
+    sensor_module = _load_sensor_module()
+
+    # voltage extremes sit with the battery sensors, current extremes next to the
+    # existing daily power maximum in the PV group
+    descriptions = {
+        d.key: d for d in sensor_module.BATTERY_SENSORS + sensor_module.PV_SENSORS
+    }
+    m = sensor_module
+    keys = {
+        m.KEY_DAILY_MIN_BATTERY_VOLTAGE: "daily_min_battery_voltage",
+        m.KEY_DAILY_MAX_BATTERY_VOLTAGE: "daily_max_battery_voltage",
+        m.KEY_MAX_CHARGING_CURRENT_TODAY: "max_charging_current_today",
+        m.KEY_MAX_DISCHARGING_CURRENT_TODAY: "max_discharging_current_today",
+    }
+    battery_keys = {d.key for d in sensor_module.BATTERY_SENSORS}
+    assert {"daily_min_battery_voltage", "daily_max_battery_voltage"} <= battery_keys
+    assert "max_charging_current_today" not in battery_keys
+    assert set(keys) == set(keys.values())  # constants name the library fields
+    data = {
+        "daily_min_battery_voltage": 12.7,
+        "daily_max_battery_voltage": 15.5,
+        "max_charging_current_today": 4.46,
+        "max_discharging_current_today": 0.21,
+    }
+    for key in keys:
+        assert descriptions[key].value_fn is None
+        assert descriptions[key].suggested_display_precision is not None
+        assert _read_sensor_value(sensor_module, descriptions[key], data) == data[key]
+    assert descriptions["max_charging_current_today"].native_unit_of_measurement == "A"
+    assert descriptions["daily_max_battery_voltage"].suggested_display_precision == 1

@@ -60,6 +60,11 @@ KEY_PV_VOLTAGE = "pv_voltage"
 KEY_PV_CURRENT = "pv_current"
 KEY_PV_POWER = "pv_power"
 KEY_MAX_CHARGING_POWER_TODAY = "max_charging_power_today"
+# The controller's own daily extremes (0x010B-0x010E); reset at midnight
+KEY_DAILY_MIN_BATTERY_VOLTAGE = "daily_min_battery_voltage"
+KEY_DAILY_MAX_BATTERY_VOLTAGE = "daily_max_battery_voltage"
+KEY_MAX_CHARGING_CURRENT_TODAY = "max_charging_current_today"
+KEY_MAX_DISCHARGING_CURRENT_TODAY = "max_discharging_current_today"
 KEY_POWER_GENERATION_TODAY = "power_generation_today"
 KEY_POWER_GENERATION_TOTAL = "power_generation_total"
 
@@ -266,11 +271,36 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
 # DCC parameter keys exposed as sensors.
 KEY_SYSTEM_VOLTAGE = "system_voltage"
 
+# Charge-controller parameter keys exposed as sensors (the block's read-only
+# members; the writable ones are number entities).
+KEY_END_OF_CHARGE_SOC = "end_of_charge_soc"
+KEY_END_OF_DISCHARGE_SOC = "end_of_discharge_soc"
+KEY_LOAD_WORKING_MODE = "load_working_mode"
+
+# 0xFF in the system-voltage byte means the controller auto-detects the bank.
+SYSTEM_VOLTAGE_AUTO = 255
+
 
 BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
         key=KEY_BATTERY_VOLTAGE,
         name="Battery Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_MIN_BATTERY_VOLTAGE,
+        name="Min Battery Voltage Today",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_DAILY_MAX_BATTERY_VOLTAGE,
+        name="Max Battery Voltage Today",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -360,6 +390,22 @@ PV_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_MAX_CHARGING_CURRENT_TODAY,
+        name="Max Charging Current Today",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_MAX_DISCHARGING_CURRENT_TODAY,
+        name="Max Discharging Current Today",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
     ),
     RenogyBLESensorDescription(
         key=KEY_POWER_GENERATION_TODAY,
@@ -452,6 +498,46 @@ CONTROLLER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
+    ),
+)
+
+# Charge-controller charging parameters that are not worth a number entity.
+# They ride along in the same 0xE003-0xE014 read as the writable ones.
+CONTROLLER_PARAMETER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
+    RenogyBLESensorDescription(
+        key=KEY_SYSTEM_VOLTAGE,
+        name="System Voltage",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # "auto" or the nominal bank voltage; a string state rules out a
+        # voltage device class here
+        value_fn=lambda data: (
+            "auto"
+            if data.get(KEY_SYSTEM_VOLTAGE) == SYSTEM_VOLTAGE_AUTO
+            else data.get(KEY_SYSTEM_VOLTAGE)
+        ),
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_END_OF_CHARGE_SOC,
+        name="End of Charge SOC",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_END_OF_DISCHARGE_SOC,
+        name="End of Discharge SOC",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_LOAD_WORKING_MODE,
+        name="Load Working Mode",
+        device_class=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
 
@@ -988,6 +1074,7 @@ SENSORS_BY_DEVICE_TYPE = {
         "PV": PV_SENSORS,
         "Load": LOAD_SENSORS,
         "Controller": CONTROLLER_SENSORS,
+        "Parameters": CONTROLLER_PARAMETER_SENSORS,
     },
     DeviceType.DCC.value: {
         "Battery": DCC_BATTERY_SENSORS,

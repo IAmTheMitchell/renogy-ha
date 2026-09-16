@@ -47,6 +47,7 @@ debug logs, and a comparison with the Renogy app.
 - Monitor Smart Shunt voltage, current, power, state of charge, and derived energy
 - Turn the DC load output on/off (supported controllers only)
 - Configure supported DCC charging parameters, battery type, and maximum current
+- Configure a charge controller's battery type and charging parameters (voltages, timing, equalization interval)
 - Monitor controller information
 - Telemetry exposed as Home Assistant sensors
 - Energy dashboard compatible sensors
@@ -171,6 +172,20 @@ timing, temperature compensation, and solar cutoff current.
 > **Caution:** DCC configuration writes change charger behavior. Confirm that
 > every value is appropriate for the connected battery and electrical system
 > before applying it.
+
+### Charge Controller Configuration
+
+Rover-family charge controllers read the same charging-parameter block as a
+DCC (requires renogy-ble with controller parameter support). The integration
+exposes the battery type as a select, the charging voltages, protection
+thresholds, charge timing and temperature compensation as number entities,
+and the system voltage, SOC limits and load working mode as diagnostic
+sensors.
+
+> **Caution:** these writes change how the controller charges the bank.
+> Renogy's presets (open, sealed, gel, lithium) manage the voltage
+> parameters themselves; set the battery type to **Custom** before changing
+> a voltage, and confirm every value against the battery's datasheet.
 
 ### Controller Info
 
