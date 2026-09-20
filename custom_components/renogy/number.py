@@ -35,6 +35,7 @@ from .const import (
     LOGGER,
     RENOGY_REGO_INVERTER_PREFIX,
     RIV4835CSH1S_INVERTER_PROFILE,
+    ControllerRegister,
     DCCRegister,
     DeviceType,
     InverterRegister,
@@ -282,6 +283,35 @@ DCC_OTHER_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
 # All DCC number entities
 DCC_ALL_NUMBERS = DCC_VOLTAGE_NUMBERS + DCC_TIME_NUMBERS + DCC_OTHER_NUMBERS
 
+# A charge controller (Rover/Wanderer) programs the same 0xE005-0xE014 block as
+# a DCC, with the same scale and the same sensible ranges, so the descriptions
+# are shared. Only the registers a controller actually has are offered; the
+# reverse charging voltage and solar cutoff current are alternator settings.
+_CONTROLLER_PARAMETER_REGISTERS = frozenset(
+    {
+        ControllerRegister.OVERVOLTAGE_THRESHOLD,
+        ControllerRegister.CHARGING_LIMIT_VOLTAGE,
+        ControllerRegister.EQUALIZATION_VOLTAGE,
+        ControllerRegister.BOOST_VOLTAGE,
+        ControllerRegister.FLOAT_VOLTAGE,
+        ControllerRegister.BOOST_RETURN_VOLTAGE,
+        ControllerRegister.OVERDISCHARGE_RETURN_VOLTAGE,
+        ControllerRegister.UNDERVOLTAGE_WARNING,
+        ControllerRegister.OVERDISCHARGE_VOLTAGE,
+        ControllerRegister.DISCHARGE_LIMIT_VOLTAGE,
+        ControllerRegister.OVERDISCHARGE_DELAY,
+        ControllerRegister.EQUALIZATION_TIME,
+        ControllerRegister.BOOST_TIME,
+        ControllerRegister.EQUALIZATION_INTERVAL,
+        ControllerRegister.TEMPERATURE_COMPENSATION,
+    }
+)
+CONTROLLER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = tuple(
+    description
+    for description in DCC_ALL_NUMBERS
+    if description.register in _CONTROLLER_PARAMETER_REGISTERS
+)
+
 # REGO-series inverter setting parameters (all use 0.1-scale registers, function 0x06)
 INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
     RenogyNumberEntityDescription(
@@ -383,6 +413,8 @@ async def async_setup_entry(
     # Select the number descriptions for this device type/profile.
     if device_type == DeviceType.DCC.value:
         descriptions = DCC_ALL_NUMBERS
+    elif device_type == DeviceType.CONTROLLER.value:
+        descriptions = CONTROLLER_ALL_NUMBERS
     elif (
         device_type == DeviceType.INVERTER.value
         and inverter_profile == RIV4835CSH1S_INVERTER_PROFILE
