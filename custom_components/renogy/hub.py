@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
+from inspect import signature
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -21,6 +22,11 @@ class RenogyHubBatteryState:
     battery_remaining_capacity: float | None
     battery_capacity: float | None
     battery_percentage: float | None
+    cell_voltages: tuple[float, ...] | None = None
+    cell_voltage_min: float | None = None
+    cell_voltage_max: float | None = None
+    cell_voltage_delta: float | None = None
+    cell_voltage_max_cell_number: int | None = None
     available: bool = True
 
     def as_dict(self) -> dict[str, float | int | None]:
@@ -33,6 +39,9 @@ class RenogyHubBatteryState:
             "battery_remaining_capacity": self.battery_remaining_capacity,
             "battery_capacity": self.battery_capacity,
             "battery_percentage": self.battery_percentage,
+            "cell_voltage_min": self.cell_voltage_min,
+            "cell_voltage_max": self.cell_voltage_max,
+            "cell_voltage_delta": self.cell_voltage_delta,
         }
 
 
@@ -58,6 +67,12 @@ class RenogyHubBankState:
     battery_voltage_max_slave_id: int | None = None
     battery_voltage_spread: float | None = None
     battery_current_spread: float | None = None
+    cell_telemetry_battery_count: int = 0
+    cell_voltage_max: float | None = None
+    cell_voltage_max_slave_id: int | None = None
+    cell_voltage_max_cell_number: int | None = None
+    cell_voltage_delta_max: float | None = None
+    cell_voltage_delta_max_slave_id: int | None = None
 
     def as_dict(self) -> dict[str, float | int | None]:
         """Return primary communicating-bank aggregate telemetry."""
@@ -69,6 +84,9 @@ class RenogyHubBankState:
             "battery_remaining_capacity": self.battery_remaining_capacity,
             "battery_capacity": self.battery_capacity,
             "battery_percentage": self.battery_percentage,
+            "cell_telemetry_battery_count": self.cell_telemetry_battery_count,
+            "cell_voltage_max": self.cell_voltage_max,
+            "cell_voltage_delta_max": self.cell_voltage_delta_max,
         }
 
 
@@ -105,6 +123,7 @@ class RenogyHubBatteryManager:
         """Initialize the Hub state manager."""
         factory = hub_factory or self._load_hub_factory()
         self._hub = factory(client)
+        self._supports_cell_status = _supports_include_cell_status(self._hub)
         self._batteries: dict[int, RenogyHubBatteryState] = {}
         self.last_error: Exception | None = None
 
@@ -136,6 +155,27 @@ class RenogyHubBatteryManager:
         )
         voltage_range = _range_complete(communicating, "battery_voltage", precision=1)
         current_range = _range_complete(communicating, "battery_current", precision=2)
+        cell_telemetry = tuple(
+            battery
+            for battery in communicating
+            if battery.cell_voltage_max is not None
+            and battery.cell_voltage_delta is not None
+        )
+        cell_telemetry_complete = bool(communicating) and len(cell_telemetry) == len(
+            communicating
+        )
+
+        highest_cell_battery: RenogyHubBatteryState | None = None
+        largest_delta_battery: RenogyHubBatteryState | None = None
+        if cell_telemetry_complete:
+            highest_cell_battery = max(
+                cell_telemetry,
+                key=lambda battery: float(battery.cell_voltage_max or 0.0),
+            )
+            largest_delta_battery = max(
+                cell_telemetry,
+                key=lambda battery: float(battery.cell_voltage_delta or 0.0),
+            )
 
         percentage: float | None = None
         if (
@@ -166,6 +206,32 @@ class RenogyHubBatteryManager:
             battery_voltage_max_slave_id=voltage_range.maximum_slave_id,
             battery_voltage_spread=voltage_range.spread,
             battery_current_spread=current_range.spread,
+            cell_telemetry_battery_count=len(cell_telemetry),
+            cell_voltage_max=(
+                highest_cell_battery.cell_voltage_max
+                if highest_cell_battery is not None
+                else None
+            ),
+            cell_voltage_max_slave_id=(
+                highest_cell_battery.slave_id
+                if highest_cell_battery is not None
+                else None
+            ),
+            cell_voltage_max_cell_number=(
+                highest_cell_battery.cell_voltage_max_cell_number
+                if highest_cell_battery is not None
+                else None
+            ),
+            cell_voltage_delta_max=(
+                largest_delta_battery.cell_voltage_delta
+                if largest_delta_battery is not None
+                else None
+            ),
+            cell_voltage_delta_max_slave_id=(
+                largest_delta_battery.slave_id
+                if largest_delta_battery is not None
+                else None
+            ),
         )
 
     def get_battery(self, slave_id: int) -> RenogyHubBatteryState | None:
@@ -180,7 +246,10 @@ class RenogyHubBatteryManager:
 
     async def async_update(self, device: Any, *, rediscover: bool = False) -> bool:
         """Read Hub batteries and refresh the validated logical-device cache."""
-        result = await self._hub.read_batteries(device, rediscover=rediscover)
+        read_kwargs: dict[str, bool] = {"rediscover": rediscover}
+        if self._supports_cell_status:
+            read_kwargs["include_cell_status"] = True
+        result = await self._hub.read_batteries(device, **read_kwargs)
         self.last_error = result.error
 
         seen_slave_ids: set[int] = set()
@@ -199,6 +268,30 @@ class RenogyHubBatteryManager:
     def _state_from_battery(battery: Any) -> RenogyHubBatteryState:
         """Copy only independently validated fields from a library Hub battery."""
         data = battery.parsed_data
+        cell_voltages = _optional_float_tuple(data.get("cell_voltages"))
+        cell_voltage_max = _optional_float(data.get("cell_voltage_max"))
+        if cell_voltage_max is None and cell_voltages:
+            cell_voltage_max = max(cell_voltages)
+
+        cell_voltage_min = _optional_float(data.get("cell_voltage_min"))
+        if cell_voltage_min is None and cell_voltages:
+            cell_voltage_min = min(cell_voltages)
+
+        cell_voltage_delta = _optional_float(data.get("cell_voltage_delta"))
+        if (
+            cell_voltage_delta is None
+            and cell_voltage_min is not None
+            and cell_voltage_max is not None
+        ):
+            cell_voltage_delta = round(cell_voltage_max - cell_voltage_min, 3)
+
+        max_cell_number: int | None = None
+        if cell_voltages:
+            max_cell_number = max(
+                range(len(cell_voltages)),
+                key=cell_voltages.__getitem__,
+            ) + 1
+
         return RenogyHubBatteryState(
             slave_id=int(battery.slave_id),
             battery_voltage=_optional_float(data.get("battery_voltage")),
@@ -209,6 +302,11 @@ class RenogyHubBatteryManager:
             ),
             battery_capacity=_optional_float(data.get("battery_capacity")),
             battery_percentage=_optional_float(data.get("battery_percentage")),
+            cell_voltages=cell_voltages,
+            cell_voltage_min=cell_voltage_min,
+            cell_voltage_max=cell_voltage_max,
+            cell_voltage_delta=cell_voltage_delta,
+            cell_voltage_max_cell_number=max_cell_number,
         )
 
 
@@ -257,6 +355,28 @@ def _range_complete(
         maximum_slave_id=maximum_battery.slave_id,
         spread=round(maximum_value - minimum_value, precision),
     )
+
+
+def _supports_include_cell_status(hub: Any) -> bool:
+    """Return whether the installed library supports optional Hub cell reads."""
+    try:
+        return "include_cell_status" in signature(hub.read_batteries).parameters
+    except TypeError, ValueError:
+        return False
+
+
+def _optional_float_tuple(value: Any) -> tuple[float, ...] | None:
+    """Return a non-empty tuple of numeric cell voltages, otherwise None."""
+    if not isinstance(value, (list, tuple)) or not value:
+        return None
+
+    values: list[float] = []
+    try:
+        for item in value:
+            values.append(float(item))
+    except TypeError, ValueError:
+        return None
+    return tuple(values)
 
 
 def _optional_float(value: Any) -> float | None:
