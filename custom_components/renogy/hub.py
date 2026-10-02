@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
-from inspect import signature
 from dataclasses import dataclass, replace
+from inspect import signature
 from typing import Any
 
 HubFactory = Callable[[Any], Any]
