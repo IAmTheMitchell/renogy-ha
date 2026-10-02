@@ -293,7 +293,7 @@ def test_bank_diagnostic_entities_follow_cached_telemetry() -> None:
             ("renogy", f"{coordinator.address}:hub:bank")
         }
     coordinator.notify()
-    assert len(entities) == 14
+    assert len(entities) == 17
 
     asyncio.run(manager.async_update(object()))
     coordinator.hub_bank = manager.bank
