@@ -79,10 +79,42 @@ HUB_BATTERY_SENSORS: tuple[SensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
     ),
+    SensorEntityDescription(
+        key="cell_voltage_min",
+        name="Minimum Cell Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+    ),
+    SensorEntityDescription(
+        key="cell_voltage_max",
+        name="Maximum Cell Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+    ),
+    SensorEntityDescription(
+        key="cell_voltage_delta",
+        name="Cell Voltage Delta",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+    ),
 )
 
 HUB_BANK_COUNT_KEYS = frozenset(
-    {"communicating_battery_count", "discovered_battery_count"}
+    {
+        "communicating_battery_count",
+        "discovered_battery_count",
+        "cell_telemetry_battery_count",
+    }
+)
+
+HUB_BATTERY_OPTIONAL_KEYS = frozenset(
+    {"cell_voltage_min", "cell_voltage_max", "cell_voltage_delta"}
 )
 
 HUB_BANK_EXTREME_SLAVE_ID_KEYS = {
@@ -90,6 +122,8 @@ HUB_BANK_EXTREME_SLAVE_ID_KEYS = {
     "battery_percentage_max": "battery_percentage_max_slave_id",
     "battery_voltage_min": "battery_voltage_min_slave_id",
     "battery_voltage_max": "battery_voltage_max_slave_id",
+    "cell_voltage_max": "cell_voltage_max_slave_id",
+    "cell_voltage_delta_max": "cell_voltage_delta_max_slave_id",
 }
 
 HUB_BANK_SENSORS: tuple[SensorEntityDescription, ...] = (
@@ -140,6 +174,27 @@ HUB_BANK_SENSORS: tuple[SensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="cell_telemetry_battery_count",
+        name="Cell Telemetry Battery Count",
+        suggested_display_precision=0,
+    ),
+    SensorEntityDescription(
+        key="cell_voltage_max",
+        name="Highest Cell Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+    ),
+    SensorEntityDescription(
+        key="cell_voltage_delta_max",
+        name="Maximum Cell Voltage Delta",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
     ),
 )
 
@@ -303,12 +358,19 @@ class RenogyHubBatterySensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         battery = self._battery
         coordinator = cast(Any, self.coordinator)
         parent_device = coordinator.device
-        return bool(
+        base_available = bool(
             parent_device is not None
             and parent_device.is_available
             and battery is not None
             and battery.available
         )
+        if not base_available:
+            return False
+
+        key = self.entity_description.key
+        if key in HUB_BATTERY_OPTIONAL_KEYS:
+            return getattr(battery, key, None) is not None
+        return True
 
     @property
     def native_value(self) -> float | None:
@@ -323,9 +385,20 @@ class RenogyHubBatterySensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         return float(value) if value is not None else None
 
     @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        """Expose the validated Modbus slave ID for diagnostics."""
-        return {"slave_id": f"0x{self._slave_id:02X}"}
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose slave ID and individual cells for cell-voltage diagnostics."""
+        attributes: dict[str, Any] = {"slave_id": f"0x{self._slave_id:02X}"}
+        battery = self._battery
+        if (
+            battery is None
+            or self.entity_description.key != "cell_voltage_max"
+            or not battery.cell_voltages
+        ):
+            return attributes
+
+        attributes["cell_number"] = battery.cell_voltage_max_cell_number
+        attributes["cell_voltages"] = list(battery.cell_voltages)
+        return attributes
 
 
 class RenogyHubBankSensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
@@ -392,8 +465,8 @@ class RenogyHubBankSensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         return float(value)
 
     @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        """Expose the battery producing a bank minimum or maximum."""
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the battery and cell producing a bank extreme."""
         bank = self._bank
         key = self.entity_description.key
         if bank is None or key is None:
@@ -406,4 +479,8 @@ class RenogyHubBankSensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         slave_id = getattr(bank, slave_id_key, None)
         if slave_id is None:
             return {}
-        return {"slave_id": f"0x{int(slave_id):02X}"}
+
+        attributes: dict[str, Any] = {"slave_id": f"0x{int(slave_id):02X}"}
+        if key == "cell_voltage_max" and bank.cell_voltage_max_cell_number is not None:
+            attributes["cell_number"] = bank.cell_voltage_max_cell_number
+        return attributes
