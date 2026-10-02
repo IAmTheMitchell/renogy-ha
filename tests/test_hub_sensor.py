@@ -21,6 +21,11 @@ class _BatteryState:
     battery_remaining_capacity: float | None = None
     battery_capacity: float | None = None
     battery_percentage: float | None = None
+    cell_voltages: tuple[float, ...] | None = None
+    cell_voltage_min: float | None = None
+    cell_voltage_max: float | None = None
+    cell_voltage_delta: float | None = None
+    cell_voltage_max_cell_number: int | None = None
     available: bool = True
 
 
@@ -33,6 +38,12 @@ class _BankState:
     battery_remaining_capacity: float | None = None
     battery_capacity: float | None = None
     battery_percentage: float | None = None
+    cell_telemetry_battery_count: int = 0
+    cell_voltage_max: float | None = None
+    cell_voltage_max_slave_id: int | None = None
+    cell_voltage_max_cell_number: int | None = None
+    cell_voltage_delta_max: float | None = None
+    cell_voltage_delta_max_slave_id: int | None = None
 
 
 class _Coordinator:
@@ -235,6 +246,9 @@ def test_hub_sensor_descriptions_expose_only_validated_telemetry() -> None:
         "battery_remaining_capacity",
         "battery_capacity",
         "battery_percentage",
+        "cell_voltage_min",
+        "cell_voltage_max",
+        "cell_voltage_delta",
     }
     assert {description.key for description in module.HUB_BANK_SENSORS} == {
         "communicating_battery_count",
@@ -244,6 +258,9 @@ def test_hub_sensor_descriptions_expose_only_validated_telemetry() -> None:
         "battery_remaining_capacity",
         "battery_capacity",
         "battery_percentage",
+        "cell_telemetry_battery_count",
+        "cell_voltage_max",
+        "cell_voltage_delta_max",
     }
 
 
@@ -274,20 +291,20 @@ def test_hub_sensor_setup_adds_noncontiguous_responders_and_bank_once() -> None:
     coordinator.notify()
 
     assert len(added_batches) == 1
-    assert len(added_batches[0]) == 19
+    assert len(added_batches[0]) == 28
     assert (
         sum(
             isinstance(entity, module.RenogyHubBatterySensor)
             for entity in added_batches[0]
         )
-        == 12
+        == 18
     )
     assert (
         sum(
             isinstance(entity, module.RenogyHubBankSensor)
             for entity in added_batches[0]
         )
-        == 7
+        == 10
     )
     assert {
         entity._slave_id
@@ -309,7 +326,7 @@ def test_hub_sensor_setup_adds_noncontiguous_responders_and_bank_once() -> None:
     coordinator.notify()
 
     assert len(added_batches) == 2
-    assert len(added_batches[1]) == 6
+    assert len(added_batches[1]) == 9
     assert all(
         isinstance(entity, module.RenogyHubBatterySensor) for entity in added_batches[1]
     )
@@ -328,6 +345,11 @@ def test_hub_battery_0x33_is_child_device_with_validated_values() -> None:
             battery_remaining_capacity=44.493,
             battery_capacity=49.995,
             battery_percentage=89.0,
+            cell_voltages=(3.300, 3.301, 3.412),
+            cell_voltage_min=3.300,
+            cell_voltage_max=3.412,
+            cell_voltage_delta=0.112,
+            cell_voltage_max_cell_number=3,
         ),
     )
 
@@ -343,6 +365,14 @@ def test_hub_battery_0x33_is_child_device_with_validated_values() -> None:
     assert entities_by_key["battery_remaining_capacity"].native_value == 44.493
     assert entities_by_key["battery_capacity"].native_value == 49.995
     assert entities_by_key["battery_percentage"].native_value == 89.0
+    assert entities_by_key["cell_voltage_min"].native_value == 3.3
+    assert entities_by_key["cell_voltage_max"].native_value == 3.412
+    assert entities_by_key["cell_voltage_delta"].native_value == 0.112
+    assert entities_by_key["cell_voltage_max"].extra_state_attributes == {
+        "slave_id": "0x33",
+        "cell_number": 3,
+        "cell_voltages": [3.3, 3.301, 3.412],
+    }
 
     voltage = entities_by_key["battery_voltage"]
     assert voltage.available is True
@@ -369,6 +399,12 @@ def test_hub_bank_is_sibling_device_with_aggregate_values() -> None:
         battery_remaining_capacity=188.284,
         battery_capacity=199.974,
         battery_percentage=94.2,
+        cell_telemetry_battery_count=4,
+        cell_voltage_max=3.421,
+        cell_voltage_max_slave_id=0x31,
+        cell_voltage_max_cell_number=7,
+        cell_voltage_delta_max=0.043,
+        cell_voltage_delta_max_slave_id=0x33,
     )
 
     entities = [
@@ -384,6 +420,16 @@ def test_hub_bank_is_sibling_device_with_aggregate_values() -> None:
     assert entities_by_key["battery_remaining_capacity"].native_value == 188.284
     assert entities_by_key["battery_capacity"].native_value == 199.974
     assert entities_by_key["battery_percentage"].native_value == 94.2
+    assert entities_by_key["cell_telemetry_battery_count"].native_value == 4
+    assert entities_by_key["cell_voltage_max"].native_value == 3.421
+    assert entities_by_key["cell_voltage_delta_max"].native_value == 0.043
+    assert entities_by_key["cell_voltage_max"].extra_state_attributes == {
+        "slave_id": "0x31",
+        "cell_number": 7,
+    }
+    assert entities_by_key["cell_voltage_delta_max"].extra_state_attributes == {
+        "slave_id": "0x33"
+    }
 
     current = entities_by_key["battery_current"]
     assert current.available is True
@@ -398,6 +444,47 @@ def test_hub_bank_is_sibling_device_with_aggregate_values() -> None:
     assert current._attr_device_info["name"] == "Renogy Hub Communicating Bank"
 
 
+def test_hub_cell_sensors_unavailable_until_cell_data_arrives() -> None:
+    """Optional cell sensors should not imply a zero or safe voltage."""
+    module = _load_hub_sensor_module()
+    coordinator = _Coordinator()
+    coordinator.hub_batteries = (
+        _BatteryState(slave_id=0x30, battery_voltage=50.0),
+    )
+    cell_max = module.RenogyHubBatterySensor(
+        coordinator,
+        0x30,
+        next(
+            description
+            for description in module.HUB_BATTERY_SENSORS
+            if description.key == "cell_voltage_max"
+        ),
+    )
+
+    assert cell_max.available is False
+    assert cell_max.native_value is None
+
+    coordinator.hub_batteries = (
+        _BatteryState(
+            slave_id=0x30,
+            battery_voltage=50.0,
+            cell_voltages=(3.31, 3.42),
+            cell_voltage_min=3.31,
+            cell_voltage_max=3.42,
+            cell_voltage_delta=0.11,
+            cell_voltage_max_cell_number=2,
+        ),
+    )
+
+    assert cell_max.available is True
+    assert cell_max.native_value == 3.42
+    assert cell_max.extra_state_attributes == {
+        "slave_id": "0x30",
+        "cell_number": 2,
+        "cell_voltages": [3.31, 3.42],
+    }
+
+
 def test_hub_bank_counts_remain_available_when_all_batteries_are_offline() -> None:
     """Counts should show a partial/offline bank while aggregates go unavailable."""
     module = _load_hub_sensor_module()
@@ -405,6 +492,7 @@ def test_hub_bank_counts_remain_available_when_all_batteries_are_offline() -> No
     coordinator.hub_bank = _BankState(
         communicating_battery_count=0,
         discovered_battery_count=4,
+        cell_telemetry_battery_count=0,
     )
 
     entities = {
@@ -416,6 +504,10 @@ def test_hub_bank_counts_remain_available_when_all_batteries_are_offline() -> No
     assert entities["communicating_battery_count"].native_value == 0
     assert entities["discovered_battery_count"].available is True
     assert entities["discovered_battery_count"].native_value == 4
+    assert entities["cell_telemetry_battery_count"].available is True
+    assert entities["cell_telemetry_battery_count"].native_value == 0
+    assert entities["cell_voltage_max"].available is False
+    assert entities["cell_voltage_delta_max"].available is False
     assert entities["battery_current"].available is False
     assert entities["battery_power"].available is False
     assert entities["battery_remaining_capacity"].available is False
