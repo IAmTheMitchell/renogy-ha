@@ -39,9 +39,6 @@ class RenogyHubBatteryState:
             "battery_remaining_capacity": self.battery_remaining_capacity,
             "battery_capacity": self.battery_capacity,
             "battery_percentage": self.battery_percentage,
-            "cell_voltage_min": self.cell_voltage_min,
-            "cell_voltage_max": self.cell_voltage_max,
-            "cell_voltage_delta": self.cell_voltage_delta,
         }
 
 
@@ -84,9 +81,6 @@ class RenogyHubBankState:
             "battery_remaining_capacity": self.battery_remaining_capacity,
             "battery_capacity": self.battery_capacity,
             "battery_percentage": self.battery_percentage,
-            "cell_telemetry_battery_count": self.cell_telemetry_battery_count,
-            "cell_voltage_max": self.cell_voltage_max,
-            "cell_voltage_delta_max": self.cell_voltage_delta_max,
         }
 
 
