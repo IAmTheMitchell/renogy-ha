@@ -140,6 +140,7 @@ class InverterRegister:
 class RIV4835CSH1SRegister:
     """Hardware-validated RIV4835CSH1S setting registers."""
 
+    OUTPUT_PRIORITY = 0x1159
     MAX_AC_CHARGING_CURRENT = 0xE205
 
 
