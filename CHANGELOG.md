@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## [0.11.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.10.0...v0.11.0) (2026-09-16)
+
+
+### Features
+
+* add Communication Hub bank imbalance diagnostics ([#224](https://github.com/IAmTheMitchell/renogy-ha/issues/224)) ([93c856c](https://github.com/IAmTheMitchell/renogy-ha/commit/93c856c6c8a616f196034d8ce9bc650a85aa9b17))
+* add RIV4835CSH1S maximum AC charging current control ([#223](https://github.com/IAmTheMitchell/renogy-ha/issues/223)) ([b1f952f](https://github.com/IAmTheMitchell/renogy-ha/commit/b1f952f37c1c5185c98b21435b396b413e05708a))
+* bump renogy-ble to 2.7.0 for Program 28 readback and metadata timeout backoff ([#231](https://github.com/IAmTheMitchell/renogy-ha/issues/231)) ([fa292ed](https://github.com/IAmTheMitchell/renogy-ha/commit/fa292edd91af114d144be0148bf32e317898da2e))
+* bump renogy-ble to 2.8.0 for charging parameters and BT-TH scaling ([#237](https://github.com/IAmTheMitchell/renogy-ha/issues/237)) ([b8fb9a8](https://github.com/IAmTheMitchell/renogy-ha/commit/b8fb9a8b4a122ace5c0e01c7c2d50d7635a392d0))
+* expose the battery type select on charge controllers ([#230](https://github.com/IAmTheMitchell/renogy-ha/issues/230)) ([7e7bb4e](https://github.com/IAmTheMitchell/renogy-ha/commit/7e7bb4e2c259c0aace7bd6ce7906fef7e5c16580))
+
+
+### Bug Fixes
+
+* carry model and device_id across polls that could not read them ([#229](https://github.com/IAmTheMitchell/renogy-ha/issues/229)) ([9d20bfc](https://github.com/IAmTheMitchell/renogy-ha/commit/9d20bfcb4fc86fec8918eb97e8f1841111577604))
+* restore device names lost to passive Bluetooth scanning ([#228](https://github.com/IAmTheMitchell/renogy-ha/issues/228)) ([eb6db60](https://github.com/IAmTheMitchell/renogy-ha/commit/eb6db60e7e914dba04f16e8909b699b3e604548c))
+* scope device registry lookup to config entry ([#227](https://github.com/IAmTheMitchell/renogy-ha/issues/227)) ([ba04406](https://github.com/IAmTheMitchell/renogy-ha/commit/ba04406a5a8d6bc63f2192ba62b655b88ae05161))
+
 ## [0.10.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.9.0...v0.10.0) (2026-09-03)
 
 
