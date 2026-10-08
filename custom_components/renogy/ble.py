@@ -25,9 +25,8 @@ from homeassistant.components.bluetooth.active_update_coordinator import (
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
-from renogy_ble import ble as renogy_ble_module
+from renogy_ble import SettingValue
 from renogy_ble.ble import (
-    INVERTER_DEVICE_ID,
     RenogyBleClient,
     RenogyBLEDevice,
     clean_device_name,
@@ -51,21 +50,6 @@ from .device_name import (
     has_real_device_name,
 )
 
-# Check if write_register is available in the library.
-try:
-    renogy_ble_ble: ModuleType | None = importlib.import_module("renogy_ble.ble")
-except ImportError:
-    renogy_ble_ble = None
-
-if renogy_ble_ble is not None:
-    create_modbus_write_request = getattr(
-        renogy_ble_ble, "create_modbus_write_request", None
-    )
-    HAS_WRITE_SUPPORT = create_modbus_write_request is not None
-else:
-    create_modbus_write_request = None
-    HAS_WRITE_SUPPORT = False
-
 try:
     renogy_ble_shunt: ModuleType | None = importlib.import_module("renogy_ble.shunt")
 except ImportError:
@@ -79,7 +63,6 @@ else:
 if TYPE_CHECKING:
     from renogy_ble.shunt import ShuntBleClient, ShuntSubscription
 
-LOAD_CONTROL_REGISTER = getattr(renogy_ble_module, "LOAD_CONTROL_REGISTER", 0x010A)
 SHUNT_FORCE_UPDATE_INTERVAL_SECONDS = 300
 SHUNT_STARTUP_READY_TIMEOUT_SECONDS = 30.0
 
@@ -183,8 +166,6 @@ class RenogyActiveBluetoothCoordinator(
     def _build_generic_ble_client(self, scanner: Any) -> RenogyBleClient:
         """Build the generic library client for the active device mode."""
         client_kwargs: dict[str, Any] = {"scanner": scanner}
-        if self.device_type == DeviceType.INVERTER.value:
-            client_kwargs["device_id"] = INVERTER_DEVICE_ID
         if self._uses_persistent_non_shunt_session():
             client_kwargs["transport_mode"] = (
                 NonShuntConnectionMode.PERSISTENT_SESSION.value
@@ -944,20 +925,8 @@ class RenogyActiveBluetoothCoordinator(
                     )
                     self.last_update_success = False
                     return False
-                value = 1 if state else 0
-                write_single_register = getattr(
-                    self._ble_client, "write_single_register", None
-                )
-                if write_single_register is None:
-                    self.logger.error(
-                        "Renogy BLE library does not support write_single_register"
-                    )
-                    device.update_availability(False, None)
-                    self.last_update_success = False
-                    return False
-
-                write_result = await write_single_register(
-                    device, LOAD_CONTROL_REGISTER, value
+                write_result = await self._ble_client.write_setting(
+                    device, "load_enabled", state
                 )
                 device.update_availability(write_result.success, write_result.error)
                 self.last_update_success = write_result.success
@@ -1055,47 +1024,16 @@ class RenogyActiveBluetoothCoordinator(
             self.device.rssi = service_info.advertisement.rssi
             self.device.last_seen = datetime.now()
 
-    async def async_write_register(self, register: int, value: int) -> bool:
-        """Write a single register value to the device.
-
-        Args:
-            register: Register address to write (e.g., 0xE004 for battery type)
-            value: 16-bit value to write
-
-        Returns:
-            True if write was successful, False otherwise
-        """
+    async def async_write_setting(self, key: str, value: SettingValue) -> bool:
+        """Write a semantic setting and schedule authoritative device readback."""
         if not self.device:
-            self.logger.error("Cannot write register: no device connected")
+            self.logger.error("Cannot write setting: no device connected")
             return False
-
-        # Check if write support is available in renogy-ble library
-        if not HAS_WRITE_SUPPORT:
-            self.logger.error(
-                "Write support not available in renogy-ble library. "
-                "Please update to a version with write_register support."
-            )
-            return False
-
-        # Try to use the library's write method if available.
-        write_register_fn = getattr(self._ble_client, "write_register", None)
-        if callable(write_register_fn):
-            write_register = cast(
-                Callable[[RenogyBLEDevice, int, int], Awaitable[bool]],
-                write_register_fn,
-            )
-            try:
-                success = await write_register(self.device, register, value)
-                if success:
-                    # Trigger a refresh to update the new value
-                    await self.async_request_refresh()
-                return success
-            except Exception as e:
-                self.logger.error("Error writing register %s: %s", hex(register), e)
-                return False
-        else:
-            self.logger.error(
-                "write_register method not available in RenogyBleClient. "
-                "Please update renogy-ble library."
-            )
+        try:
+            result = await self._ble_client.write_setting(self.device, key, value)
+            if result.success:
+                await self.async_request_refresh()
+            return result.success
+        except Exception as exc:
+            self.logger.error("Error writing setting %s: %s", key, exc)
             return False
