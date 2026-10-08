@@ -1,4 +1,4 @@
-"""Prove the HA adapter uses the real installed library candidate contract."""
+"""Prove the HA adapter uses the real installed library contract."""
 
 import subprocess
 import sys

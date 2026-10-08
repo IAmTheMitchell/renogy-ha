@@ -1,4 +1,4 @@
-"""Isolated HA adapter scenario executed by candidate integration tests."""
+"""Isolated HA adapter scenario executed by integration tests."""
 
 import asyncio
 import sys

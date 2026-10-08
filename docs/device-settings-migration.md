@@ -1,8 +1,11 @@
 # Semantic device-settings migration
 
-This candidate depends on the paired, unpublished renogy-ble settings API.
-Released renogy-ble 2.9.0 does not provide it. Do not merge or deploy this HA
-candidate with its current release pins.
+This integration uses the public settings API in released `renogy-ble==2.10.0`.
+[Library PR #185](https://github.com/IAmTheMitchell/renogy-ble/pull/185) introduced
+that API. [HA PR #257](https://github.com/IAmTheMitchell/renogy-ha/pull/257) adopted
+2.10.0 in `pyproject.toml`, `custom_components/renogy/manifest.json`, and `uv.lock`.
+This migration preserves those upstream pins and requires no editable-library
+override or future release.
 
 ## Changes
 
@@ -22,96 +25,81 @@ battery-type strings. Library capability metadata supplies native charging-curre
 choices; HA formats them as the existing `10A` through `60A` labels.
 
 No controller voltage controls or RIV output-priority control are added.
-Overlapping open PRs #238 and #236 must adopt this semantic API in their own
-workstreams and establish write support separately. Readable registers alone do
-not confer write support. Shunt300 streaming and Hub behavior remain preserved.
+Overlapping PRs #238 and #236 must adopt the semantic API in their own workstreams
+and establish write support separately. Readable registers alone do not confer
+write support. Shunt300 streaming and Hub behavior remain preserved.
 
-## Validate the paired candidate
+## Validate with the released library
 
-On a platform where the existing project lock installs successfully:
+On a platform where the project lock installs successfully:
 
 ```sh
-BLE_CANDIDATE=/absolute/path/to/ble-device-settings-api
-uv sync --all-groups
-uv run --with-editable "$BLE_CANDIDATE" python -c 'import renogy_ble; print(renogy_ble.__file__); assert hasattr(renogy_ble.RenogyBleClient, "write_setting")'
-uv run --with-editable "$BLE_CANDIDATE" pytest tests
-uv run --with-editable "$BLE_CANDIDATE" ruff format --check .
-uv run --with-editable "$BLE_CANDIDATE" ruff check .
-uv run --with-editable "$BLE_CANDIDATE" ty check .
+uv sync --locked --all-groups
+uv run --locked python -c 'from importlib.metadata import version; import renogy_ble; assert version("renogy-ble") == "2.10.0"; print(renogy_ble.__file__); assert hasattr(renogy_ble.RenogyBleClient, "write_setting")'
+uv run --locked pytest tests
+uv run --locked ruff format --check .
+uv run --locked ruff check .
+uv run --locked ty check .
+uv lock --check
 git diff --check
 ```
 
 The integration tests execute isolated child processes with HA framework stubs
-and mocked GATT, using the actual candidate serializer, response handling and
-read parsers. Child processes inherit the same candidate Python environment;
-an obsolete installed library cannot satisfy the tests' API assertions.
+and mocked GATT, using the actual installed library serializer, response handling
+and read parsers. Child processes inherit the same released-library environment;
+an obsolete library cannot satisfy the tests' API assertions.
 
 The locked macOS PyObjC 10.3.2 build fails on Python 3.14 because its build helpers
-import the removed `pkg_resources`. For a project-scoped local validation
-workaround, create an ignored UV project from the HA worktree (adjust the sibling
-library path if necessary):
+import the removed `pkg_resources`. A project-scoped local validation workaround
+can use the same published library with compatible PyObjC dependencies, without
+changing the committed dependency files:
 
 ```sh
-mkdir -p .codex-cache/settings-validation
-cat > .codex-cache/settings-validation/pyproject.toml <<'EOF'
+mkdir -p .codex-cache/settings-release-validation
+cat > .codex-cache/settings-release-validation/pyproject.toml <<'EOF'
 [project]
-name = "renogy-settings-validation"
+name = "settings-release-validation"
 version = "0.0.0"
 requires-python = ">=3.14.2"
-dependencies = ["homeassistant==2026.8.3", "renogy-ble", "pytest>=9.1.1", "pytest-asyncio>=1.4.0", "ruff==0.16.9", "ty==0.0.78"]
-[tool.uv.sources]
-renogy-ble = { path = "../../../ble-device-settings-api", editable = true }
+dependencies = ["homeassistant==2026.8.3", "renogy-ble==2.10.0", "pytest>=9.1.1", "pytest-asyncio>=1.4.0", "ruff==0.16.9", "ty==0.0.78"]
 [tool.uv]
 override-dependencies = ["pyobjc-core==12.1", "pyobjc-framework-cocoa==12.1", "pyobjc-framework-corebluetooth==12.1", "pyobjc-framework-libdispatch==12.1"]
 EOF
-uv sync --project .codex-cache/settings-validation
-uv run --project .codex-cache/settings-validation --no-sync python -c 'import renogy_ble; print(renogy_ble.__file__); assert hasattr(renogy_ble.RenogyBleClient, "write_setting")'
-uv run --project .codex-cache/settings-validation --no-sync pytest tests
-uv run --project .codex-cache/settings-validation --no-sync ruff format --check .
-uv run --project .codex-cache/settings-validation --no-sync ruff check .
-uv run --project .codex-cache/settings-validation --no-sync ty check . --python .codex-cache/settings-validation/.venv/bin/python
-git diff --check
+uv sync --project .codex-cache/settings-release-validation
+uv run --project .codex-cache/settings-release-validation --no-sync python -c 'from importlib.metadata import version; import renogy_ble; assert version("renogy-ble") == "2.10.0"; print(renogy_ble.__file__); assert hasattr(renogy_ble.RenogyBleClient, "write_setting")'
+uv run --project .codex-cache/settings-release-validation --no-sync pytest tests
+uv run --project .codex-cache/settings-release-validation --no-sync ruff format --check .
+uv run --project .codex-cache/settings-release-validation --no-sync ruff check .
+uv run --project .codex-cache/settings-release-validation --no-sync ty check . --python .codex-cache/settings-release-validation/.venv/bin/python
 ```
 
-This workaround validates the exact local library source with HA 2026.8.3 and
-compatible macOS dependencies. It does not establish a clean installation of the
-committed lock or Linux/HAOS hardware operation.
+For the minimum Home Assistant validation, create a second ignored UV project
+with the same configuration and `homeassistant==2026.3.0`. Both environments use
+the published wheel rather than the local library checkout. Local verification
+uses the exact wheel URL in the inherited project lock, with SHA-256
+`d748f0d70657c720460828fd8f135fc5b274dbc266cc36449ab6c4c22fff5ec5`.
 
-## Release handoff
+The PyObjC workaround does not establish a clean installation of the committed
+lock on macOS. Standard Linux CI validates the normal and minimum-HA dependency
+paths. No new live-hardware or HAOS validation is claimed; wire acknowledgement
+remains distinct from authoritative poll readback and persistent storage.
 
-1. Review and release the paired library change using its normal release process.
-2. Verify the actual published release includes `write_setting`, `DeviceSetting`,
-   `SettingValue` and `get_device_settings`. No version is assumed in this candidate.
-3. Pin that real release in `pyproject.toml` and
-   `custom_components/renogy/manifest.json`, regenerate `uv.lock`, and validate the
-   installed wheel, full suite and minimum supported Home Assistant resolution.
-4. Merge the dependent HA PR only after those pins and validations are complete.
+## Review and dependency status
 
-Until then, all three HA dependency surfaces retain the current released 2.9.0
-pin. Live hardware persistence and device-specific limits were not revalidated;
-wire acknowledgement remains distinct from authoritative poll readback.
+The former P1 dependency mismatch is resolved by the real 2.10.0 release and the
+upstream HA dependency bump. The migration preserves the 2.10.0 pins from HA
+main at `e40f527` and regenerates the lock to repair its stale root-package
+`==2.9.0` requirement metadata. Both primary checkouts and other worktrees are
+preserved. It does not modify the independently owned library or add write
+capabilities beyond the previously exposed controls.
 
-## Local validation record
+## Released-package validation
 
-- Library base: `31c0a1b1f4c722969f384bd344f71d2bb818b851` (released 2.9.0).
-- HA base: `82da4aad66a7ca2a64f036150d5c20a02f01706e` (merged Shunt300 migration).
-- Library: Ruff formatting/lint, ty, lock consistency and 377 tests pass.
-- HA: Ruff formatting/lint, ty and 216 tests pass using the exact local library
-  with HA 2026.8.3. The same 216 tests and ty pass with HA 2026.3.0 in a second
-  ignored UV project using the same local-library source and PyObjC workaround.
-- HA number/select presentation fields were compared with the baseline AST:
-  all fields other than removed wire metadata remain identical.
-- HA release pins and lock are byte-for-byte unchanged from the baseline.
-- Both primary checkouts and existing worktrees are preserved.
-
-## Independent review disposition
-
-The read-only library review found no actionable defects and independently
-passed all 377 tests plus Ruff and ty. The HA review found a P1 dependency
-mismatch: released 2.9.0 cannot satisfy the candidate's required imports or
-semantic calls. This is a confirmed, pending-release blocker, not a clean or
-merge-ready HA result. It is resolved only by the release handoff above; inventing
-a version or retaining raw-write compatibility fallbacks would not satisfy the
-migration. No other actionable HA defect was established. The reviewer's own
-HA test run was blocked by its read-only sandbox; the parent validation runs
-above passed with the explicit local-library environments.
+- The installed 2.10.0 package was compared with the hash-verified wheel from
+  `uv.lock`; all nine library Python source files match the published artifact.
+- Full HA suite: 216 tests pass with HA 2026.8.3 and again with HA 2026.3.0,
+  including real-library serialization, acknowledgement, and readback scenarios.
+- Ruff formatting/lint, ty in both environments, regenerated-lock consistency,
+  and diff checks pass.
+- macOS validation uses the documented PyObjC workaround; ordinary Linux CI
+  verifies the committed dependency resolution without that override.

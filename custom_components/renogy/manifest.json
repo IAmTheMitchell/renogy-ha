@@ -38,7 +38,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/IAmTheMitchell/renogy-ha/issues",
   "requirements": [
-    "renogy-ble==2.9.0"
+    "renogy-ble==2.10.0"
   ],
   "version": "0.11.0"
 }
