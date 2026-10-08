@@ -11,6 +11,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from renogy_ble import SettingValue, get_device_settings
 
 
 def _install_module_stubs() -> None:
@@ -116,6 +117,9 @@ def _install_module_stubs() -> None:
     sys.modules["homeassistant.const"] = const_module
 
     renogy_ble_module = cast(Any, types.ModuleType("renogy_ble"))
+    # Preserve semantic capability metadata while replacing transport for unit tests.
+    renogy_ble_module.SettingValue = SettingValue
+    renogy_ble_module.get_device_settings = get_device_settings
     renogy_ble_ble_module = cast(Any, types.ModuleType("renogy_ble.ble"))
     renogy_ble_shunt_module = cast(Any, types.ModuleType("renogy_ble.shunt"))
 
@@ -565,8 +569,8 @@ def test_non_shunt_device_defaults_to_intermittent_client():
     assert coordinator._ble_client.transport_mode == "per_operation"
 
 
-def test_inverter_client_uses_inverter_modbus_device_id() -> None:
-    """Inverter writes should use the same device ID as inverter reads."""
+def test_inverter_client_leaves_address_selection_to_library() -> None:
+    """Library owns address selection; HA supplies no Modbus address."""
     ble_module = _load_ble_module()
     coordinator = ble_module.RenogyActiveBluetoothCoordinator(
         hass=MagicMock(),
@@ -576,7 +580,7 @@ def test_inverter_client_uses_inverter_modbus_device_id() -> None:
         device_type="inverter",
     )
 
-    assert coordinator._ble_client.device_id == 0x20
+    assert coordinator._ble_client.device_id == 0xFF
 
 
 def test_inverter_model_hint_is_applied_and_preserved_on_refresh() -> None:
@@ -812,7 +816,7 @@ def test_persistent_load_write_uses_cached_device_when_service_info_expires():
         rssi=-60,
     )
     coordinator._update_device_from_service_info(service_info)
-    coordinator._ble_client.write_single_register = AsyncMock(
+    coordinator._ble_client.write_setting = AsyncMock(
         return_value=MagicMock(success=True, error=None)
     )
     ble_module.bluetooth.async_last_service_info.return_value = None
@@ -820,10 +824,10 @@ def test_persistent_load_write_uses_cached_device_when_service_info_expires():
     success = asyncio.run(coordinator.async_set_load_state(True))
 
     assert success is True
-    coordinator._ble_client.write_single_register.assert_awaited_once_with(
+    coordinator._ble_client.write_setting.assert_awaited_once_with(
         coordinator.device,
-        0x010A,
-        1,
+        "load_enabled",
+        True,
     )
 
 
@@ -1679,3 +1683,70 @@ def test_sustained_shunt_with_real_library_subscription() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_semantic_setting_refreshes_only_after_success():
+    module = _load_ble_module()
+    coordinator = module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        device_type="dcc",
+    )
+    coordinator.device = MagicMock()
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator._ble_client.write_setting = AsyncMock(
+        return_value=MagicMock(success=False)
+    )
+    assert not asyncio.run(coordinator.async_write_setting("boost_voltage", 14.3))
+    coordinator.async_request_refresh.assert_not_awaited()
+    coordinator._ble_client.write_setting.return_value.success = True
+    assert asyncio.run(coordinator.async_write_setting("boost_voltage", 14.3))
+    coordinator.async_request_refresh.assert_awaited_once()
+    coordinator._ble_client.write_setting.assert_awaited_with(
+        coordinator.device, "boost_voltage", 14.3
+    )
+
+
+def test_semantic_setting_exception_and_missing_device_fail():
+    module = _load_ble_module()
+    coordinator = module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        device_type="dcc",
+    )
+    coordinator._ble_client.write_setting = AsyncMock(
+        side_effect=RuntimeError("failed")
+    )
+    coordinator.async_request_refresh = AsyncMock()
+    assert not asyncio.run(coordinator.async_write_setting("boost_voltage", 14.3))
+    coordinator._ble_client.write_setting.assert_not_awaited()
+    coordinator.device = MagicMock()
+    assert not asyncio.run(coordinator.async_write_setting("boost_voltage", 14.3))
+    coordinator.async_request_refresh.assert_not_awaited()
+
+
+def test_failed_load_write_does_not_publish_success():
+    module = _load_ble_module()
+    coordinator = module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        device_type="controller",
+        non_shunt_connection_mode="persistent_session",
+    )
+    info = module.BluetoothServiceInfoBleak(
+        address=coordinator.address, name="BT-test", rssi=-60
+    )
+    coordinator._update_device_from_service_info(info)
+    module.bluetooth.async_last_service_info.return_value = None
+    coordinator.data = {"load_status": "off"}
+    coordinator.async_update_listeners = MagicMock()
+    coordinator._ble_client.write_setting = AsyncMock(
+        return_value=MagicMock(success=False, error=RuntimeError("failed"))
+    )
+    assert not asyncio.run(coordinator.async_set_load_state(True))
+    assert coordinator.data == {"load_status": "off"}
+    assert not coordinator.last_update_success
+    coordinator.async_update_listeners.assert_not_called()

@@ -252,8 +252,8 @@ def test_number_reads_value_directly_from_description_key() -> None:
     assert entity.native_value == 7.5
 
 
-def test_solar_cutoff_current_writes_centiamps() -> None:
-    """Ensure a solar cutoff value in amps is written as centiamps."""
+def test_solar_cutoff_current_writes_native_amps() -> None:
+    """Send native amps to the semantic coordinator contract."""
     number_module = _load_number_module()
     description = next(
         description
@@ -263,7 +263,7 @@ def test_solar_cutoff_current_writes_centiamps() -> None:
 
     coordinator = MagicMock()
     coordinator.address = "AA:BB:CC:DD:EE:FF"
-    coordinator.async_write_register = AsyncMock(return_value=True)
+    coordinator.async_write_setting = AsyncMock(return_value=True)
 
     entity = number_module.RenogyNumberEntity(
         coordinator=coordinator,
@@ -275,16 +275,16 @@ def test_solar_cutoff_current_writes_centiamps() -> None:
 
     asyncio.run(entity.async_set_native_value(7.0))
 
-    coordinator.async_write_register.assert_awaited_once_with(
-        number_module.DCCRegister.SOLAR_CUTOFF_CURRENT,
-        700,
+    coordinator.async_write_setting.assert_awaited_once_with(
+        "solar_cutoff_current",
+        7.0,
     )
     assert entity.native_value == 7.0
     entity.async_write_ha_state.assert_called_once()
 
 
-def test_inverter_numbers_cover_registers() -> None:
-    """Ensure REGO inverter setpoints are exposed with the correct registers/ranges."""
+def test_inverter_numbers_preserve_keys_and_ranges() -> None:
+    """Keep existing REGO keys and presentation ranges."""
     number = _load_number_module()
 
     by_key = {d.key: d for d in number.INVERTER_ALL_NUMBERS}
@@ -294,13 +294,7 @@ def test_inverter_numbers_cover_registers() -> None:
         "inverter_low_voltage_warn",
         "inverter_over_voltage",
     }
-    assert by_key["inverter_ac_input_current_limit"].register == 0x1168
-    assert by_key["inverter_ac_input_current_limit"].scale == 10.0
-    assert by_key["inverter_charge_current"].register == 0x1146
-    assert by_key["inverter_low_voltage_warn"].register == 0x114E
-    assert by_key["inverter_over_voltage"].register == 0x1164
     # every setpoint writes with x10 scale
-    assert all(d.scale == 10.0 for d in number.INVERTER_ALL_NUMBERS)
     # ranges clamped to the app's safe bounds
     acil = by_key["inverter_ac_input_current_limit"]
     assert (acil.native_min_value, acil.native_max_value) == (1.0, 50.0)
@@ -320,8 +314,6 @@ def test_riv4835_program_28_number_matches_validated_range() -> None:
     description = number.RIV4835CSH1S_NUMBERS[0]
     assert description.key == "inverter_ac_charge_current"
     assert description.name == "Maximum AC Charging Current"
-    assert description.register == 0xE205
-    assert description.scale == 10.0
     assert (
         description.native_min_value,
         description.native_max_value,
@@ -330,7 +322,7 @@ def test_riv4835_program_28_number_matches_validated_range() -> None:
 
 
 def test_riv4835_program_28_writes_and_uses_live_readback() -> None:
-    """Write Program 28 through 0xE205 and prefer subsequent device readback."""
+    """Send native Program 28 amps and prefer subsequent device readback."""
     number = _load_number_module()
     description = number.RIV4835CSH1S_NUMBERS[0]
 
@@ -338,7 +330,7 @@ def test_riv4835_program_28_writes_and_uses_live_readback() -> None:
     coordinator.address = "F0:F8:F2:57:47:0D"
     coordinator.device = None
     coordinator.data = {}
-    coordinator.async_write_register = AsyncMock(return_value=True)
+    coordinator.async_write_setting = AsyncMock(return_value=True)
 
     entity = number.RenogyNumberEntity(
         coordinator=coordinator,
@@ -350,9 +342,9 @@ def test_riv4835_program_28_writes_and_uses_live_readback() -> None:
 
     asyncio.run(entity.async_set_native_value(10.0))
 
-    coordinator.async_write_register.assert_awaited_once_with(
-        number.RIV4835CSH1SRegister.MAX_AC_CHARGING_CURRENT,
-        100,
+    coordinator.async_write_setting.assert_awaited_once_with(
+        "inverter_ac_charge_current",
+        10.0,
     )
     assert entity.native_value == 10.0
 
@@ -435,3 +427,26 @@ def test_inverter_number_setup_skips_non_rego_inverters() -> None:
     asyncio.run(number.async_setup_entry(hass, config_entry, async_add_entities))
 
     async_add_entities.assert_not_called()
+
+
+def test_failed_number_write_preserves_live_value():
+    module = _load_number_module()
+    coordinator = MagicMock(address="AA:BB:CC:DD:EE:FF", data={"boost_voltage": 13.8})
+    coordinator.async_write_setting = AsyncMock(return_value=False)
+    description = next(d for d in module.DCC_ALL_NUMBERS if d.key == "boost_voltage")
+    entity = module.RenogyNumberEntity(coordinator, None, description, "dcc")
+    entity.async_write_ha_state = MagicMock()
+    asyncio.run(entity.async_set_native_value(14.3))
+    assert entity.native_value == 13.8
+    entity.async_write_ha_state.assert_not_called()
+
+
+def test_number_descriptions_have_no_wire_metadata():
+    module = _load_number_module()
+    for description in (
+        *module.DCC_ALL_NUMBERS,
+        *module.INVERTER_ALL_NUMBERS,
+        *module.RIV4835CSH1S_NUMBERS,
+    ):
+        assert not hasattr(description, "register")
+        assert not hasattr(description, "scale")

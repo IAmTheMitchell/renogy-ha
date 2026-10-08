@@ -10,23 +10,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from renogy_ble import get_device_settings
 
 from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
-    CONTROLLER_BATTERY_TYPE_VALUES,
-    CONTROLLER_BATTERY_TYPES,
-    DCC_BATTERY_TYPE_VALUES,
-    DCC_BATTERY_TYPES,
-    DCC_MAX_CURRENT_OPTIONS,
-    DCC_MAX_CURRENT_TO_DEVICE,
     DEFAULT_DEVICE_TYPE,
     DOMAIN,
     LOGGER,
-    ControllerRegister,
-    DCCRegister,
     DeviceType,
 )
 
@@ -40,6 +33,12 @@ BATTERY_TYPE_DISPLAY_NAMES = {
 }
 
 
+# Capabilities contain native values; display formatting remains in HA.
+DCC_MAX_CURRENT_OPTIONS = next(
+    cap.options
+    for cap in get_device_settings("dcc")
+    if cap.key == "max_charging_current"
+)
 # Max charging current options for display (in amps)
 MAX_CURRENT_OPTIONS = [f"{amp}A" for amp in DCC_MAX_CURRENT_OPTIONS]
 
@@ -62,25 +61,7 @@ DCC_SELECT_ENTITIES = (
     ),
 )
 
-# A charge controller exposes the battery profile at the same register as a DCC,
-# so the same select works for it. Max charging current is DCC-specific and is
-# deliberately not offered here.
 CONTROLLER_SELECT_ENTITIES = (BATTERY_TYPE_DESCRIPTION,)
-
-# Which register and value map a battery-type select must use, by device type.
-# The register is identical; the value maps are not (see const.py).
-BATTERY_TYPE_PROFILES = {
-    DeviceType.DCC.value: (
-        DCCRegister.BATTERY_TYPE,
-        DCC_BATTERY_TYPES,
-        DCC_BATTERY_TYPE_VALUES,
-    ),
-    DeviceType.CONTROLLER.value: (
-        ControllerRegister.BATTERY_TYPE,
-        CONTROLLER_BATTERY_TYPES,
-        CONTROLLER_BATTERY_TYPE_VALUES,
-    ),
-}
 
 
 async def async_setup_entry(
@@ -157,12 +138,6 @@ class RenogyBatteryTypeSelect(SelectEntity):
         self.entity_description = description
         self._attr_options = list(BATTERY_TYPE_DISPLAY_NAMES.values())
         self._attr_current_option = None
-        # The register and value maps depend on the device type. Falling back to
-        # the DCC profile keeps the previous behaviour for anything unrecognised.
-        self._register, self._type_map, self._value_map = BATTERY_TYPE_PROFILES.get(
-            device_type, BATTERY_TYPE_PROFILES[DeviceType.DCC.value]
-        )
-
         # Device-dependent properties
         if device:
             self._attr_unique_id = f"{device.address}_{description.key}"
@@ -221,15 +196,6 @@ class RenogyBatteryTypeSelect(SelectEntity):
                 self._attr_current_option = display_name
                 return display_name
 
-        # If it's an integer, convert to display name
-        if isinstance(battery_type, int):
-            type_key = self._type_map.get(battery_type)
-            if type_key:
-                display_name = BATTERY_TYPE_DISPLAY_NAMES.get(type_key)
-                if display_name:
-                    self._attr_current_option = display_name
-                    return display_name
-
         return None
 
     async def async_select_option(self, option: str) -> None:
@@ -245,23 +211,7 @@ class RenogyBatteryTypeSelect(SelectEntity):
             LOGGER.error("Unknown battery type option: %s", option)
             return
 
-        # Get the device value for this type
-        device_value = self._value_map.get(type_key)
-        if device_value is None:
-            LOGGER.error("No device value for battery type: %s", type_key)
-            return
-
-        LOGGER.info(
-            "Setting battery type to %s (device value: %s, register: 0x%04X)",
-            option,
-            device_value,
-            self._register,
-        )
-
-        # Write to device via coordinator
-        success = await self.coordinator.async_write_register(
-            self._register, device_value
-        )
+        success = await self.coordinator.async_write_setting("battery_type", type_key)
 
         if success:
             # Update local value
@@ -382,22 +332,8 @@ class RenogyMaxCurrentSelect(SelectEntity):
             LOGGER.error("Unknown max current option: %s", option)
             return
 
-        # Get the device value (centiamps)
-        device_value = DCC_MAX_CURRENT_TO_DEVICE.get(amp_value)
-        if device_value is None:
-            LOGGER.error("No device value for current: %sA", amp_value)
-            return
-
-        LOGGER.info(
-            "Setting max charging current to %s (device value: %s, register: 0x%04X)",
-            option,
-            device_value,
-            DCCRegister.MAX_CHARGING_CURRENT,
-        )
-
-        # Write to device via coordinator
-        success = await self.coordinator.async_write_register(
-            DCCRegister.MAX_CHARGING_CURRENT, device_value
+        success = await self.coordinator.async_write_setting(
+            "max_charging_current", amp_value
         )
 
         if success:
