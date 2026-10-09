@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## [0.12.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.11.0...v0.12.0) (2026-10-08)
+
+
+### Features
+
+* bump renogy-ble to 2.10.0 for semantic device settings ([#257](https://github.com/IAmTheMitchell/renogy-ha/issues/257)) ([e40f527](https://github.com/IAmTheMitchell/renogy-ha/commit/e40f527b5d39c29f26787474e7eac488a51a74ef))
+* bump renogy-ble to 2.9.0 for Shunt300 streaming and Hub telemetry ([#253](https://github.com/IAmTheMitchell/renogy-ha/issues/253)) ([ef7f930](https://github.com/IAmTheMitchell/renogy-ha/commit/ef7f930ea22f1b4e07fc765b8a030e3d982caf90))
+
+
+### Bug Fixes
+
+* use library Shunt300 notification sessions ([#239](https://github.com/IAmTheMitchell/renogy-ha/issues/239)) ([8336df8](https://github.com/IAmTheMitchell/renogy-ha/commit/8336df853b9192d81cb7469776bc381e3bdf8eca))
+
 ## [0.11.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.10.0...v0.11.0) (2026-09-16)
 
 
