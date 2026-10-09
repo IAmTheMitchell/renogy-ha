@@ -21,6 +21,7 @@ from .const import (
     CONF_COMMUNICATION_HUB_ENABLED,
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_INVERTER_DIAGNOSTICS,
     CONF_INVERTER_PROFILE,
     CONF_MAX_FAILURES,
     CONF_NON_SHUNT_CONNECTION_MODE,
@@ -28,6 +29,7 @@ from .const import (
     CONF_UNAVAILABLE_RETRY_INTERVAL,
     DEFAULT_COMMUNICATION_HUB_ENABLED,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_INVERTER_DIAGNOSTICS,
     DEFAULT_INVERTER_PROFILE,
     DEFAULT_MAX_FAILURES,
     DEFAULT_NON_SHUNT_CONNECTION_MODE,
@@ -45,6 +47,7 @@ from .const import (
     MIN_SCAN_INTERVAL,
     MIN_UNAVAILABLE_RETRY_INTERVAL,
     NON_SHUNT_CONNECTION_MODES,
+    RIV4835CSH1S_INVERTER_PROFILE,
     SHUNT_CONNECTION_MODES,
     SUPPORTED_DEVICE_TYPES,
     DeviceType,
@@ -160,6 +163,23 @@ def _build_non_shunt_options_schema(
     default_hub_enabled: bool,
 ) -> vol.Schema:
     """Build non-shunt connection and Communication Hub options."""
+    diagnostics_schema = {}
+    if (
+        config_entry.data.get(CONF_DEVICE_TYPE) == DeviceType.INVERTER.value
+        and config_entry.data.get(CONF_INVERTER_PROFILE)
+        == RIV4835CSH1S_INVERTER_PROFILE
+    ):
+        diagnostics_schema = {
+            vol.Optional(
+                CONF_INVERTER_DIAGNOSTICS,
+                default=config_entry.options.get(
+                    CONF_INVERTER_DIAGNOSTICS,
+                    config_entry.data.get(
+                        CONF_INVERTER_DIAGNOSTICS, DEFAULT_INVERTER_DIAGNOSTICS
+                    ),
+                ),
+            ): bool
+        }
     return vol.Schema(
         {
             vol.Required(
@@ -171,6 +191,7 @@ def _build_non_shunt_options_schema(
                 default=default_hub_enabled,
             ): bool,
             **_runtime_options_schema_dict(config_entry),
+            **diagnostics_schema,
         }
     )
 

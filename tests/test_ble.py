@@ -11,7 +11,11 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from renogy_ble import SettingValue, get_device_settings
+from renogy_ble import (
+    SettingValue,
+    get_device_settings,
+    get_inverter_diagnostic_fields,
+)
 
 
 def _install_module_stubs() -> None:
@@ -194,6 +198,7 @@ def _install_module_stubs() -> None:
     renogy_ble_ble_module.RenogyBleReadResult = RenogyBleReadResult
     renogy_ble_ble_module.clean_device_name = clean_device_name
     renogy_ble_ble_module.LOAD_CONTROL_REGISTER = 0x010A
+    renogy_ble_module.get_inverter_diagnostic_fields = get_inverter_diagnostic_fields
 
     class ShuntBleClient:
         """Stub shunt client matching the library interface."""

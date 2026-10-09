@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14.2"
 dependencies = [
     "homeassistant>=2026.3.0",
-    "renogy-ble==2.10.0",
+    "renogy-ble@git+https://github.com/codefendant/renogy-ble.git@6c3b64077bb226502d43e1df0f57f925e2ea1aab",
 ]
 
 [dependency-groups]
