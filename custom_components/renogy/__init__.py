@@ -14,6 +14,7 @@ from .const import (
     CONF_COMMUNICATION_HUB_ENABLED,
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
+    CONF_INVERTER_DIAGNOSTICS,
     CONF_INVERTER_PROFILE,
     CONF_MAX_FAILURES,
     CONF_NON_SHUNT_CONNECTION_MODE,
@@ -22,6 +23,7 @@ from .const import (
     CONF_UNAVAILABLE_RETRY_INTERVAL,
     DEFAULT_COMMUNICATION_HUB_ENABLED,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_INVERTER_DIAGNOSTICS,
     DEFAULT_INVERTER_PROFILE,
     DEFAULT_MAX_FAILURES,
     DEFAULT_NON_SHUNT_CONNECTION_MODE,
@@ -68,6 +70,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     non_shunt_connection_mode = _get_non_shunt_connection_mode(entry)
     communication_hub_enabled = _get_communication_hub_enabled(entry)
     model_hint = _get_inverter_model_hint(entry)
+    inverter_diagnostics = (
+        device_type == DeviceType.INVERTER.value
+        and model_hint == RIV4835CSH1S_INVERTER_PROFILE
+        and entry.options.get(
+            CONF_INVERTER_DIAGNOSTICS,
+            entry.data.get(CONF_INVERTER_DIAGNOSTICS, DEFAULT_INVERTER_DIAGNOSTICS),
+        )
+        is True
+    )
 
     if not device_address:
         LOGGER.error("No device address provided in config entry")
@@ -106,6 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_data_callback=device_data_callback,
             communication_hub_enabled=True,
             model_hint=model_hint,
+            inverter_diagnostics=inverter_diagnostics,
         )
     else:
         coordinator = RenogyActiveBluetoothCoordinator(
@@ -122,6 +134,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_name=entry.data.get(CONF_DEVICE_NAME),
             device_data_callback=device_data_callback,
             model_hint=model_hint,
+            inverter_diagnostics=inverter_diagnostics,
         )
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
 

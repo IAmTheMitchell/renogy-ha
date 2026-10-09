@@ -29,6 +29,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
+from renogy_ble import get_inverter_diagnostic_fields
 
 from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
@@ -151,6 +152,26 @@ class RenogyBLESensorDescription(SensorEntityDescription):
 
     # Function to extract value from the device's parsed data
     value_fn: Optional[Callable[[Dict[str, Any]], Any]] = None
+
+
+RIV_DIAGNOSTIC_SENSORS = tuple(
+    RenogyBLESensorDescription(
+        key=field.key,
+        name=field.name,
+        native_unit_of_measurement=field.unit,
+        suggested_display_precision=field.precision,
+        device_class=(
+            SensorDeviceClass.VOLTAGE
+            if field.unit == "V"
+            else SensorDeviceClass.CURRENT
+            if field.unit == "A"
+            else None
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    )
+    for field in get_inverter_diagnostic_fields(RIV4835CSH1S_INVERTER_PROFILE)
+)
+RIV_DIAGNOSTIC_KEYS = {field.key for field in RIV_DIAGNOSTIC_SENSORS}
 
 
 @dataclass(frozen=True)
@@ -1080,6 +1101,8 @@ def create_entities_helper(
             **sensor_groups,
             "RIV4835CSH1S": RIV4835CSH1S_INVERTER_SENSORS,
         }
+        if getattr(coordinator, "inverter_diagnostics", False) is True:
+            sensor_groups["RIV Diagnostics"] = RIV_DIAGNOSTIC_SENSORS
 
     # Group sensors by category
     for category_name, sensor_list in sensor_groups.items():
@@ -1242,6 +1265,12 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
     @property
     def available(self) -> bool:
         """Return if the sensor is available."""
+        if self.entity_description.key in RIV_DIAGNOSTIC_KEYS:
+            return (
+                is_entity_available(self.coordinator, self._device)
+                and (self.coordinator.data or {}).get(self.entity_description.key)
+                is not None
+            )
         return is_entity_available(self.coordinator, self._device)
 
     @property
@@ -1270,6 +1299,9 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
 
         if not data:
             return None
+
+        if self.entity_description.key in RIV_DIAGNOSTIC_KEYS:
+            return (self.coordinator.data or {}).get(self.entity_description.key)
 
         try:
             value = (
@@ -1357,6 +1389,10 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional state attributes."""
+        if self.entity_description.key in RIV_DIAGNOSTIC_KEYS:
+            metadata = (self.coordinator.data or {}).get("riv_diagnostics", {})
+            details = metadata.get("fields", {}).get(self.entity_description.key, {})
+            return {**details, "diagnostics_enabled": True}
         attrs = {}
         if self._last_updated:
             attrs["last_updated"] = self._last_updated.isoformat()
