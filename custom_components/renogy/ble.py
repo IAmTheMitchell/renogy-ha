@@ -39,6 +39,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SHUNT_CONNECTION_MODE,
     DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
+    RIV4835CSH1S_INVERTER_PROFILE,
     STATIC_DEVICE_INFO_KEYS,
     DeviceType,
     NonShuntConnectionMode,
@@ -85,6 +86,7 @@ class RenogyActiveBluetoothCoordinator(
         max_failures: int = DEFAULT_MAX_FAILURES,
         unavailable_retry_interval: int = DEFAULT_UNAVAILABLE_RETRY_INTERVAL,
         model_hint: str | None = None,
+        inverter_diagnostics: bool = False,
         device_name: str | None = None,
         device_data_callback: Callable[[RenogyBLEDevice], Awaitable[None]]
         | None = None,
@@ -116,6 +118,12 @@ class RenogyActiveBluetoothCoordinator(
         self.unavailable_retry_interval = unavailable_retry_interval
         self.device_type = device_type
         self.model_hint = model_hint
+        self.inverter_diagnostics = (
+            inverter_diagnostics
+            and device_type == DeviceType.INVERTER.value
+            and model_hint == RIV4835CSH1S_INVERTER_PROFILE
+        )
+        self._inverter_diagnostic_cache: dict[str, Any] | None = None
         self.last_poll_time: datetime | None = None
         self.device_data_callback = device_data_callback
         self.logger.debug(
@@ -980,6 +988,27 @@ class RenogyActiveBluetoothCoordinator(
         success = await self._read_device_data(service_info)
 
         if success and self.device and self.device.parsed_data:
+            if self.inverter_diagnostics:
+                try:
+                    diagnostics = await self._ble_client.read_inverter_diagnostics(
+                        self.device, previous=self._inverter_diagnostic_cache
+                    )
+                    self._inverter_diagnostic_cache = diagnostics.get("riv_diagnostics")
+                except Exception as exc:
+                    self.logger.debug("Optional RIV diagnostics failed: %s", exc)
+                    diagnostics = {
+                        "riv_diagnostic_read_status": "read_error",
+                        "riv_diagnostics": {"read_error": str(exc)},
+                    }
+                # Replace only optional diagnostic fields; normal poll success
+                # and current measurement values remain authoritative.
+                self.device.parsed_data = {
+                    key: value
+                    for key, value in self.device.parsed_data.items()
+                    if not key.startswith("riv_")
+                }
+                self.device.parsed_data.update(diagnostics)
+                self.data = dict(self.device.parsed_data)
             # Log the parsed data for debugging
             self.logger.debug("Parsed data: %s", self.device.parsed_data)
 
