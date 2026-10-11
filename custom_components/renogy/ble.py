@@ -503,8 +503,7 @@ class RenogyActiveBluetoothCoordinator(
 
             self.device.rssi = (
                 service_info.advertisement.rssi
-                if service_info.advertisement
-                and service_info.advertisement.rssi is not None
+                if service_info.advertisement.rssi is not None
                 else service_info.device.rssi
             )
 
