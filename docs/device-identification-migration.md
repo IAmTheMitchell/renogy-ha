@@ -1,16 +1,19 @@
 # Library device-identification migration
 
-## Coordinated baselines
+## Released dependency
 
-The library candidate starts at `ee1d8dc` (released 2.10.0, semantic settings API
-merged in #185). The integration candidate starts at `1776ed2` (semantic settings
-consumer merged in #256). Both include the merged Shunt300 implementation.
+The integration consumes the public identification API from `renogy-ble==2.11.0`.
+The library implementation merged in
+[renogy-ble #188](https://github.com/IAmTheMitchell/renogy-ble/pull/188), and
+[renogy-ha #262](https://github.com/IAmTheMitchell/renogy-ha/pull/262) aligned
+`pyproject.toml`, `custom_components/renogy/manifest.json`, and `uv.lock` with that
+released version. This migration includes that dependency update from HA main.
 
 ## Ownership and consumers
 
 `renogy_ble.identification` owns advertisement prefixes, manufacturer IDs, device
 identifiers, battery variants, and DCC model recognition. HA's `device_name.py`
-now contains thin policy adapters: it rejects HA's `Unknown` labels, applies the
+contains thin policy adapters: it rejects HA's `Unknown` labels, applies the
 existing default when classification is unresolved, and gates entity readiness
 using library-defined name compatibility.
 
@@ -29,77 +32,48 @@ read from hardware remains the display name without replacing protocol evidence.
 Missing manufacturer data in later packets continues to use cached data.
 
 Generic BT-TH advertisements do not establish controller versus DCC hardware;
-the selected type and inverter profile remain intact. Reported DCC models retain
-the existing warning and reconfiguration behavior. No config-entry migration is
-introduced, and family-specific discovery behavior is preserved.
+the selected type and inverter profile remain intact. A legacy battery name
+containing `BATT` or `BATTERY` identifies a battery and is compatible only with
+battery readiness. Reported DCC models retain the existing warning and
+reconfiguration behavior. No config-entry migration is introduced.
 
-## Release handoff
+## Validation with the released library
 
-The identification API is new candidate code, absent from the 2.10.0 release.
-**This HA change must wait for the library API to be merged and released.** The
-existing `renogy-ble==2.10.0` entries in `pyproject.toml`, `manifest.json`, and
-`uv.lock` remain aligned; no future release version is invented. Before marking the dependent
-HA draft ready or merging it, adopt the real released version in all three:
+Use a project-scoped UV environment and clear any previous source override:
 
 ```sh
-uv add 'renogy-ble==<actual-released-version>'
-# Set custom_components/renogy/manifest.json requirements to that same version.
-uv sync --all-groups
-```
-
-Then rerun the full checks without the candidate overlay. The library's version
-and changelog remain managed by release automation.
-
-## Reproducible candidate validation
-
-Use dedicated worktrees with project-scoped UV environments. Set `BLE_WORKTREE`
-to the library candidate; no editable dependency or local path is committed to
-HA's dependency files:
-
-```sh
-BLE_WORKTREE="$HOME/home_assistant/renogy/renogy-worktrees/ble-device-identification"
-# From the HA candidate worktree, after uv sync --all-groups:
-export PYTHONPATH="$BLE_WORKTREE/src"
+unset PYTHONPATH
+uv sync --locked --all-groups
 uv run --no-sync python -c 'import importlib.metadata, renogy_ble; print(importlib.metadata.version("renogy-ble")); print(renogy_ble.__file__)'
 uv run --no-sync ruff format --check .
 uv run --no-sync ruff check . --output-format=github
 uv run --no-sync ty check . --output-format=github
 uv run --no-sync pytest tests
+git diff --check
 ```
 
-Verify the source path points to this exact candidate. Installed distribution
-metadata is currently 2.10.0; the source overlay is intentionally unreleased API
-code, not evidence that the published 2.10.0 wheel contains it. Subprocess contract
-tests exercise real library identity and device objects, plus HA's discovery and
-coordinator adapters, without replacing classification with matching mocks.
+The installed distribution must be 2.11.0 and its source must resolve inside the
+project environment's `site-packages`, not a local library worktree. Subprocess
+contract tests exercise real library classification and device objects together
+with HA discovery and coordinator adapters. The regression suite covers
+manufacturer-only discovery, repeated nameless packets, actual-address/UUID
+placeholders, persisted fallbacks, confirmed names, hardware display names,
+selected protocols/profiles, model warnings, reconfiguration, and entity setup.
 
-On this macOS/Python 3.14 machine, an unmodified fresh HA `uv sync` fails building
-locked PyObjC 10.3.2 because `pkg_resources` is missing. Local validation provisioned
-the new HA worktree environment using temporary `[tool.uv] override-dependencies`
-for `pyobjc-core`, `pyobjc-framework-cocoa`, `pyobjc-framework-corebluetooth`, and
-`pyobjc-framework-libdispatch`, all at 12.1. The temporary dependency-file changes
-were restored before checks. This is a local tooling workaround; the committed
-lock is unchanged. Use `--no-sync` for this provisioned environment so UV does not
-restore those broken macOS packages. Ordinary locked installation and physical
-Bluetooth hardware behavior were not validated by this workaround.
+On macOS/Python 3.14, the locked PyObjC 10.3.2 build fails because
+`pkg_resources` is missing. Local validation installed the other locked packages,
+including the published library, with these native packages omitted:
 
-## Validation results
+```sh
+uv sync --locked --all-groups \
+  --no-install-package pyobjc-core \
+  --no-install-package pyobjc-framework-cocoa \
+  --no-install-package pyobjc-framework-corebluetooth \
+  --no-install-package pyobjc-framework-libdispatch
+```
 
-- Library: 426 tests passed, including 49 shared identification regressions.
-- HA: 217 tests passed against the exact candidate library source, including
-  isolated-process coverage using real classification and device objects.
-- Ruff formatting/lint, full-repository ty, and `git diff --check` passed in both
-  worktrees. HA uses its locked Ruff 0.16.9 / ty 0.0.78 / pytest 9.1.1; library
-  uses Ruff 0.16.9 / ty 0.0.84 / pytest 9.1.1.
-- HA installed metadata was explicitly checked: `renogy-ble` 2.10.0 and
-  Home Assistant 2026.8.3. Imported source was explicitly checked to resolve to
-  `ble-device-identification/src/renogy_ble`, including `identification.py`.
-- Existing settings, Shunt300, discovery, configured-name, model-warning,
-  reconfiguration, entity-readiness, and identifier regressions remain passing.
-- Library UV sync also corrected the existing root-package lock metadata from
-  2.9.0 to its already released 2.10.0 project version, with no dependency change.
-
-The candidate branches are `feat/device-identification` (library) and
-`refactor/library-device-identification` (HA). Validation used dedicated worktrees
-and preserved the primary checkouts and other worktrees. No live device, Bluetooth adapter, or running Home
-Assistant installation was used for these tests.
+This avoids changing the committed dependency files. Use `--no-sync` for subsequent
+local checks so UV does not retry those native builds. Physical Bluetooth hardware,
+a running HA installation, and an unmodified full macOS installation are outside
+this validation. GitHub CI independently runs the normal Linux environment and
+the minimum supported Home Assistant 2026.3.0 environment.
