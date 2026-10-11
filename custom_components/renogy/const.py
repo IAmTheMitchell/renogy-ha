@@ -3,6 +3,13 @@
 import logging
 from enum import Enum
 
+from renogy_ble.identification import (
+    RIV4835CSH1S_MODEL,
+)
+from renogy_ble.identification import (
+    DeviceType as DeviceType,
+)
+
 DOMAIN = "renogy"
 
 LOGGER = logging.getLogger(__name__)
@@ -24,12 +31,6 @@ DEFAULT_UNAVAILABLE_RETRY_INTERVAL = 10  # minutes
 MIN_UNAVAILABLE_RETRY_INTERVAL = 1  # minutes
 MAX_UNAVAILABLE_RETRY_INTERVAL = 60  # minutes
 
-# Renogy BT-1 and BT-2 module identifiers - devices advertise with these prefixes
-RENOGY_BT_PREFIX = "BT-TH-"
-RENOGY_INVERTER_PREFIX = "RNGRIU"
-RENOGY_REGO_INVERTER_PREFIX = "BTRIC"
-RENOGY_BATTERY_PRO_PREFIXES = ("RNGRBP", "RNGC", "RNGPRO")
-
 # Configuration parameters
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_MAX_FAILURES = "max_failures"
@@ -46,21 +47,12 @@ DEFAULT_COMMUNICATION_HUB_ENABLED = False
 ATTR_MANUFACTURER = "Renogy"
 
 
-# Define device types as Enum
-class DeviceType(Enum):
-    CONTROLLER = "controller"
-    BATTERY = "battery"
-    INVERTER = "inverter"
-    DCC = "dcc"  # DC-DC Charger (with or without MPPT)
-    SHUNT300 = "shunt300"  # Renogy Shunt300
-
-
 # List of supported device types
 DEVICE_TYPES = [e.value for e in DeviceType]
 DEFAULT_DEVICE_TYPE = DeviceType.CONTROLLER.value
 
 GENERIC_INVERTER_PROFILE = "generic"
-RIV4835CSH1S_INVERTER_PROFILE = "RIV4835CSH1S"
+RIV4835CSH1S_INVERTER_PROFILE = RIV4835CSH1S_MODEL
 INVERTER_PROFILES = [GENERIC_INVERTER_PROFILE, RIV4835CSH1S_INVERTER_PROFILE]
 DEFAULT_INVERTER_PROFILE = GENERIC_INVERTER_PROFILE
 
