@@ -20,6 +20,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from renogy_ble.identification import RENOGY_REGO_INVERTER_PREFIX
 
 from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
@@ -32,7 +33,6 @@ from .const import (
     DEFAULT_INVERTER_PROFILE,
     DOMAIN,
     LOGGER,
-    RENOGY_REGO_INVERTER_PREFIX,
     RIV4835CSH1S_INVERTER_PROFILE,
     DeviceType,
 )
