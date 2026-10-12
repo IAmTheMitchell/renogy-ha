@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## [0.12.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.11.0...v0.12.0) (2026-10-12)
+
+
+### Features
+
+* bump renogy-ble to 2.10.0 for semantic device settings ([#257](https://github.com/IAmTheMitchell/renogy-ha/issues/257)) ([e40f527](https://github.com/IAmTheMitchell/renogy-ha/commit/e40f527b5d39c29f26787474e7eac488a51a74ef))
+* bump renogy-ble to 2.11.0 for RIV diagnostics and shared identification ([#262](https://github.com/IAmTheMitchell/renogy-ha/issues/262)) ([11c1c15](https://github.com/IAmTheMitchell/renogy-ha/commit/11c1c15cf3c43f623fad9f0336291d21236bbd65))
+* bump renogy-ble to 2.9.0 for Shunt300 streaming and Hub telemetry ([#253](https://github.com/IAmTheMitchell/renogy-ha/issues/253)) ([ef7f930](https://github.com/IAmTheMitchell/renogy-ha/commit/ef7f930ea22f1b4e07fc765b8a030e3d982caf90))
+* expose Communication Hub battery cell voltages ([#249](https://github.com/IAmTheMitchell/renogy-ha/issues/249)) ([1d33f82](https://github.com/IAmTheMitchell/renogy-ha/commit/1d33f827d52ad3b6932cdc137ed6fa0304bd46d3))
+* expose opt-in RIV LCD diagnostics in Home Assistant ([#258](https://github.com/IAmTheMitchell/renogy-ha/issues/258)) ([e388c80](https://github.com/IAmTheMitchell/renogy-ha/commit/e388c80841c5fa2e9d9012571f546cd9439c5d42))
+
+
+### Bug Fixes
+
+* remove redundant advertisement condition ([#263](https://github.com/IAmTheMitchell/renogy-ha/issues/263)) ([d63cdf1](https://github.com/IAmTheMitchell/renogy-ha/commit/d63cdf19cdee3bb4ace3032192c6ce48ac77a55e))
+* support Hub device links on newer Home Assistant ([#264](https://github.com/IAmTheMitchell/renogy-ha/issues/264)) ([2e5706f](https://github.com/IAmTheMitchell/renogy-ha/commit/2e5706f1da23c053d2c13e76b496385b072e06b1))
+* use library Shunt300 notification sessions ([#239](https://github.com/IAmTheMitchell/renogy-ha/issues/239)) ([8336df8](https://github.com/IAmTheMitchell/renogy-ha/commit/8336df853b9192d81cb7469776bc381e3bdf8eca))
+
 ## [0.11.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.10.0...v0.11.0) (2026-09-16)
 
 
