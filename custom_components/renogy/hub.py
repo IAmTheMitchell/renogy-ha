@@ -281,10 +281,13 @@ class RenogyHubBatteryManager:
 
         max_cell_number: int | None = None
         if cell_voltages:
-            max_cell_number = max(
-                range(len(cell_voltages)),
-                key=cell_voltages.__getitem__,
-            ) + 1
+            max_cell_number = (
+                max(
+                    range(len(cell_voltages)),
+                    key=cell_voltages.__getitem__,
+                )
+                + 1
+            )
 
         return RenogyHubBatteryState(
             slave_id=int(battery.slave_id),

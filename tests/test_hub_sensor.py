@@ -448,9 +448,7 @@ def test_hub_cell_sensors_unavailable_until_cell_data_arrives() -> None:
     """Optional cell sensors should not imply a zero or safe voltage."""
     module = _load_hub_sensor_module()
     coordinator = _Coordinator()
-    coordinator.hub_batteries = (
-        _BatteryState(slave_id=0x30, battery_voltage=50.0),
-    )
+    coordinator.hub_batteries = (_BatteryState(slave_id=0x30, battery_voltage=50.0),)
     cell_max = module.RenogyHubBatterySensor(
         coordinator,
         0x30,
