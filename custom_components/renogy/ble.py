@@ -989,26 +989,39 @@ class RenogyActiveBluetoothCoordinator(
 
         if success and self.device and self.device.parsed_data:
             if self.inverter_diagnostics:
-                try:
-                    diagnostics = await self._ble_client.read_inverter_diagnostics(
-                        self.device, previous=self._inverter_diagnostic_cache
-                    )
-                    self._inverter_diagnostic_cache = diagnostics.get("riv_diagnostics")
-                except Exception as exc:
-                    self.logger.debug("Optional RIV diagnostics failed: %s", exc)
-                    diagnostics = {
-                        "riv_diagnostic_read_status": "read_error",
-                        "riv_diagnostics": {"read_error": str(exc)},
-                    }
-                # Replace only optional diagnostic fields; normal poll success
-                # and current measurement values remain authoritative.
-                self.device.parsed_data = {
-                    key: value
-                    for key, value in self.device.parsed_data.items()
-                    if not key.startswith("riv_")
-                }
-                self.device.parsed_data.update(diagnostics)
-                self.data = dict(self.device.parsed_data)
+                # Keep optional reads and publication serialized with normal polls.
+                async with self._connection_lock:
+                    self._connection_in_progress = True
+                    try:
+                        try:
+                            diagnostics = (
+                                await self._ble_client.read_inverter_diagnostics(
+                                    self.device,
+                                    previous=self._inverter_diagnostic_cache,
+                                )
+                            )
+                            self._inverter_diagnostic_cache = diagnostics.get(
+                                "riv_diagnostics"
+                            )
+                        except Exception as exc:
+                            self.logger.debug(
+                                "Optional RIV diagnostics failed: %s", exc
+                            )
+                            diagnostics = {
+                                "riv_diagnostic_read_status": "read_error",
+                                "riv_diagnostics": {"read_error": str(exc)},
+                            }
+                        # Replace only optional diagnostic fields; normal poll success
+                        # and current measurement values remain authoritative.
+                        self.device.parsed_data = {
+                            key: value
+                            for key, value in self.device.parsed_data.items()
+                            if not key.startswith("riv_")
+                        }
+                        self.device.parsed_data.update(diagnostics)
+                        self.data = dict(self.device.parsed_data)
+                    finally:
+                        self._connection_in_progress = False
             # Log the parsed data for debugging
             self.logger.debug("Parsed data: %s", self.device.parsed_data)
 

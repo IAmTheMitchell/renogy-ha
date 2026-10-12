@@ -160,10 +160,12 @@ def test_entities_are_diagnostic_and_preserve_precision_and_zero_values():
     assert setting.extra_state_attributes["read_error"] == "Timeout"
 
 
-def test_download_uses_completed_cache_and_redacts_transport_addresses():
+@pytest.mark.parametrize(
+    "address", ["AA:BB:CC:DD:EE:FF", "12345678-ABCD-1234-ABCD-123456789ABC"]
+)
+def test_download_uses_completed_cache_and_redacts_transport_addresses(address):
     _load_sensor_module()
     module = importlib.import_module("custom_components.renogy.diagnostics")
-    address = "AA:BB:CC:DD:EE:FF"
     entry = SimpleNamespace(
         entry_id="private-id",
         options={},
@@ -178,7 +180,9 @@ def test_download_uses_completed_cache_and_redacts_transport_addresses():
         data={
             "battery_voltage": 50.6,
             "riv_program_04": 49.2,
-            "riv_diagnostics": {"read_errors": {"20": f"Disconnected {address}"}},
+            "riv_diagnostics": {
+                "read_errors": {"20": f"Disconnected {address.lower()}"}
+            },
         },
         device=SimpleNamespace(parsed_data={"battery_voltage": 0.0}),
         _ble_client=SimpleNamespace(read_inverter_diagnostics=AsyncMock()),
@@ -193,7 +197,43 @@ def test_download_uses_completed_cache_and_redacts_transport_addresses():
     assert result["decoded_diagnostics"]["riv_program_04"] == 49.2
     serialized = json.dumps(result)
     assert not any(
-        token in serialized for token in [address, "private-id", "private-name"]
+        token in serialized
+        for token in [address, address.lower(), "private-id", "private-name"]
     )
     assert "**REDACTED**" in serialized
     coordinator._ble_client.read_inverter_diagnostics.assert_not_awaited()
+
+
+def test_diagnostics_hold_coordinator_lock_and_suppress_overlapping_poll():
+    module = _load_ble_module()
+    coordinator = module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        scan_interval=60,
+        device_type="inverter",
+        model_hint="RIV4835CSH1S",
+        inverter_diagnostics=True,
+    )
+    coordinator.device = MagicMock()
+    coordinator.device.parsed_data = {"battery_voltage": 50.6}
+    coordinator._read_device_data = AsyncMock(return_value=True)
+
+    observed = []
+
+    async def reader(*args, **kwargs):
+        observed.append(
+            (coordinator._connection_lock.locked(), coordinator._connection_in_progress)
+        )
+        if coordinator._connection_in_progress:
+            await coordinator._async_poll_device(None)
+        raise RuntimeError("Connection lost")
+
+    coordinator._ble_client.read_inverter_diagnostics = reader
+    result = asyncio.run(coordinator._async_poll_device(None))
+    assert result["battery_voltage"] == 50.6
+    assert result["riv_diagnostic_read_status"] == "read_error"
+    assert observed == [(True, True)]
+    assert coordinator._read_device_data.await_count == 1
+    assert not coordinator._connection_lock.locked()
+    assert not coordinator._connection_in_progress

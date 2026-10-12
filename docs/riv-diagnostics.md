@@ -1,9 +1,8 @@
 # RIV4835CSH1S LCD diagnostics
 
-This draft depends on [renogy-ble PR #187](https://github.com/IAmTheMitchell/renogy-ble/pull/187).
-The dependency is temporarily pinned to its tested commit for reproducible
-testing. Replace the Git pin in the manifest, project dependencies, and lockfile
-with the released library version before merging this Home Assistant draft.
+This feature uses the public diagnostics API released in `renogy-ble==2.11.0`
+from [renogy-ble PR #187](https://github.com/IAmTheMitchell/renogy-ble/pull/187).
+The integration depends on the released package.
 
 Select the RIV4835CSH1S inverter profile, then open the integration's **Configure**
 options and enable **Read-only inverter LCD diagnostics**. It is disabled by

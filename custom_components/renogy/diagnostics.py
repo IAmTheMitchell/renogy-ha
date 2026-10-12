@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from renogy_ble import get_inverter_diagnostic_fields
 
@@ -47,14 +48,19 @@ _MEASUREMENTS = (
 )
 
 
-def _redact_addresses(value: Any) -> Any:
+def _redact_addresses(value: Any, address: str | None = None) -> Any:
     """Remove Bluetooth addresses embedded in transport error strings."""
     if isinstance(value, str):
-        return _ADDRESS.sub("**REDACTED**", value)
+        value = _ADDRESS.sub("**REDACTED**", value)
+        if address:
+            value = re.sub(
+                re.escape(address), "**REDACTED**", value, flags=re.IGNORECASE
+            )
+        return value
     if isinstance(value, dict):
-        return {key: _redact_addresses(item) for key, item in value.items()}
+        return {key: _redact_addresses(item, address) for key, item in value.items()}
     if isinstance(value, list):
-        return [_redact_addresses(item) for item in value]
+        return [_redact_addresses(item, address) for item in value]
     return value
 
 
@@ -86,5 +92,6 @@ async def async_get_config_entry_diagnostics(
                 "firmware_components": "Raw words/text; component labels unverified.",
                 "timestamps": "Sequential cached reads, not simultaneous measurements.",
             },
-        }
+        },
+        entry.data.get(CONF_ADDRESS),
     )
