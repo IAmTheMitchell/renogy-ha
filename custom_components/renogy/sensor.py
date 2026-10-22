@@ -110,6 +110,18 @@ KEY_SHUNT_SOC = "shunt_soc"
 KEY_SHUNT_ENERGY_CHARGED_TOTAL = "energy_charged_total"
 KEY_SHUNT_ENERGY_DISCHARGED_TOTAL = "energy_discharged_total"
 KEY_SHUNT_STATUS = "shunt_status"
+KEY_SHUNT_TEMPERATURE = "shunt_temperature"
+# renogy-ble reports the probe reading as ``battery_temperature`` (unsigned) and
+# also includes every big-endian 16-bit word of the frame as ``raw_words``.
+KEY_SHUNT_LIBRARY_TEMPERATURE = "battery_temperature"
+KEY_SHUNT_RAW_WORDS = "raw_words"
+# Payload bytes 66-67 hold the battery temperature probe in 0.1 degC units.
+SHUNT_TEMPERATURE_WORD_INDEX = 33
+SHUNT_TEMPERATURE_SCALE = 0.1
+SHUNT_TEMPERATURE_MIN_C = -40.0
+SHUNT_TEMPERATURE_MAX_C = 100.0
+# All-ones word: treated as "no reading" so a missing probe is not shown as -0.1.
+SHUNT_TEMPERATURE_NO_READING_WORD = 0xFFFF
 KEY_SHUNT_VERBOSE = "verbose"
 KEY_SHUNT_STATUS_SOURCE = "status_source"
 KEY_SHUNT_ENERGY_SOURCE = "energy_source"
@@ -203,6 +215,32 @@ def _coerce_float(value: Any, *, default: float | None) -> float | None:
         return default
 
 
+def _shunt_temperature(data: Dict[str, Any]) -> float | None:
+    """Return the Smart Shunt battery probe temperature in degrees Celsius.
+
+    The library decodes the temperature word as unsigned, so any reading below
+    0 degC wraps to ~6553 and is discarded. The probe is rated for -20..80 degC,
+    so the signed value is recovered here from the raw frame words. When the raw
+    words are unavailable, fall back to the library's own decoded value.
+    """
+    words = data.get(KEY_SHUNT_RAW_WORDS)
+    if isinstance(words, (list, tuple)) and len(words) > SHUNT_TEMPERATURE_WORD_INDEX:
+        word = words[SHUNT_TEMPERATURE_WORD_INDEX]
+        if isinstance(word, int) and not isinstance(word, bool) and 0 <= word <= 0xFFFF:
+            if word == SHUNT_TEMPERATURE_NO_READING_WORD:
+                return None
+            signed = word - 0x10000 if word >= 0x8000 else word
+            value = round(signed * SHUNT_TEMPERATURE_SCALE, 1)
+            if SHUNT_TEMPERATURE_MIN_C <= value <= SHUNT_TEMPERATURE_MAX_C:
+                return value
+            return None
+
+    value = _coerce_float(data.get(KEY_SHUNT_LIBRARY_TEMPERATURE), default=None)
+    if value is None or not SHUNT_TEMPERATURE_MIN_C <= value <= SHUNT_TEMPERATURE_MAX_C:
+        return None
+    return round(value, 1)
+
+
 # SHUNT300 sensor entity descriptions (expand as needed)
 SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
@@ -251,6 +289,15 @@ SHUNT300_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_SHUNT_TEMPERATURE,
+        name="Shunt Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=_shunt_temperature,
     ),
     RenogyBLESensorDescription(
         key=KEY_SHUNT_ENERGY_CHARGED_TOTAL,
