@@ -11,6 +11,8 @@ from enum import Enum
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 
 def _install_module_stubs() -> None:
     """Install minimal Home Assistant module stubs to import the number module."""
@@ -60,6 +62,12 @@ def _install_module_stubs() -> None:
 
     class SelectEntity:
         """Stub select entity base class for testing."""
+
+        _attr_options: list[str]
+
+        @property
+        def options(self) -> list[str]:
+            return self._attr_options
 
     @dataclass(frozen=True)
     class SelectEntityDescription:
@@ -122,6 +130,14 @@ def _install_module_stubs() -> None:
 
     core_module.HomeAssistant = HomeAssistant
     sys.modules["homeassistant.core"] = core_module
+
+    exceptions_module = cast(Any, types.ModuleType("homeassistant.exceptions"))
+
+    class HomeAssistantError(Exception):
+        """Stub Home Assistant service error."""
+
+    exceptions_module.HomeAssistantError = HomeAssistantError
+    sys.modules["homeassistant.exceptions"] = exceptions_module
 
     helpers_module = cast(Any, types.ModuleType("homeassistant.helpers"))
     sys.modules["homeassistant.helpers"] = helpers_module
@@ -450,3 +466,122 @@ def test_number_descriptions_have_no_wire_metadata():
     ):
         assert not hasattr(description, "register")
         assert not hasattr(description, "scale")
+
+
+def _riv_output_priority_entity(initial: str = "SBU"):
+    """Build a Program 01 entity with simulated polled data."""
+    select = _load_select_module()
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.data = {"output_priority": initial}
+    coordinator.async_write_setting = AsyncMock(return_value=True)
+
+    entity = select.RenogyOutputPrioritySelect(
+        coordinator,
+        None,
+        select.RIV_SELECT_ENTITIES[0],
+        select.DeviceType.INVERTER.value,
+    )
+    entity.async_write_ha_state = MagicMock()
+    return select, coordinator, entity
+
+
+def test_riv_output_priority_profile_gating():
+    """Only the explicit RIV inverter profile creates this Select."""
+    select = _load_select_module()
+    coordinator = MagicMock()
+    coordinator.device = None
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+
+    hass = MagicMock()
+    hass.data = {select.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+
+    entry = MagicMock()
+    entry.entry_id = "entry-1"
+    entry.data = {
+        select.CONF_DEVICE_TYPE: select.DeviceType.INVERTER.value,
+        select.CONF_INVERTER_PROFILE: select.RIV4835CSH1S_INVERTER_PROFILE,
+    }
+
+    add_entities = MagicMock()
+    asyncio.run(select.async_setup_entry(hass, entry, add_entities))
+    add_entities.assert_called_once()
+
+    (entities,) = add_entities.call_args.args
+    assert len(entities) == 1
+    assert entities[0].entity_description.key == "output_priority"
+    assert entities[0].options == ["SOL", "UTI", "SBU"]
+
+    entry.data[select.CONF_INVERTER_PROFILE] = select.DEFAULT_INVERTER_PROFILE
+    add_entities.reset_mock()
+    asyncio.run(select.async_setup_entry(hass, entry, add_entities))
+    add_entities.assert_not_called()
+
+
+def test_riv_output_priority_uses_live_semantic_readback():
+    """Show the polled state without maintaining an optimistic cache."""
+    _, coordinator, entity = _riv_output_priority_entity()
+
+    assert entity.current_option == "SBU"
+
+    coordinator.data = {"output_priority": "SOL"}
+    assert entity.current_option == "SOL"
+
+    coordinator.data = {"output_priority": "unknown"}
+    assert entity.current_option is None
+
+
+def test_riv_output_priority_writes_all_options():
+    """All three settings use the public semantic coordinator API."""
+    _, coordinator, entity = _riv_output_priority_entity()
+
+    async def confirmed_write(key, option):
+        assert key == "output_priority"
+        coordinator.data = {"output_priority": option}
+        return True
+
+    coordinator.async_write_setting = AsyncMock(side_effect=confirmed_write)
+
+    for option in ("SOL", "UTI", "SBU"):
+        asyncio.run(entity.async_select_option(option))
+        assert entity.current_option == option
+
+    assert coordinator.async_write_setting.await_count == 3
+    assert entity.async_write_ha_state.call_count == 3
+
+
+def test_riv_output_priority_rejects_failed_write():
+    """A failed transport operation must not change the displayed mode."""
+    select, coordinator, entity = _riv_output_priority_entity()
+
+    coordinator.async_write_setting = AsyncMock(return_value=False)
+
+    with pytest.raises(select.HomeAssistantError):
+        asyncio.run(entity.async_select_option("UTI"))
+
+    assert entity.current_option == "SBU"
+    entity.async_write_ha_state.assert_not_called()
+
+
+def test_riv_output_priority_rejects_mismatched_readback():
+    """A successful write without matching readback is not success."""
+    select, coordinator, entity = _riv_output_priority_entity()
+
+    coordinator.async_write_setting = AsyncMock(return_value=True)
+
+    with pytest.raises(select.HomeAssistantError):
+        asyncio.run(entity.async_select_option("UTI"))
+
+    assert entity.current_option == "SBU"
+    entity.async_write_ha_state.assert_not_called()
+
+
+def test_riv_output_priority_rejects_invalid_option():
+    """Invalid choices never reach the BLE API."""
+    select, coordinator, entity = _riv_output_priority_entity()
+
+    with pytest.raises(select.HomeAssistantError):
+        asyncio.run(entity.async_select_option("INVALID"))
+
+    coordinator.async_write_setting.assert_not_awaited()
