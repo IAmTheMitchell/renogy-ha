@@ -7,6 +7,7 @@ from typing import Optional, cast
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -17,9 +18,12 @@ from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
+    CONF_INVERTER_PROFILE,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_INVERTER_PROFILE,
     DOMAIN,
     LOGGER,
+    RIV4835CSH1S_INVERTER_PROFILE,
     DeviceType,
 )
 
@@ -63,6 +67,20 @@ DCC_SELECT_ENTITIES = (
 
 CONTROLLER_SELECT_ENTITIES = (BATTERY_TYPE_DESCRIPTION,)
 
+RIV_OUTPUT_PRIORITY_OPTIONS = next(
+    cap.options
+    for cap in get_device_settings("inverter", model_hint=RIV4835CSH1S_INVERTER_PROFILE)
+    if cap.key == "output_priority"
+)
+
+RIV_SELECT_ENTITIES = (
+    SelectEntityDescription(
+        key="output_priority",
+        name="Output Priority",
+        entity_category=EntityCategory.CONFIG,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -85,6 +103,12 @@ async def async_setup_entry(
         descriptions = DCC_SELECT_ENTITIES
     elif device_type == DeviceType.CONTROLLER.value:
         descriptions = CONTROLLER_SELECT_ENTITIES
+    elif (
+        device_type == DeviceType.INVERTER.value
+        and config_entry.data.get(CONF_INVERTER_PROFILE, DEFAULT_INVERTER_PROFILE)
+        == RIV4835CSH1S_INVERTER_PROFILE
+    ):
+        descriptions = RIV_SELECT_ENTITIES
     else:
         LOGGER.debug("Skipping select entities for device type: %s", device_type)
         return
@@ -104,6 +128,13 @@ async def async_setup_entry(
             )
         elif description.key == "max_charging_current":
             entity = RenogyMaxCurrentSelect(
+                coordinator=coordinator,
+                device=device,
+                description=description,
+                device_type=device_type,
+            )
+        elif description.key == "output_priority":
+            entity = RenogyOutputPrioritySelect(
                 coordinator=coordinator,
                 device=device,
                 description=description,
@@ -359,4 +390,86 @@ class RenogyMaxCurrentSelect(SelectEntity):
         if not self._device and self.coordinator.device:
             self._device = self.coordinator.device
 
+        self.async_write_ha_state()
+
+
+class RenogyOutputPrioritySelect(SelectEntity):
+    """RIV4835CSH1S Program 01 using the semantic library API."""
+
+    entity_description: SelectEntityDescription
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: RenogyActiveBluetoothCoordinator,
+        device: Optional[RenogyBLEDevice],
+        description: SelectEntityDescription,
+        device_type: str = DEFAULT_DEVICE_TYPE,
+    ) -> None:
+        self.coordinator = coordinator
+        self._device = device
+        self.entity_description = description
+        # Program 01 has only string-valued choices.
+        self._attr_options = cast("list[str]", list(RIV_OUTPUT_PRIORITY_OPTIONS))
+        self._attr_name = cast("str | None", description.name)
+
+        address = device.address if device else coordinator.address
+        self._attr_unique_id = f"{address}_{description.key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, address)},
+            name=device.name if device else f"Renogy {device_type.upper()}",
+            manufacturer=ATTR_MANUFACTURER,
+            model=f"Renogy {device_type.upper()}",
+        )
+
+    @property
+    def suggested_object_id(self) -> str | None:
+        if self._device is None:
+            return f"Renogy {self._attr_name}"
+        return super().suggested_object_id
+
+    @property
+    def available(self) -> bool:
+        return is_entity_available(self.coordinator, self._device)
+
+    @property
+    def current_option(self) -> str | None:
+        """Read the authoritative, polled Program 01 value."""
+        device = self.coordinator.device or self._device
+        if device is not None and device.parsed_data:
+            data = device.parsed_data
+        else:
+            data = self.coordinator.data
+
+        if not data:
+            return None
+
+        option = data.get("output_priority")
+        return option if option in self._attr_options else None
+
+    async def async_select_option(self, option: str) -> None:
+        """Write through the public API and verify refreshed readback."""
+        if option not in self._attr_options:
+            raise HomeAssistantError(f"Unsupported output priority: {option}")
+
+        success = await self.coordinator.async_write_setting("output_priority", option)
+        if not success:
+            raise HomeAssistantError(f"Failed to write output priority: {option}")
+
+        # async_write_setting requests an authoritative coordinator refresh.
+        if self.current_option != option:
+            raise HomeAssistantError(
+                f"Output priority readback did not confirm {option}"
+            )
+
+        self.async_write_ha_state()
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    def _handle_coordinator_update(self) -> None:
+        if not self._device and self.coordinator.device:
+            self._device = self.coordinator.device
         self.async_write_ha_state()
