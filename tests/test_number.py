@@ -9,7 +9,7 @@ import types
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -476,6 +476,7 @@ def _riv_output_priority_entity(initial: str = "SBU"):
     coordinator.device = None
     coordinator.data = {"output_priority": initial}
     coordinator.async_write_setting = AsyncMock(return_value=True)
+    coordinator.async_request_refresh = AsyncMock()
 
     entity = select.RenogyOutputPrioritySelect(
         coordinator,
@@ -557,7 +558,10 @@ def test_riv_output_priority_rejects_failed_write():
 
     coordinator.async_write_setting = AsyncMock(return_value=False)
 
-    with pytest.raises(select.HomeAssistantError):
+    with (
+        patch.object(select.asyncio, "sleep", new_callable=AsyncMock),
+        pytest.raises(select.HomeAssistantError),
+    ):
         asyncio.run(entity.async_select_option("UTI"))
 
     assert entity.current_option == "SBU"
@@ -570,7 +574,10 @@ def test_riv_output_priority_rejects_mismatched_readback():
 
     coordinator.async_write_setting = AsyncMock(return_value=True)
 
-    with pytest.raises(select.HomeAssistantError):
+    with (
+        patch.object(select.asyncio, "sleep", new_callable=AsyncMock),
+        pytest.raises(select.HomeAssistantError),
+    ):
         asyncio.run(entity.async_select_option("UTI"))
 
     assert entity.current_option == "SBU"
