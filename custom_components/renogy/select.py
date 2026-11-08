@@ -453,27 +453,38 @@ class RenogyOutputPrioritySelect(SelectEntity):
         if option not in self._attr_options:
             raise HomeAssistantError(f"Unsupported output priority: {option}")
 
+        readback_revision = self.coordinator.output_priority_readback[0]
+
         # A missing BLE write acknowledgment does not prove that the inverter
         # rejected the command. Do not issue another write; poll to verify.
         acknowledged = await self.coordinator.async_write_setting(
             "output_priority", option
         )
 
+        if not acknowledged:
+            # Recovery requires a poll completed after the failed write returned.
+            readback_revision = self.coordinator.output_priority_readback[0]
+
+        def readback_confirmed() -> bool:
+            return (
+                self.coordinator.output_priority_readback[0] > readback_revision
+                and self.coordinator.output_priority_readback[1] == option
+                and self.current_option == option
+            )
+
         # A refresh can be skipped while another BLE connection is active.
         # Give the inverter time to publish authoritative polled data.
         for delay in (2.0, 4.0, 6.0, 8.0):
-            if self.current_option == option:
+            if readback_confirmed():
                 break
             await asyncio.sleep(delay)
-            if self.current_option == option:
+            if readback_confirmed():
                 break
             await self.coordinator.async_request_refresh()
 
-        if self.current_option != option:
+        if not readback_confirmed():
             if not acknowledged:
-                raise HomeAssistantError(
-                    f"Failed to write output priority: {option}"
-                )
+                raise HomeAssistantError(f"Failed to write output priority: {option}")
             raise HomeAssistantError(
                 f"Output priority readback did not confirm {option}"
             )

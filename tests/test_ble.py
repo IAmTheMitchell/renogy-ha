@@ -1755,3 +1755,31 @@ def test_failed_load_write_does_not_publish_success():
     assert coordinator.data == {"load_status": "off"}
     assert not coordinator.last_update_success
     coordinator.async_update_listeners.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("success", "data", "expected"),
+    [
+        (True, {"output_priority": "UTI"}, (1, "UTI")),
+        (False, {"output_priority": "UTI"}, (0, None)),
+        (True, {"battery_voltage": 51.2}, (0, None)),
+        (True, {}, (0, None)),
+    ],
+)
+def test_output_priority_readback_requires_successful_poll(success, data, expected):
+    """Failed or incomplete reads must not advance the Program 01 confirmation."""
+    module = _load_ble_module()
+    coordinator = module.RenogyActiveBluetoothCoordinator(
+        hass=MagicMock(),
+        logger=MagicMock(),
+        address="AA:BB:CC:DD:EE:FF",
+        device_type="inverter",
+        model_hint="RIV4835CSH1S",
+    )
+    coordinator.device = MagicMock(parsed_data=data)
+    coordinator._ble_client.read_device = AsyncMock(
+        return_value=MagicMock(success=success, error=None)
+    )
+
+    assert asyncio.run(coordinator._read_device_data(None)) is success
+    assert coordinator.output_priority_readback == expected

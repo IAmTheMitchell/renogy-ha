@@ -475,6 +475,7 @@ def _riv_output_priority_entity(initial: str = "SBU"):
     coordinator.address = "AA:BB:CC:DD:EE:FF"
     coordinator.device = None
     coordinator.data = {"output_priority": initial}
+    coordinator.output_priority_readback = (0, None)
     coordinator.async_write_setting = AsyncMock(return_value=True)
     coordinator.async_request_refresh = AsyncMock()
 
@@ -540,6 +541,10 @@ def test_riv_output_priority_writes_all_options():
     async def confirmed_write(key, option):
         assert key == "output_priority"
         coordinator.data = {"output_priority": option}
+        coordinator.output_priority_readback = (
+            coordinator.output_priority_readback[0] + 1,
+            option,
+        )
         return True
 
     coordinator.async_write_setting = AsyncMock(side_effect=confirmed_write)
