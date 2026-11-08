@@ -125,6 +125,8 @@ class RenogyActiveBluetoothCoordinator(
         )
         self._inverter_diagnostic_cache: dict[str, Any] | None = None
         self.last_poll_time: datetime | None = None
+        # Only completed polls containing Program 01 advance its readback revision.
+        self.output_priority_readback: tuple[int, str | None] = (0, None)
         self.device_data_callback = device_data_callback
         self.logger.debug(
             "Initialized coordinator for %s as %s with %ss interval "
@@ -843,6 +845,12 @@ class RenogyActiveBluetoothCoordinator(
                         dict(device.parsed_data)
                     )
                     self.data = dict(device.parsed_data)
+                    output_priority = device.parsed_data.get("output_priority")
+                    if isinstance(output_priority, str):
+                        self.output_priority_readback = (
+                            self.output_priority_readback[0] + 1,
+                            output_priority,
+                        )
                     self.logger.debug("Updated coordinator data: %s", self.data)
                     self._warn_if_model_mismatch()
 
