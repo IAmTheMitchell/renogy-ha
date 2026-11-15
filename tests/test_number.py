@@ -597,3 +597,145 @@ def test_riv_output_priority_rejects_invalid_option():
         asyncio.run(entity.async_select_option("INVALID"))
 
     coordinator.async_write_setting.assert_not_awaited()
+
+
+CONTROLLER_PARAMETER_KEYS = {
+    "overvoltage_threshold",
+    "charging_limit_voltage",
+    "equalization_voltage",
+    "boost_voltage",
+    "float_voltage",
+    "boost_return_voltage",
+    "overdischarge_return_voltage",
+    "undervoltage_warning",
+    "overdischarge_voltage",
+    "discharge_limit_voltage",
+    "overdischarge_delay",
+    "equalization_time",
+    "boost_time",
+    "equalization_interval",
+    "temperature_compensation",
+}
+
+
+def test_controller_numbers_are_the_shared_parameter_block() -> None:
+    """Controller numbers expose the library-supported charging parameters."""
+    number = _load_number_module()
+
+    by_key = {d.key: d for d in number.CONTROLLER_ALL_NUMBERS}
+    assert set(by_key) == CONTROLLER_PARAMETER_KEYS
+    assert "reverse_charging_voltage" not in by_key
+    assert "solar_cutoff_current" not in by_key
+    for description in by_key.values():
+        assert not hasattr(description, "register")
+        assert not hasattr(description, "scale")
+
+
+def test_controller_number_setup_creates_entities_for_controller_device() -> None:
+    """A controller entry gets one number per parameter in the block."""
+    number = _load_number_module()
+
+    coordinator = MagicMock()
+    coordinator.device = None
+    hass = MagicMock()
+    hass.data = {number.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {number.CONF_DEVICE_TYPE: number.DeviceType.CONTROLLER.value}
+    async_add_entities = MagicMock()
+
+    asyncio.run(number.async_setup_entry(hass, config_entry, async_add_entities))
+
+    async_add_entities.assert_called_once()
+    (created_entities,) = async_add_entities.call_args.args
+    assert {e.entity_description.key for e in created_entities} == (
+        CONTROLLER_PARAMETER_KEYS
+    )
+
+
+def test_controller_number_reads_the_value_the_library_parsed() -> None:
+    """The number shows the parameter renogy-ble decoded from the block."""
+    number = _load_number_module()
+    description = next(
+        d for d in number.CONTROLLER_ALL_NUMBERS if d.key == "equalization_voltage"
+    )
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.device = None
+    coordinator.data = {"equalization_voltage": 14.6}
+
+    entity = number.RenogyNumberEntity(
+        coordinator=coordinator,
+        device=None,
+        description=description,
+        device_type=number.DeviceType.CONTROLLER.value,
+    )
+
+    assert entity.native_value == 14.6
+
+
+def test_controller_float_voltage_writes_native_units() -> None:
+    """Controller writes delegate native units to the library settings API."""
+    number = _load_number_module()
+    description = next(
+        d for d in number.CONTROLLER_ALL_NUMBERS if d.key == "float_voltage"
+    )
+
+    coordinator = MagicMock()
+    coordinator.address = "AA:BB:CC:DD:EE:FF"
+    coordinator.async_write_setting = AsyncMock(return_value=True)
+
+    entity = number.RenogyNumberEntity(
+        coordinator=coordinator,
+        device=None,
+        description=description,
+        device_type=number.DeviceType.CONTROLLER.value,
+    )
+    entity.async_write_ha_state = MagicMock()
+
+    asyncio.run(entity.async_set_native_value(13.8))
+
+    coordinator.async_write_setting.assert_awaited_once_with("float_voltage", 13.8)
+    assert entity.native_value == 13.8
+
+
+def test_controller_number_bounds_come_from_library(monkeypatch):
+    """Controller presentation follows the library's supported native limits."""
+    import renogy_ble
+    from renogy_ble.settings import DeviceSetting
+
+    monkeypatch.setattr(
+        renogy_ble,
+        "get_device_settings",
+        lambda *args, **kwargs: (
+            DeviceSetting("float_voltage", "number", 8.0, 16.0, 0.2),
+        ),
+    )
+    number = _load_number_module()
+    assert len(number.CONTROLLER_ALL_NUMBERS) == 1
+    description = number.CONTROLLER_ALL_NUMBERS[0]
+    assert description.key == "float_voltage"
+    assert (
+        description.native_min_value,
+        description.native_max_value,
+        description.native_step,
+    ) == (8.0, 16.0, 0.2)
+
+
+def test_controller_without_numeric_capabilities_has_no_numbers(monkeypatch):
+    """An older library must not expose controls it cannot write."""
+    import renogy_ble
+
+    monkeypatch.setattr(renogy_ble, "get_device_settings", lambda *args, **kwargs: ())
+    number = _load_number_module()
+    coordinator = MagicMock()
+    coordinator.device = None
+    hass = MagicMock()
+    hass.data = {number.DOMAIN: {"entry-1": {"coordinator": coordinator}}}
+    config_entry = MagicMock()
+    config_entry.entry_id = "entry-1"
+    config_entry.data = {number.CONF_DEVICE_TYPE: number.DeviceType.CONTROLLER.value}
+    async_add_entities = MagicMock()
+    asyncio.run(number.async_setup_entry(hass, config_entry, async_add_entities))
+    async_add_entities.assert_not_called()

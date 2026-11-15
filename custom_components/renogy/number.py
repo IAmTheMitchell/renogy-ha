@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Optional, cast
 
 from homeassistant.components.number import (
@@ -20,6 +21,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from renogy_ble import get_device_settings
 from renogy_ble.identification import RENOGY_REGO_INVERTER_PREFIX
 
 from .availability import is_entity_available
@@ -237,6 +239,23 @@ DCC_OTHER_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
 # All DCC number entities
 DCC_ALL_NUMBERS = DCC_VOLTAGE_NUMBERS + DCC_TIME_NUMBERS + DCC_OTHER_NUMBERS
 
+# Reuse presentation labels and units; the library owns controller capabilities.
+_CONTROLLER_NUMBER_CAPABILITIES = {
+    capability.key: capability
+    for capability in get_device_settings(DeviceType.CONTROLLER.value)
+    if capability.kind == "number"
+}
+CONTROLLER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = tuple(
+    replace(
+        description,
+        native_min_value=_CONTROLLER_NUMBER_CAPABILITIES[description.key].minimum,
+        native_max_value=_CONTROLLER_NUMBER_CAPABILITIES[description.key].maximum,
+        native_step=_CONTROLLER_NUMBER_CAPABILITIES[description.key].step,
+    )
+    for description in DCC_ALL_NUMBERS
+    if description.key in _CONTROLLER_NUMBER_CAPABILITIES
+)
+
 # REGO-series inverter settings in native units.
 INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
     RenogyNumberEntityDescription(
@@ -323,6 +342,8 @@ async def async_setup_entry(
     # Select the number descriptions for this device type/profile.
     if device_type == DeviceType.DCC.value:
         descriptions = DCC_ALL_NUMBERS
+    elif device_type == DeviceType.CONTROLLER.value:
+        descriptions = CONTROLLER_ALL_NUMBERS
     elif (
         device_type == DeviceType.INVERTER.value
         and inverter_profile == RIV4835CSH1S_INVERTER_PROFILE

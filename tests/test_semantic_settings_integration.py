@@ -8,7 +8,9 @@ import pytest
 
 # A child process isolates the real library from legacy tests' global module
 # stubs. Only HA framework services and GATT are mocked, not the library API.
-@pytest.mark.parametrize("profile", ["dcc", "controller", "rego", "riv"])
+@pytest.mark.parametrize(
+    "profile", ["dcc", "controller", "controller-number", "rego", "riv"]
+)
 def test_entity_coordinator_and_real_library(profile):
     result = subprocess.run(
         [sys.executable, "-m", "tests.settings_candidate_scenario", profile],

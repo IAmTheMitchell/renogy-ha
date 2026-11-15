@@ -1,6 +1,7 @@
 """Isolated HA adapter scenario executed by integration tests."""
 
 import asyncio
+import math
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
@@ -52,7 +53,13 @@ library_transport.establish_connection = AsyncMock(return_value=gatt)
 library_transport.INVERTER_INIT_DELAY = 0.0
 kind = sys.argv[1]
 name = "BTRIC-test" if kind == "rego" else "BT-TH-test"
-device_type = "inverter" if kind in ("rego", "riv") else kind
+device_type = (
+    "controller"
+    if kind == "controller-number"
+    else "inverter"
+    if kind in ("rego", "riv")
+    else kind
+)
 model = "RIV4835CSH1S" if kind == "riv" else None
 ble_device = MagicMock(address="AA:BB:CC:DD:EE:FF")
 ble_device.name = name
@@ -94,6 +101,31 @@ async def run():
         device.parsed_data = library.RenogyParser.parse(response, kind, register)
         entity._handle_coordinator_update()
         assert entity.current_option == "Gel"
+    elif kind == "controller-number":
+        number = _load_number_module()
+        description = next(
+            d for d in number.CONTROLLER_ALL_NUMBERS if d.key == "float_voltage"
+        )
+        entity = number.RenogyNumberEntity(
+            coordinator, device, description, device_type
+        )
+        entity.async_write_ha_state = MagicMock()
+        await entity.async_set_native_value(13.8)
+        expected = bytes([255, 6, 224, 9, 0, 138])
+        assert gatt.requests[-1] == expected + bytes(library.modbus_crc(expected))
+        assert entity.native_value == 13.8
+        gatt.fail = True
+        await entity.async_set_native_value(14.3)
+        assert entity.native_value == 13.8
+        # Readback may differ from an acknowledged request when presets override it.
+        response = bytearray([255, 3, 36]) + bytearray(36)
+        response[15:17] = (137).to_bytes(2, "big")
+        response.extend(library.modbus_crc(response))
+        device.parsed_data = library.RenogyParser.parse(
+            bytes(response), "controller", 0xE003
+        )
+        entity._handle_coordinator_update()
+        assert math.isclose(entity.native_value, 13.7)
     else:
         number = _load_number_module()
         description = (
