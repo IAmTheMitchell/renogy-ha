@@ -402,8 +402,10 @@ class RenogyHubBatterySensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
             return getattr(battery, key, None) is not None
         return True
 
+    # HA uses writable cached properties; keep live state reads uncached.
+    # The targeted ty ignores preserve this supported entity pattern.
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> float | None:  # ty: ignore[invalid-property-type-override]
         """Return this sensor's validated value from the Hub cache."""
         battery = self._battery
         if battery is None:
@@ -415,7 +417,7 @@ class RenogyHubBatterySensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         return float(value) if value is not None else None
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:  # ty: ignore[invalid-property-type-override]
         """Expose slave ID and individual cells for cell-voltage diagnostics."""
         attributes: dict[str, Any] = {"slave_id": f"0x{self._slave_id:02X}"}
         battery = self._battery
@@ -478,7 +480,7 @@ class RenogyHubBankSensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         return getattr(bank, key, None) is not None
 
     @property
-    def native_value(self) -> float | int | None:
+    def native_value(self) -> float | int | None:  # ty: ignore[invalid-property-type-override]
         """Return this sensor's derived communicating-bank value."""
         bank = self._bank
         if bank is None:
@@ -494,7 +496,7 @@ class RenogyHubBankSensor(PassiveBluetoothCoordinatorEntity, SensorEntity):
         return float(value)
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:  # ty: ignore[invalid-property-type-override]
         """Expose the battery and cell producing a bank extreme."""
         bank = self._bank
         key = self.entity_description.key

@@ -1118,7 +1118,8 @@ def create_entities_helper(
 class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEntity):
     """Representation of a Renogy BLE sensor."""
 
-    entity_description: RenogyBLESensorDescription
+    # This entity only assigns its specialized description in __init__.
+    entity_description: RenogyBLESensorDescription  # ty: ignore[invalid-mutable-override]
     coordinator: RenogyActiveBluetoothCoordinator
     # Compose the friendly name from the device name so UI device renames
     # cascade to every entity (HA modern naming model).
@@ -1273,8 +1274,10 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
             )
         return is_entity_available(self.coordinator, self._device)
 
+    # HA uses writable cached properties; keep live state reads uncached.
+    # The targeted ty ignores preserve this supported entity pattern.
     @property
-    def native_value(self) -> Any:
+    def native_value(self) -> Any:  # ty: ignore[invalid-property-type-override]
         """Return the sensor's value."""
         # Use cached value if available
         if self._attr_native_value is not None:
@@ -1387,7 +1390,7 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
         self.async_write_ha_state()
 
     @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
+    def extra_state_attributes(self) -> Dict[str, Any]:  # ty: ignore[invalid-property-type-override]
         """Return additional state attributes."""
         if self.entity_description.key in RIV_DIAGNOSTIC_KEYS:
             metadata = (self.coordinator.data or {}).get("riv_diagnostics", {})
