@@ -768,3 +768,39 @@ def test_options_flow_rejects_out_of_range(field: str, value: int) -> None:
 
     with pytest.raises(vol.Invalid):
         schema(valid)
+
+
+@pytest.mark.parametrize("interval", [10, 600, 601, 86_400, 9, 86_401])
+@pytest.mark.parametrize(
+    "form_kind", ["setup", "reconfigure", "options", "shunt_options"]
+)
+def test_polling_interval_bounds_across_forms(interval: int, form_kind: str) -> None:
+    """Every configuration form allows daily polling and enforces both bounds."""
+    config_flow_module = _load_config_flow_module()
+    const_module = importlib.import_module("custom_components.renogy.const")
+    device_type = const_module.DeviceType.CONTROLLER.value
+    values = {const_module.CONF_SCAN_INTERVAL: interval}
+
+    if form_kind == "setup":
+        schema = config_flow_module.CONFIG_SCHEMA
+        values[const_module.CONF_DEVICE_TYPE] = device_type
+    elif form_kind == "reconfigure":
+        flow, _entry = _make_reconfigure_flow(
+            config_flow_module,
+            const_module,
+            data={const_module.CONF_DEVICE_TYPE: device_type},
+        )
+        schema = asyncio.run(flow.async_step_reconfigure())["data_schema"]
+        values[const_module.CONF_DEVICE_TYPE] = device_type
+    else:
+        if form_kind == "shunt_options":
+            device_type = const_module.DeviceType.SHUNT300.value
+        entry = _options_entry(const_module, device_type)
+        handler = config_flow_module.RenogyOptionsFlowHandler(entry)
+        schema = asyncio.run(handler.async_step_init(None))["data_schema"]
+
+    if 10 <= interval <= 86_400:
+        assert schema(values)[const_module.CONF_SCAN_INTERVAL] == interval
+    else:
+        with pytest.raises(vol.Invalid):
+            schema(values)

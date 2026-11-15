@@ -31,7 +31,7 @@ The code should be minimal but correct, allowing the project to be discovered by
 
 In this step, implement the BLE communication module (`ble.py`) that:
 - Scans for Renogy Rover BLE devices (with BT-1 and BT-2 modules) by using their unique Bluetooth identifiers.
-- Implements a polling function with a default interval of 60 seconds (and a configuration to set the interval between 10 and 600 seconds).
+- Implements a polling function with a default interval of 60 seconds (and a configuration to set the interval between 10 and 86,400 seconds).
 
 Additionally:
 - Write a simple class (e.g., `RenogyBLEClient`) that initiates a BLE scan and returns a list of discovered devices.

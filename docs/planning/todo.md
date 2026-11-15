@@ -37,7 +37,7 @@ This checklist outlines all the steps needed to implement the Renogy Rover BLE i
 ## 2. BLE Communication Module
 - [x] **Basic BLE Functionality**
   - [x] In `ble.py`, implement BLE scanning for Renogy Rover devices (BT-1 and BT-2 modules) using their unique Bluetooth identifiers.
-  - [x] Implement a polling function with a default interval of 60 seconds, and make it configurable (range: 10–600 seconds).
+  - [x] Implement a polling function with a default interval of 60 seconds, and make it configurable (range: 10–86,400 seconds).
   - [x] Add logging for the start and stop of the scanning process.
 - [x] **Testing BLE Scanning**
   - [x] Create a test stub in `tests/test_ble.py` to mock BLE scanning.
