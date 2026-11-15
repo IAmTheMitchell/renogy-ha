@@ -84,6 +84,7 @@ KEY_TOTAL_CHARGING_CURRENT = "total_charging_current"
 KEY_ALTERNATOR_VOLTAGE = "alternator_voltage"
 KEY_ALTERNATOR_CURRENT = "alternator_current"
 KEY_ALTERNATOR_POWER = "alternator_power"
+KEY_COMBINED_INPUT_POWER = "combined_input_power"
 KEY_SOLAR_VOLTAGE = "solar_voltage"
 KEY_SOLAR_CURRENT = "solar_current"
 KEY_SOLAR_POWER = "solar_power"
@@ -665,6 +666,14 @@ DCC_STATUS_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         key=KEY_CHARGING_MODE,
         name="Charging Mode",
         device_class=None,
+    ),
+    RenogyBLESensorDescription(
+        key=KEY_COMBINED_INPUT_POWER,
+        name="Combined Input Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
     ),
     RenogyBLESensorDescription(
         key=KEY_OUTPUT_POWER,
