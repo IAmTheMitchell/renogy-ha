@@ -88,7 +88,7 @@ entities for each supported device type:
 
 ### BLE Communication
 - Active BLE polling of Renogy devices.
-- Polling interval default: **60 seconds**, user-configurable between **10–600 seconds**.
+- Polling interval default: **60 seconds**, user-configurable between **10–86,400 seconds**.
 
 ### Device Discovery and Setup
 - Home Assistant automatically discovers supported Renogy BLE devices within BLE range.

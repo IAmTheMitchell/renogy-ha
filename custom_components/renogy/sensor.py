@@ -29,6 +29,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
+from renogy_ble import get_inverter_diagnostic_fields
 
 from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
@@ -60,9 +61,7 @@ KEY_PV_VOLTAGE = "pv_voltage"
 KEY_PV_CURRENT = "pv_current"
 KEY_PV_POWER = "pv_power"
 KEY_MAX_CHARGING_POWER_TODAY = "max_charging_power_today"
-# The controller's own daily extremes (0x010B-0x010E); reset at midnight
-KEY_DAILY_MIN_BATTERY_VOLTAGE = "daily_min_battery_voltage"
-KEY_DAILY_MAX_BATTERY_VOLTAGE = "daily_max_battery_voltage"
+# The controller reports its own daily current extremes.
 KEY_MAX_CHARGING_CURRENT_TODAY = "max_charging_current_today"
 KEY_MAX_DISCHARGING_CURRENT_TODAY = "max_discharging_current_today"
 KEY_POWER_GENERATION_TODAY = "power_generation_today"
@@ -156,6 +155,26 @@ class RenogyBLESensorDescription(SensorEntityDescription):
 
     # Function to extract value from the device's parsed data
     value_fn: Optional[Callable[[Dict[str, Any]], Any]] = None
+
+
+RIV_DIAGNOSTIC_SENSORS = tuple(
+    RenogyBLESensorDescription(
+        key=field.key,
+        name=field.name,
+        native_unit_of_measurement=field.unit,
+        suggested_display_precision=field.precision,
+        device_class=(
+            SensorDeviceClass.VOLTAGE
+            if field.unit == "V"
+            else SensorDeviceClass.CURRENT
+            if field.unit == "A"
+            else None
+        ),
+        entity_category=EntityCategory.DIAGNOSTIC,
+    )
+    for field in get_inverter_diagnostic_fields(RIV4835CSH1S_INVERTER_PROFILE)
+)
+RIV_DIAGNOSTIC_KEYS = {field.key for field in RIV_DIAGNOSTIC_SENSORS}
 
 
 @dataclass(frozen=True)
@@ -276,9 +295,6 @@ KEY_SYSTEM_VOLTAGE = "system_voltage"
 KEY_END_OF_CHARGE_SOC = "end_of_charge_soc"
 KEY_END_OF_DISCHARGE_SOC = "end_of_discharge_soc"
 KEY_LOAD_WORKING_MODE = "load_working_mode"
-
-# 0xFF in the system-voltage byte means the controller auto-detects the bank.
-SYSTEM_VOLTAGE_AUTO = 255
 
 
 BATTERY_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
@@ -501,7 +517,7 @@ CONTROLLER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     ),
 )
 
-# Charge-controller charging parameters that are not worth a number entity.
+# Read-only charge-controller parameters exposed as diagnostics.
 # They ride along in the same 0xE003-0xE014 read as the writable ones.
 CONTROLLER_PARAMETER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
     RenogyBLESensorDescription(
@@ -509,13 +525,7 @@ CONTROLLER_PARAMETER_SENSORS: tuple[RenogyBLESensorDescription, ...] = (
         name="System Voltage",
         device_class=None,
         entity_category=EntityCategory.DIAGNOSTIC,
-        # "auto" or the nominal bank voltage; a string state rules out a
-        # voltage device class here
-        value_fn=lambda data: (
-            "auto"
-            if data.get(KEY_SYSTEM_VOLTAGE) == SYSTEM_VOLTAGE_AUTO
-            else data.get(KEY_SYSTEM_VOLTAGE)
-        ),
+        # The library supplies "auto" or a numeric nominal bank voltage.
     ),
     RenogyBLESensorDescription(
         key=KEY_END_OF_CHARGE_SOC,
@@ -1167,6 +1177,8 @@ def create_entities_helper(
             **sensor_groups,
             "RIV4835CSH1S": RIV4835CSH1S_INVERTER_SENSORS,
         }
+        if getattr(coordinator, "inverter_diagnostics", False) is True:
+            sensor_groups["RIV Diagnostics"] = RIV_DIAGNOSTIC_SENSORS
 
     # Group sensors by category
     for category_name, sensor_list in sensor_groups.items():
@@ -1329,6 +1341,12 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
     @property
     def available(self) -> bool:
         """Return if the sensor is available."""
+        if self.entity_description.key in RIV_DIAGNOSTIC_KEYS:
+            return (
+                is_entity_available(self.coordinator, self._device)
+                and (self.coordinator.data or {}).get(self.entity_description.key)
+                is not None
+            )
         return is_entity_available(self.coordinator, self._device)
 
     @property
@@ -1357,6 +1375,9 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
 
         if not data:
             return None
+
+        if self.entity_description.key in RIV_DIAGNOSTIC_KEYS:
+            return (self.coordinator.data or {}).get(self.entity_description.key)
 
         try:
             value = (
@@ -1444,6 +1465,10 @@ class RenogyBLESensor(PassiveBluetoothCoordinatorEntity, RestoreEntity, SensorEn
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional state attributes."""
+        if self.entity_description.key in RIV_DIAGNOSTIC_KEYS:
+            metadata = (self.coordinator.data or {}).get("riv_diagnostics", {})
+            details = metadata.get("fields", {}).get(self.entity_description.key, {})
+            return {**details, "diagnostics_enabled": True}
         attrs = {}
         if self._last_updated:
             attrs["last_updated"] = self._last_updated.isoformat()

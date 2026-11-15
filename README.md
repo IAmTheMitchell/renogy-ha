@@ -93,7 +93,7 @@ The integration is configurable through the Home Assistant UI after installation
 
 ### Advanced Configuration Options
 
-- **Polling Interval**: Adjust how frequently the device is polled (10-600 seconds, default: 60)
+- **Polling Interval**: Adjust how frequently the device is polled (10–86,400 seconds; up to one day; default: 60)
   - Can be configured per device in the device settings
   - Lower values provide more frequent updates but may impact battery life
 - **Connection Mode**: Starting in `0.6.0`, devices expose connection mode options in the config entry options flow
@@ -176,16 +176,18 @@ timing, temperature compensation, and solar cutoff current.
 ### Charge Controller Configuration
 
 Rover-family charge controllers read the same charging-parameter block as a
-DCC (requires renogy-ble with controller parameter support). The integration
-exposes the battery type as a select, the charging voltages, protection
-thresholds, charge timing and temperature compensation as number entities,
+DCC. With renogy-ble 2.12.0, the integration exposes the battery type as a
+select, the charging voltages, protection thresholds, charge timing and
+temperature compensation as number entities,
 and the system voltage, SOC limits and load working mode as diagnostic
 sensors.
 
 > **Caution:** these writes change how the controller charges the bank.
 > Renogy's presets (open, sealed, gel, lithium) manage the voltage
 > parameters themselves; set the battery type to **Custom** before changing
-> a voltage, and confirm every value against the battery's datasheet.
+> a voltage, and confirm every value against the battery's datasheet. Switching
+> to Custom can itself load firmware defaults. A successful write acknowledgement
+> does not prove persistence; confirm the values reported by the next poll.
 
 ### Controller Info
 

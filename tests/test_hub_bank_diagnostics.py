@@ -272,7 +272,7 @@ def test_bank_diagnostic_entities_follow_cached_telemetry() -> None:
     asyncio.run(manager.async_update(object()))
     coordinator.hub_bank = manager.bank
     coordinator.notify()
-    assert len(entities) == 14
+    assert len(entities) == 17
     by_key = {entity.entity_description.key: entity for entity in entities}
     expected = {
         "battery_percentage_min": (88.0, {"slave_id": "0x30"}),
@@ -293,7 +293,7 @@ def test_bank_diagnostic_entities_follow_cached_telemetry() -> None:
             ("renogy", f"{coordinator.address}:hub:bank")
         }
     coordinator.notify()
-    assert len(entities) == 14
+    assert len(entities) == 17
 
     asyncio.run(manager.async_update(object()))
     coordinator.hub_bank = manager.bank

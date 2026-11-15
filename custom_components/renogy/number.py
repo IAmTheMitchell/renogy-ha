@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import replace
 from typing import Optional, cast
 
 from homeassistant.components.number import (
@@ -21,6 +21,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from renogy_ble import get_device_settings
+from renogy_ble.identification import RENOGY_REGO_INVERTER_PREFIX
 
 from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
@@ -33,26 +35,14 @@ from .const import (
     DEFAULT_INVERTER_PROFILE,
     DOMAIN,
     LOGGER,
-    RENOGY_REGO_INVERTER_PREFIX,
     RIV4835CSH1S_INVERTER_PROFILE,
-    ControllerRegister,
-    DCCRegister,
     DeviceType,
-    InverterRegister,
-    RIV4835CSH1SRegister,
 )
 
-
-@dataclass(frozen=True)
-class RenogyNumberEntityDescription(NumberEntityDescription):
-    """Describes a Renogy number entity."""
-
-    register: int = 0
-    # Scale factor: device value = HA value * scale
-    scale: float = 1.0
+RenogyNumberEntityDescription = NumberEntityDescription
 
 
-# DCC voltage parameters (all use 0.1V scale, range 7-17V for 12V system)
+# DCC voltage controls retain their existing presentation bounds.
 DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
     RenogyNumberEntityDescription(
         key="overvoltage_threshold",
@@ -64,8 +54,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.OVERVOLTAGE_THRESHOLD,
-        scale=10.0,  # 14.0V -> 140
     ),
     RenogyNumberEntityDescription(
         key="charging_limit_voltage",
@@ -77,8 +65,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.CHARGING_LIMIT_VOLTAGE,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="equalization_voltage",
@@ -90,8 +76,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.EQUALIZATION_VOLTAGE,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="boost_voltage",
@@ -103,8 +87,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.BOOST_VOLTAGE,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="float_voltage",
@@ -116,8 +98,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.FLOAT_VOLTAGE,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="boost_return_voltage",
@@ -129,8 +109,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.BOOST_RETURN_VOLTAGE,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="overdischarge_return_voltage",
@@ -142,8 +120,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.OVERDISCHARGE_RETURN_VOLTAGE,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="undervoltage_warning",
@@ -155,8 +131,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.UNDERVOLTAGE_WARNING,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="overdischarge_voltage",
@@ -168,8 +142,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.OVERDISCHARGE_VOLTAGE,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="discharge_limit_voltage",
@@ -181,8 +153,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.DISCHARGE_LIMIT_VOLTAGE,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="reverse_charging_voltage",
@@ -194,8 +164,6 @@ DCC_VOLTAGE_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.REVERSE_CHARGING_VOLTAGE,
-        scale=10.0,
     ),
 )
 
@@ -210,8 +178,6 @@ DCC_TIME_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.OVERDISCHARGE_DELAY,
-        scale=1.0,
     ),
     RenogyNumberEntityDescription(
         key="equalization_time",
@@ -222,8 +188,6 @@ DCC_TIME_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.EQUALIZATION_TIME,
-        scale=1.0,
     ),
     RenogyNumberEntityDescription(
         key="boost_time",
@@ -234,8 +198,6 @@ DCC_TIME_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.BOOST_TIME,
-        scale=1.0,
     ),
     RenogyNumberEntityDescription(
         key="equalization_interval",
@@ -246,8 +208,6 @@ DCC_TIME_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.EQUALIZATION_INTERVAL,
-        scale=1.0,
     ),
 )
 
@@ -262,8 +222,6 @@ DCC_OTHER_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.TEMPERATURE_COMPENSATION,
-        scale=1.0,
     ),
     RenogyNumberEntityDescription(
         key="solar_cutoff_current",
@@ -275,44 +233,30 @@ DCC_OTHER_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=DCCRegister.SOLAR_CUTOFF_CURRENT,
-        scale=100.0,  # 7.0A -> 700 centiamps
     ),
 )
 
 # All DCC number entities
 DCC_ALL_NUMBERS = DCC_VOLTAGE_NUMBERS + DCC_TIME_NUMBERS + DCC_OTHER_NUMBERS
 
-# A charge controller (Rover/Wanderer) programs the same 0xE005-0xE014 block as
-# a DCC, with the same scale and the same sensible ranges, so the descriptions
-# are shared. Only the registers a controller actually has are offered; the
-# reverse charging voltage and solar cutoff current are alternator settings.
-_CONTROLLER_PARAMETER_REGISTERS = frozenset(
-    {
-        ControllerRegister.OVERVOLTAGE_THRESHOLD,
-        ControllerRegister.CHARGING_LIMIT_VOLTAGE,
-        ControllerRegister.EQUALIZATION_VOLTAGE,
-        ControllerRegister.BOOST_VOLTAGE,
-        ControllerRegister.FLOAT_VOLTAGE,
-        ControllerRegister.BOOST_RETURN_VOLTAGE,
-        ControllerRegister.OVERDISCHARGE_RETURN_VOLTAGE,
-        ControllerRegister.UNDERVOLTAGE_WARNING,
-        ControllerRegister.OVERDISCHARGE_VOLTAGE,
-        ControllerRegister.DISCHARGE_LIMIT_VOLTAGE,
-        ControllerRegister.OVERDISCHARGE_DELAY,
-        ControllerRegister.EQUALIZATION_TIME,
-        ControllerRegister.BOOST_TIME,
-        ControllerRegister.EQUALIZATION_INTERVAL,
-        ControllerRegister.TEMPERATURE_COMPENSATION,
-    }
-)
+# Reuse presentation labels and units; the library owns controller capabilities.
+_CONTROLLER_NUMBER_CAPABILITIES = {
+    capability.key: capability
+    for capability in get_device_settings(DeviceType.CONTROLLER.value)
+    if capability.kind == "number"
+}
 CONTROLLER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = tuple(
-    description
+    replace(
+        description,
+        native_min_value=_CONTROLLER_NUMBER_CAPABILITIES[description.key].minimum,
+        native_max_value=_CONTROLLER_NUMBER_CAPABILITIES[description.key].maximum,
+        native_step=_CONTROLLER_NUMBER_CAPABILITIES[description.key].step,
+    )
     for description in DCC_ALL_NUMBERS
-    if description.register in _CONTROLLER_PARAMETER_REGISTERS
+    if description.key in _CONTROLLER_NUMBER_CAPABILITIES
 )
 
-# REGO-series inverter setting parameters (all use 0.1-scale registers, function 0x06)
+# REGO-series inverter settings in native units.
 INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
     RenogyNumberEntityDescription(
         key="inverter_ac_input_current_limit",
@@ -324,8 +268,6 @@ INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=1.0,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=InverterRegister.AC_INPUT_CURRENT_LIMIT,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="inverter_charge_current",
@@ -337,8 +279,6 @@ INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=5.0,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=InverterRegister.CHARGE_CURRENT,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="inverter_low_voltage_warn",
@@ -350,8 +290,6 @@ INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=InverterRegister.LOW_VOLTAGE_WARN,
-        scale=10.0,
     ),
     RenogyNumberEntityDescription(
         key="inverter_over_voltage",
@@ -363,17 +301,10 @@ INVERTER_ALL_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=0.1,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=InverterRegister.BATTERY_OVER_VOLTAGE,
-        scale=10.0,
     ),
 )
 
-# RIV4835CSH1S Program 28: Maximum AC Charging Current.
-# Hardware validation confirmed register 0xE205 with 0.1 A scaling:
-# 0 A -> raw 0, 5 A -> raw 50, 10 A -> raw 100. Function 0x06 writes changed the
-# physical LCD in both directions, and 0 A disabled utility battery charging while
-# preserving AC bypass and solar charging. The RIV polling profile provides live
-# readback under the model-specific key below.
+# RIV4835CSH1S Program 28 retains the validated native range and live readback.
 RIV4835CSH1S_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
     RenogyNumberEntityDescription(
         key="inverter_ac_charge_current",
@@ -385,8 +316,6 @@ RIV4835CSH1S_NUMBERS: tuple[RenogyNumberEntityDescription, ...] = (
         native_step=5.0,
         mode=NumberMode.BOX,
         entity_category=EntityCategory.CONFIG,
-        register=RIV4835CSH1SRegister.MAX_AC_CHARGING_CURRENT,
-        scale=10.0,
     ),
 )
 
@@ -518,20 +447,8 @@ class RenogyNumberEntity(NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the value."""
-        # Convert HA value to device value using scale
-        device_value = int(value * self.entity_description.scale)
-
-        LOGGER.info(
-            "Setting %s to %s (device value: %s, register: 0x%04X)",
-            self.entity_description.key,
-            value,
-            device_value,
-            self.entity_description.register,
-        )
-
-        # Write to device via coordinator
-        success = await self.coordinator.async_write_register(
-            self.entity_description.register, device_value
+        success = await self.coordinator.async_write_setting(
+            self.entity_description.key, value
         )
 
         if success:

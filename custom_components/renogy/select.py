@@ -2,31 +2,29 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional, cast
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from renogy_ble import get_device_settings
 
 from .availability import is_entity_available
 from .ble import RenogyActiveBluetoothCoordinator, RenogyBLEDevice
 from .const import (
     ATTR_MANUFACTURER,
     CONF_DEVICE_TYPE,
-    CONTROLLER_BATTERY_TYPE_VALUES,
-    CONTROLLER_BATTERY_TYPES,
-    DCC_BATTERY_TYPE_VALUES,
-    DCC_BATTERY_TYPES,
-    DCC_MAX_CURRENT_OPTIONS,
-    DCC_MAX_CURRENT_TO_DEVICE,
+    CONF_INVERTER_PROFILE,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_INVERTER_PROFILE,
     DOMAIN,
     LOGGER,
-    ControllerRegister,
-    DCCRegister,
+    RIV4835CSH1S_INVERTER_PROFILE,
     DeviceType,
 )
 
@@ -40,6 +38,12 @@ BATTERY_TYPE_DISPLAY_NAMES = {
 }
 
 
+# Capabilities contain native values; display formatting remains in HA.
+DCC_MAX_CURRENT_OPTIONS = next(
+    cap.options
+    for cap in get_device_settings("dcc")
+    if cap.key == "max_charging_current"
+)
 # Max charging current options for display (in amps)
 MAX_CURRENT_OPTIONS = [f"{amp}A" for amp in DCC_MAX_CURRENT_OPTIONS]
 
@@ -62,25 +66,21 @@ DCC_SELECT_ENTITIES = (
     ),
 )
 
-# A charge controller exposes the battery profile at the same register as a DCC,
-# so the same select works for it. Max charging current is DCC-specific and is
-# deliberately not offered here.
 CONTROLLER_SELECT_ENTITIES = (BATTERY_TYPE_DESCRIPTION,)
 
-# Which register and value map a battery-type select must use, by device type.
-# The register is identical; the value maps are not (see const.py).
-BATTERY_TYPE_PROFILES = {
-    DeviceType.DCC.value: (
-        DCCRegister.BATTERY_TYPE,
-        DCC_BATTERY_TYPES,
-        DCC_BATTERY_TYPE_VALUES,
+RIV_OUTPUT_PRIORITY_OPTIONS = next(
+    cap.options
+    for cap in get_device_settings("inverter", model_hint=RIV4835CSH1S_INVERTER_PROFILE)
+    if cap.key == "output_priority"
+)
+
+RIV_SELECT_ENTITIES = (
+    SelectEntityDescription(
+        key="output_priority",
+        name="Output Priority",
+        entity_category=EntityCategory.CONFIG,
     ),
-    DeviceType.CONTROLLER.value: (
-        ControllerRegister.BATTERY_TYPE,
-        CONTROLLER_BATTERY_TYPES,
-        CONTROLLER_BATTERY_TYPE_VALUES,
-    ),
-}
+)
 
 
 async def async_setup_entry(
@@ -104,6 +104,12 @@ async def async_setup_entry(
         descriptions = DCC_SELECT_ENTITIES
     elif device_type == DeviceType.CONTROLLER.value:
         descriptions = CONTROLLER_SELECT_ENTITIES
+    elif (
+        device_type == DeviceType.INVERTER.value
+        and config_entry.data.get(CONF_INVERTER_PROFILE, DEFAULT_INVERTER_PROFILE)
+        == RIV4835CSH1S_INVERTER_PROFILE
+    ):
+        descriptions = RIV_SELECT_ENTITIES
     else:
         LOGGER.debug("Skipping select entities for device type: %s", device_type)
         return
@@ -123,6 +129,13 @@ async def async_setup_entry(
             )
         elif description.key == "max_charging_current":
             entity = RenogyMaxCurrentSelect(
+                coordinator=coordinator,
+                device=device,
+                description=description,
+                device_type=device_type,
+            )
+        elif description.key == "output_priority":
+            entity = RenogyOutputPrioritySelect(
                 coordinator=coordinator,
                 device=device,
                 description=description,
@@ -157,12 +170,6 @@ class RenogyBatteryTypeSelect(SelectEntity):
         self.entity_description = description
         self._attr_options = list(BATTERY_TYPE_DISPLAY_NAMES.values())
         self._attr_current_option = None
-        # The register and value maps depend on the device type. Falling back to
-        # the DCC profile keeps the previous behaviour for anything unrecognised.
-        self._register, self._type_map, self._value_map = BATTERY_TYPE_PROFILES.get(
-            device_type, BATTERY_TYPE_PROFILES[DeviceType.DCC.value]
-        )
-
         # Device-dependent properties
         if device:
             self._attr_unique_id = f"{device.address}_{description.key}"
@@ -221,15 +228,6 @@ class RenogyBatteryTypeSelect(SelectEntity):
                 self._attr_current_option = display_name
                 return display_name
 
-        # If it's an integer, convert to display name
-        if isinstance(battery_type, int):
-            type_key = self._type_map.get(battery_type)
-            if type_key:
-                display_name = BATTERY_TYPE_DISPLAY_NAMES.get(type_key)
-                if display_name:
-                    self._attr_current_option = display_name
-                    return display_name
-
         return None
 
     async def async_select_option(self, option: str) -> None:
@@ -245,23 +243,7 @@ class RenogyBatteryTypeSelect(SelectEntity):
             LOGGER.error("Unknown battery type option: %s", option)
             return
 
-        # Get the device value for this type
-        device_value = self._value_map.get(type_key)
-        if device_value is None:
-            LOGGER.error("No device value for battery type: %s", type_key)
-            return
-
-        LOGGER.info(
-            "Setting battery type to %s (device value: %s, register: 0x%04X)",
-            option,
-            device_value,
-            self._register,
-        )
-
-        # Write to device via coordinator
-        success = await self.coordinator.async_write_register(
-            self._register, device_value
-        )
+        success = await self.coordinator.async_write_setting("battery_type", type_key)
 
         if success:
             # Update local value
@@ -382,22 +364,8 @@ class RenogyMaxCurrentSelect(SelectEntity):
             LOGGER.error("Unknown max current option: %s", option)
             return
 
-        # Get the device value (centiamps)
-        device_value = DCC_MAX_CURRENT_TO_DEVICE.get(amp_value)
-        if device_value is None:
-            LOGGER.error("No device value for current: %sA", amp_value)
-            return
-
-        LOGGER.info(
-            "Setting max charging current to %s (device value: %s, register: 0x%04X)",
-            option,
-            device_value,
-            DCCRegister.MAX_CHARGING_CURRENT,
-        )
-
-        # Write to device via coordinator
-        success = await self.coordinator.async_write_register(
-            DCCRegister.MAX_CHARGING_CURRENT, device_value
+        success = await self.coordinator.async_write_setting(
+            "max_charging_current", amp_value
         )
 
         if success:
@@ -423,4 +391,119 @@ class RenogyMaxCurrentSelect(SelectEntity):
         if not self._device and self.coordinator.device:
             self._device = self.coordinator.device
 
+        self.async_write_ha_state()
+
+
+class RenogyOutputPrioritySelect(SelectEntity):
+    """RIV4835CSH1S Program 01 using the semantic library API."""
+
+    entity_description: SelectEntityDescription
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: RenogyActiveBluetoothCoordinator,
+        device: Optional[RenogyBLEDevice],
+        description: SelectEntityDescription,
+        device_type: str = DEFAULT_DEVICE_TYPE,
+    ) -> None:
+        self.coordinator = coordinator
+        self._device = device
+        self.entity_description = description
+        # Program 01 has only string-valued choices.
+        self._attr_options = cast("list[str]", list(RIV_OUTPUT_PRIORITY_OPTIONS))
+        self._attr_name = cast("str | None", description.name)
+
+        address = device.address if device else coordinator.address
+        self._attr_unique_id = f"{address}_{description.key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, address)},
+            name=device.name if device else f"Renogy {device_type.upper()}",
+            manufacturer=ATTR_MANUFACTURER,
+            model=f"Renogy {device_type.upper()}",
+        )
+
+    @property
+    def suggested_object_id(self) -> str | None:
+        if self._device is None:
+            return f"Renogy {self._attr_name}"
+        return super().suggested_object_id
+
+    @property
+    def available(self) -> bool:
+        return is_entity_available(self.coordinator, self._device)
+
+    @property
+    def current_option(self) -> str | None:
+        """Read the authoritative, polled Program 01 value."""
+        device = self.coordinator.device or self._device
+        if device is not None and device.parsed_data:
+            data = device.parsed_data
+        else:
+            data = self.coordinator.data
+
+        if not data:
+            return None
+
+        option = data.get("output_priority")
+        return option if option in self._attr_options else None
+
+    async def async_select_option(self, option: str) -> None:
+        """Write through the public API and verify refreshed readback."""
+        if option not in self._attr_options:
+            raise HomeAssistantError(f"Unsupported output priority: {option}")
+
+        readback_revision = self.coordinator.output_priority_readback[0]
+
+        # A missing BLE write acknowledgment does not prove that the inverter
+        # rejected the command. Do not issue another write; poll to verify.
+        acknowledged = await self.coordinator.async_write_setting(
+            "output_priority", option
+        )
+
+        if not acknowledged:
+            # Recovery requires a poll completed after the failed write returned.
+            readback_revision = self.coordinator.output_priority_readback[0]
+
+        def readback_confirmed() -> bool:
+            return (
+                self.coordinator.output_priority_readback[0] > readback_revision
+                and self.coordinator.output_priority_readback[1] == option
+                and self.current_option == option
+            )
+
+        # A refresh can be skipped while another BLE connection is active.
+        # Give the inverter time to publish authoritative polled data.
+        for delay in (2.0, 4.0, 6.0, 8.0):
+            if readback_confirmed():
+                break
+            await asyncio.sleep(delay)
+            if readback_confirmed():
+                break
+            await self.coordinator.async_request_refresh()
+
+        if not readback_confirmed():
+            if not acknowledged:
+                raise HomeAssistantError(f"Failed to write output priority: {option}")
+            raise HomeAssistantError(
+                f"Output priority readback did not confirm {option}"
+            )
+
+        if not acknowledged:
+            LOGGER.warning(
+                "Program 01 BLE write for %s was not acknowledged, "
+                "but subsequent readback confirmed the setting",
+                option,
+            )
+
+        self.async_write_ha_state()
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    def _handle_coordinator_update(self) -> None:
+        if not self._device and self.coordinator.device:
+            self._device = self.coordinator.device
         self.async_write_ha_state()

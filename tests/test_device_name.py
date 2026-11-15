@@ -218,3 +218,14 @@ def test_real_names_still_pass() -> None:
     # device's own address is a placeholder.
     assert device_name_module.has_real_device_name("C4:D3:6A:8C:B5:38", address)
     assert device_name_module.has_real_device_name("14:9C:EF")
+
+
+def test_identified_battery_name_matches_only_battery_readiness() -> None:
+    """The released classifier distinguishes legacy battery markers from BT-TH."""
+    device_name_module = _load_device_name_module()
+    name = "BT-TH-BATTERY01"
+    assert device_name_module.is_device_name_ready(name, "battery")
+    for device_type in ("controller", "dcc"):
+        assert not device_name_module.is_device_name_ready(name, device_type)
+    for device_type in ("controller", "dcc", "battery"):
+        assert device_name_module.is_device_name_ready("BT-TH-123456", device_type)

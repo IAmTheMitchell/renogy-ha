@@ -11,6 +11,12 @@ You can change them in Home Assistant:
 
 The available options depend on the device type.
 
+The polling interval accepts 10–86,400 seconds (up to one day), with a default of
+60 seconds. For infrequent storage monitoring, use `intermittent` mode so the
+integration disconnects between reads. Longer intervals delay fresh readings and
+poll-based failure detection. Battery savings depend on the device; increasing
+the interval does not turn off its Bluetooth advertising or BMS.
+
 ## Smart Shunt 300
 
 Smart Shunt devices support two connection modes:

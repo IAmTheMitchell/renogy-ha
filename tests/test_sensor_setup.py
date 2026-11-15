@@ -939,7 +939,7 @@ def test_controller_parameter_sensors_read_the_charging_block() -> None:
 
     # the frame captured from an RNG-CTRL-RVR on 2026-09-12
     data = {
-        sensor_module.KEY_SYSTEM_VOLTAGE: 255,
+        sensor_module.KEY_SYSTEM_VOLTAGE: "auto",
         sensor_module.KEY_END_OF_CHARGE_SOC: 100,
         sensor_module.KEY_END_OF_DISCHARGE_SOC: 50,
         sensor_module.KEY_LOAD_WORKING_MODE: "always_on",
@@ -948,7 +948,7 @@ def test_controller_parameter_sensors_read_the_charging_block() -> None:
     def read(key: str, sample: dict[str, Any] = data) -> Any:
         return _read_sensor_value(sensor_module, descriptions[key], sample)
 
-    # 0xFF is "auto-detect", not 255 volts
+    # The library normalizes auto-detection to a semantic label.
     assert read(sensor_module.KEY_SYSTEM_VOLTAGE) == "auto"
     assert read(sensor_module.KEY_SYSTEM_VOLTAGE, {"system_voltage": 12}) == 12
     assert read(sensor_module.KEY_END_OF_CHARGE_SOC) == 100

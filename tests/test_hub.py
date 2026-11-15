@@ -58,12 +58,37 @@ class _FakeHub:
         return self._results.pop(0)
 
 
+class _FakeCellHub:
+    def __init__(self, results: list[_FakeResult]) -> None:
+        self._results = list(results)
+        self.calls: list[tuple[bool, bool]] = []
+
+    async def read_batteries(
+        self,
+        _device: Any,
+        *,
+        rediscover: bool = False,
+        include_cell_status: bool = False,
+    ) -> _FakeResult:
+        self.calls.append((rediscover, include_cell_status))
+        return self._results.pop(0)
+
+
 def _battery(slave_id: int, **data: Any) -> Any:
     return SimpleNamespace(slave_id=slave_id, parsed_data=data)
 
 
 def _manager(results: list[_FakeResult]) -> tuple[Any, _FakeHub]:
     fake_hub = _FakeHub(results)
+    manager = RenogyHubBatteryManager(
+        object(),
+        hub_factory=lambda _client: fake_hub,
+    )
+    return manager, fake_hub
+
+
+def _cell_manager(results: list[_FakeResult]) -> tuple[Any, _FakeCellHub]:
+    fake_hub = _FakeCellHub(results)
     manager = RenogyHubBatteryManager(
         object(),
         hub_factory=lambda _client: fake_hub,
@@ -363,6 +388,113 @@ def test_hub_manager_handles_non_numeric_optional_values() -> None:
     assert battery.battery_remaining_capacity is None
     assert battery.battery_capacity is None
     assert battery.battery_percentage == 84.8
+
+
+def test_hub_manager_requests_and_caches_cell_telemetry_when_supported() -> None:
+    """A new renogy-ble library should be asked for Hub cell-status data."""
+    cells = [3.3] * 15 + [3.412]
+    manager, fake_hub = _cell_manager(
+        [
+            _FakeResult(
+                True,
+                [
+                    _battery(
+                        0x30,
+                        battery_voltage=52.9,
+                        cell_voltages=cells,
+                        cell_voltage_min=3.3,
+                        cell_voltage_max=3.412,
+                        cell_voltage_delta=0.112,
+                    )
+                ],
+            )
+        ]
+    )
+
+    assert asyncio.run(manager.async_update(object())) is True
+    assert fake_hub.calls == [(False, True)]
+
+    battery = manager.get_battery(0x30)
+    assert battery is not None
+    assert battery.cell_voltages == tuple(cells)
+    assert battery.cell_voltage_min == 3.3
+    assert battery.cell_voltage_max == 3.412
+    assert battery.cell_voltage_delta == 0.112
+    assert battery.cell_voltage_max_cell_number == 16
+
+
+def test_hub_manager_builds_complete_bank_cell_diagnostics() -> None:
+    """Bank cell extrema should identify the battery and cell that produced them."""
+    manager, _hub = _cell_manager(
+        [
+            _FakeResult(
+                True,
+                [
+                    _battery(
+                        0x30,
+                        battery_voltage=53.0,
+                        cell_voltages=[3.31, 3.32, 3.41],
+                        cell_voltage_min=3.31,
+                        cell_voltage_max=3.41,
+                        cell_voltage_delta=0.10,
+                    ),
+                    _battery(
+                        0x31,
+                        battery_voltage=52.9,
+                        cell_voltages=[3.30, 3.42, 3.33],
+                        cell_voltage_min=3.30,
+                        cell_voltage_max=3.42,
+                        cell_voltage_delta=0.12,
+                    ),
+                ],
+            )
+        ]
+    )
+
+    asyncio.run(manager.async_update(object()))
+
+    bank = manager.bank
+    assert bank is not None
+    assert bank.cell_telemetry_battery_count == 2
+    assert bank.cell_voltage_max == 3.42
+    assert bank.cell_voltage_max_slave_id == 0x31
+    assert bank.cell_voltage_max_cell_number == 2
+    assert bank.cell_voltage_delta_max == 0.12
+    assert bank.cell_voltage_delta_max_slave_id == 0x31
+
+
+def test_hub_manager_withholds_bank_cell_extrema_when_coverage_is_incomplete() -> None:
+    """Partial cell telemetry must not imply that the bank maximum is known."""
+    manager, _hub = _cell_manager(
+        [
+            _FakeResult(
+                True,
+                [
+                    _battery(
+                        0x30,
+                        battery_voltage=53.0,
+                        cell_voltages=[3.31, 3.41],
+                        cell_voltage_min=3.31,
+                        cell_voltage_max=3.41,
+                        cell_voltage_delta=0.10,
+                    ),
+                    _battery(0x31, battery_voltage=52.9),
+                ],
+            )
+        ]
+    )
+
+    asyncio.run(manager.async_update(object()))
+
+    bank = manager.bank
+    assert bank is not None
+    assert bank.communicating_battery_count == 2
+    assert bank.cell_telemetry_battery_count == 1
+    assert bank.cell_voltage_max is None
+    assert bank.cell_voltage_max_slave_id is None
+    assert bank.cell_voltage_max_cell_number is None
+    assert bank.cell_voltage_delta_max is None
+    assert bank.cell_voltage_delta_max_slave_id is None
 
 
 def test_hub_manager_marks_all_cached_batteries_unavailable() -> None:
