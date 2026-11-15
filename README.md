@@ -92,7 +92,7 @@ The integration is configurable through the Home Assistant UI after installation
 
 ### Advanced Configuration Options
 
-- **Polling Interval**: Adjust how frequently the device is polled (10-600 seconds, default: 60)
+- **Polling Interval**: Adjust how frequently the device is polled (10–86,400 seconds; up to one day; default: 60)
   - Can be configured per device in the device settings
   - Lower values provide more frequent updates but may impact battery life
 - **Connection Mode**: Starting in `0.6.0`, devices expose connection mode options in the config entry options flow

@@ -17,7 +17,7 @@ LOGGER = logging.getLogger(__name__)
 # BLE scanning constants
 DEFAULT_SCAN_INTERVAL = 60  # seconds
 MIN_SCAN_INTERVAL = 10  # seconds
-MAX_SCAN_INTERVAL = 600  # seconds
+MAX_SCAN_INTERVAL = 86_400  # seconds
 
 # Availability grace: consecutive failed polls tolerated before the device is
 # marked unavailable. Default matches RenogyBLEDevice.max_failures.
