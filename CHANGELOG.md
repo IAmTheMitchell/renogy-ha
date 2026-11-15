@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## [0.13.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.12.0...v0.13.0) (2026-11-15)
+
+
+### Features
+
+* add Combined Input Power sensor for DCC chargers ([#291](https://github.com/IAmTheMitchell/renogy-ha/issues/291)) ([c52cd47](https://github.com/IAmTheMitchell/renogy-ha/commit/c52cd474869584ffb1a17c1f3dae47ad6b5e8588))
+
+
+### Bug Fixes
+
+* apply DCC status-tail handling to G5 models ([#292](https://github.com/IAmTheMitchell/renogy-ha/issues/292)) ([6af09c6](https://github.com/IAmTheMitchell/renogy-ha/commit/6af09c6ca9ca6ddde483f6b3488b86ed8c90186f))
+
 ## [0.12.0](https://github.com/IAmTheMitchell/renogy-ha/compare/v0.11.0...v0.12.0) (2026-11-15)
 
 
