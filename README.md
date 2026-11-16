@@ -248,6 +248,12 @@ It can be extremely helpful to enable debug logging when troubleshooting issues.
 
 ## Support
 
+- To request a new device, reading, or control, use the
+  [feature request form](https://github.com/IAmTheMitchell/renogy-ha/issues/new?template=feature_request.yml).
+  Follow the shared
+  [device support guide](https://github.com/IAmTheMitchell/renogy-ble/blob/main/docs/new-device-support.md)
+  for device details, Bluetooth service discovery, app traffic captures, and
+  matching readings. Start with basic details; advanced captures can follow later.
 - For bugs, please open an issue on GitHub
 - Include Home Assistant logs and your device model information
 

@@ -47,6 +47,13 @@ Before opening a PR, run:
 
 ## Reporting Issues
 
+Use the
+[feature request form](https://github.com/IAmTheMitchell/renogy-ha/issues/new?template=feature_request.yml)
+for new devices, readings, controls, or other integration features. Device owners
+should follow the shared
+[evidence collection guide in renogy-ble](https://github.com/IAmTheMitchell/renogy-ble/blob/main/docs/new-device-support.md).
+Start with the basic report; GATT inventories and app captures can be added later.
+
 When filing a bug, include:
 
 - Home Assistant version
