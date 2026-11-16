@@ -1,0 +1,110 @@
+name: Feature or device support request
+description: Request a new device, reading, control, or integration feature.
+title: "[Feature request]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For device requests, follow the shared [device support guide](https://github.com/IAmTheMitchell/renogy-ble/blob/main/docs/new-device-support.md).
+        It explains how to collect model details, Bluetooth advertisements/services, app traffic, and matching readings.
+        Start with the information you have. Advanced captures are optional when opening a request and can be added in comments later.
+        Search existing issues for your model or feature first and add evidence there if a matching request exists.
+        Issues and attachments are public. Review files before sharing; never attach a complete Android bug report, credentials, or account details.
+  - type: dropdown
+    id: request_kind
+    attributes:
+      label: Request type
+      options:
+        - Support for a new device or model
+        - Additional readings or controls for an existing device
+        - Other integration feature
+    validations:
+      required: true
+  - type: textarea
+    id: requested_behavior
+    attributes:
+      label: Requested behavior and use case
+      description: Describe what you want to monitor or control and how you would use it. For other features, describe the desired integration behavior.
+      placeholder: "Example: Show battery state of charge and separate AC/DC output power for my power station."
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Exact device model / SKU
+      description: For device requests, copy the full model including regional suffix and hardware revision. Use unknown for unavailable details. Skip for features unrelated to a device.
+      placeholder: "Example: RPS100150AA-PCS-G1-DE (V1)"
+  - type: textarea
+    id: device_details
+    attributes:
+      label: Device and Bluetooth details
+      description: Include firmware components, built-in Bluetooth or BT-1/BT-2, advertised name prefix, and manual/protocol links if available. Mask unique name suffixes, serial numbers, and QR codes in label/app screenshots.
+      placeholder: |
+        Hardware revision:
+        Device and Bluetooth module firmware:
+        Bluetooth module (built-in / BT-1 / BT-2 / other):
+        Bluetooth name (preserve prefix):
+        Manufacturer manual / protocol documentation:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Software and connection details
+      description: Include known versions and write unknown for unavailable information. Skip items that do not apply.
+      placeholder: |
+        Home Assistant Core version:
+        renogy-ha version:
+        renogy-ble version, if known:
+        Bluetooth adapter / proxy / gateway:
+        Connection mode, selected device type, and inverter profile:
+        Renogy app name and version:
+        Phone model and Android/iOS version:
+  - type: dropdown
+    id: app_connection
+    attributes:
+      label: Does the official Renogy app show live readings?
+      description: If known, distinguish direct local Bluetooth from a cloud/gateway connection. The guide explains how to check. Skip for unrelated features.
+      options:
+        - Works over local Bluetooth
+        - Works, but local Bluetooth versus cloud/gateway is uncertain
+        - Works only through a cloud/gateway connection
+        - Does not work
+        - Not checked / app unavailable
+        - Not applicable
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current behavior and related requests
+      description: Describe discovery, configuration, what already works, what fails, and relevant error messages. Link related issues. For other features, describe the current workflow or workaround.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs, advertisements, GATT inventory, and app captures
+      description: Attach reviewed files or paste logs in code blocks. Include matching app screenshots/readings. Say what is missing or which collection step failed; advanced captures are not required to submit this form. Do not upload the entire phone bug report ZIP or text.
+      placeholder: |
+        Integration debug logs / diagnostics:
+        Advertisement data (manufacturer ID and raw bytes, service data):
+        Complete service/characteristic UUIDs, properties, descriptors:
+        Working app Bluetooth capture (initialization and live updates):
+        Matching app readings / screenshots:
+        Missing evidence or collection errors:
+  - type: textarea
+    id: capture_notes
+    attributes:
+      label: Capture session notes, if available
+      description: List filenames, date/time/timezone, operating states, app actions, and redactions. For controls, include before/after values and device readback. Keep credentials private.
+      placeholder: |
+        Session / files:
+        Date and timezone offset:
+        Capture method and payload check result:
+        Timestamped events, readings, and screenshot filenames:
+        Control changes and readback, if relevant:
+        Redactions and states not tested:
+  - type: dropdown
+    id: testing
+    attributes:
+      label: Can you help test support on the device?
+      options:
+        - I can test development builds and compare readings with the app
+        - I can provide more evidence but need instructions for development builds
+        - I can only provide the information in this request
+        - Unsure / not applicable
