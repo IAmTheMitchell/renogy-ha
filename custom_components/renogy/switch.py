@@ -76,7 +76,7 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
     """Representation of a Renogy DC load switch."""
 
     # This entity only assigns its specialized description in __init__.
-    entity_description: RenogyBLESwitchDescription  # ty: ignore[invalid-mutable-override]
+    entity_description: RenogyBLESwitchDescription  # ty: ignore[incompatible-mutable-override]
     coordinator: RenogyActiveBluetoothCoordinator
     # Friendly name = device name + entity name, so UI device renames cascade.
     _attr_has_entity_name = True
@@ -170,7 +170,7 @@ class RenogyLoadSwitch(PassiveBluetoothCoordinatorEntity, SwitchEntity):
     # HA uses writable cached properties; keep live state reads uncached.
     # The targeted ty ignores preserve this supported entity pattern.
     @property
-    def is_on(self) -> bool | None:  # ty: ignore[invalid-property-type-override]
+    def is_on(self) -> bool | None:  # ty: ignore[incompatible-property-override]
         """Return True if the load is on."""
         value = self._get_load_status()
         if value is None:

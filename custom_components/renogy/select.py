@@ -199,12 +199,12 @@ class RenogyBatteryTypeSelect(SelectEntity):
     # HA uses writable cached properties; keep live state reads uncached.
     # The targeted ty ignores preserve this supported entity pattern.
     @property
-    def available(self) -> bool:  # ty: ignore[invalid-property-type-override]
+    def available(self) -> bool:  # ty: ignore[incompatible-property-override]
         """Return if entity is available."""
         return is_entity_available(self.coordinator, self._device)
 
     @property
-    def current_option(self) -> str | None:  # ty: ignore[invalid-property-type-override]
+    def current_option(self) -> str | None:  # ty: ignore[incompatible-property-override]
         """Return the current selected option."""
         if self._attr_current_option is not None:
             return self._attr_current_option
@@ -321,12 +321,12 @@ class RenogyMaxCurrentSelect(SelectEntity):
         return super().suggested_object_id
 
     @property
-    def available(self) -> bool:  # ty: ignore[invalid-property-type-override]
+    def available(self) -> bool:  # ty: ignore[incompatible-property-override]
         """Return if entity is available."""
         return is_entity_available(self.coordinator, self._device)
 
     @property
-    def current_option(self) -> str | None:  # ty: ignore[invalid-property-type-override]
+    def current_option(self) -> str | None:  # ty: ignore[incompatible-property-override]
         """Return the current selected option."""
         if self._attr_current_option is not None:
             return self._attr_current_option
@@ -432,11 +432,11 @@ class RenogyOutputPrioritySelect(SelectEntity):
         return super().suggested_object_id
 
     @property
-    def available(self) -> bool:  # ty: ignore[invalid-property-type-override]
+    def available(self) -> bool:  # ty: ignore[incompatible-property-override]
         return is_entity_available(self.coordinator, self._device)
 
     @property
-    def current_option(self) -> str | None:  # ty: ignore[invalid-property-type-override]
+    def current_option(self) -> str | None:  # ty: ignore[incompatible-property-override]
         """Read the authoritative, polled Program 01 value."""
         device = self.coordinator.device or self._device
         if device is not None and device.parsed_data:

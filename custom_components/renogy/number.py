@@ -423,12 +423,12 @@ class RenogyNumberEntity(NumberEntity):
     # HA uses writable cached properties; keep live state reads uncached.
     # The targeted ty ignores preserve this supported entity pattern.
     @property
-    def available(self) -> bool:  # ty: ignore[invalid-property-type-override]
+    def available(self) -> bool:  # ty: ignore[incompatible-property-override]
         """Return if entity is available."""
         return is_entity_available(self.coordinator, self._device)
 
     @property
-    def native_value(self) -> float | None:  # ty: ignore[invalid-property-type-override]
+    def native_value(self) -> float | None:  # ty: ignore[incompatible-property-override]
         """Return the current value."""
         if self._attr_native_value is not None:
             return self._attr_native_value
