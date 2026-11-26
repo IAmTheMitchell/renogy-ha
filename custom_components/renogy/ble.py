@@ -66,6 +66,9 @@ if TYPE_CHECKING:
 
 SHUNT_FORCE_UPDATE_INTERVAL_SECONDS = 300
 SHUNT_STARTUP_READY_TIMEOUT_SECONDS = 30.0
+SHUNT_NOTIFICATION_TIMEOUT_SECONDS = 60.0
+SHUNT_WATCHDOG_CHECK_INTERVAL_SECONDS = 5.0
+SHUNT_RECONNECT_DELAY_SECONDS = 10.0
 
 
 class RenogyActiveBluetoothCoordinator(
@@ -143,6 +146,8 @@ class RenogyActiveBluetoothCoordinator(
         self._shunt_startup_gate_complete = False
         self._last_sustained_shunt_push = 0.0
         self._last_sustained_shunt_data: dict[str, Any] = {}
+        # Updated whenever the subscription delivers a valid parsed reading.
+        self._last_sustained_shunt_notification = 0.0
         self._shunt_subscription: ShuntSubscription | None = None
 
         # Add required properties for Home Assistant CoordinatorEntity compatibility
@@ -617,6 +622,7 @@ class RenogyActiveBluetoothCoordinator(
     def _publish_sustained_shunt_update(self, parsed_data: dict[str, Any]) -> None:
         """Publish normalized library readings and update HA availability."""
         now = time.monotonic()
+        self._last_sustained_shunt_notification = now
         changed = any(
             parsed_data.get(key) != self._last_sustained_shunt_data.get(key)
             for key in (
@@ -774,21 +780,110 @@ class RenogyActiveBluetoothCoordinator(
         return device if device.should_retry_connection else None
 
     async def _shunt_notification_loop(self) -> None:
-        """Own the HA task while the library owns the sustained BLE session."""
+        """Run and supervise the sustained Shunt subscription with recovery."""
         await self._async_wait_for_shunt_startup_ready()
-        client = cast("ShuntBleClient", self._ble_client)
-        self._shunt_subscription = client.subscribe(
-            resolve_device=self._resolve_shunt_device,
-            rediscover_device=lambda address: bluetooth.async_ble_device_from_address(
-                self.hass, address, connectable=True
-            ),
-            on_update=self._publish_sustained_shunt_update,
-            on_error=self._handle_shunt_error,
-        )
-        try:
-            await self._shunt_subscription.run()
-        finally:
-            await self._shunt_subscription.close()
+
+        while True:
+            subscription: ShuntSubscription | None = None
+            run_task: asyncio.Task[Any] | None = None
+            try:
+                client = cast("ShuntBleClient", self._ble_client)
+                subscription = client.subscribe(
+                    resolve_device=self._resolve_shunt_device,
+                    rediscover_device=lambda address: (
+                        bluetooth.async_ble_device_from_address(
+                            self.hass, address, connectable=True
+                        )
+                    ),
+                    on_update=self._publish_sustained_shunt_update,
+                    on_error=self._handle_shunt_error,
+                )
+                self._shunt_subscription = subscription
+                # Allow a full watchdog interval for the first valid reading.
+                self._last_sustained_shunt_notification = time.monotonic()
+                self.logger.debug(
+                    "Starting sustained Smart Shunt subscription for %s",
+                    self.address,
+                )
+                run_task = self.hass.async_create_task(subscription.run())
+
+                while not run_task.done():
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(run_task),
+                            timeout=SHUNT_WATCHDOG_CHECK_INTERVAL_SECONDS,
+                        )
+                    except TimeoutError:
+                        elapsed = (
+                            time.monotonic()
+                            - self._last_sustained_shunt_notification
+                        )
+                        if elapsed >= SHUNT_NOTIFICATION_TIMEOUT_SECONDS:
+                            error = RuntimeError(
+                                "No valid Smart Shunt updates received for "
+                                f"{elapsed:.0f} seconds"
+                            )
+                            self.logger.warning(
+                                "%s from %s; restarting BLE subscription",
+                                error,
+                                self.address,
+                            )
+                            self._handle_shunt_error(error)
+                            break
+
+                if run_task.done() and not run_task.cancelled():
+                    error = run_task.exception()
+                    if error is not None:
+                        self.logger.warning(
+                            "Smart Shunt subscription stopped for %s: %s; "
+                            "restarting",
+                            self.address,
+                            error,
+                            exc_info=(type(error), error, error.__traceback__),
+                        )
+                    else:
+                        self.logger.warning(
+                            "Smart Shunt subscription exited for %s; restarting",
+                            self.address,
+                        )
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:
+                self._handle_shunt_error(err)
+                self.logger.warning(
+                    "Unable to run Smart Shunt subscription for %s: %s",
+                    self.address,
+                    err,
+                    exc_info=True,
+                )
+            finally:
+                if run_task is not None and not run_task.done():
+                    run_task.cancel()
+                    try:
+                        await run_task
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as err:
+                        self.logger.debug(
+                            "Smart Shunt subscription task ended during cleanup: %s",
+                            err,
+                        )
+                if subscription is not None:
+                    try:
+                        await subscription.close()
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as err:
+                        self.logger.debug(
+                            "Error closing Smart Shunt subscription for %s: %s",
+                            self.address,
+                            err,
+                        )
+                if self._shunt_subscription is subscription:
+                    self._shunt_subscription = None
+
+            await asyncio.sleep(SHUNT_RECONNECT_DELAY_SECONDS)
 
     async def _read_device_data(
         self, service_info: BluetoothServiceInfoBleak | None
